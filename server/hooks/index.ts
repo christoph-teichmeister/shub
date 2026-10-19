@@ -7,7 +7,7 @@ import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { guard, type GuardInput } from '../projects/main-checkout.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
-import { isPermissionMode } from '../sessions/launch.ts';
+import { autoName, isPermissionMode } from '../sessions/launch.ts';
 import { HOOK_EVENTS, isHookEvent, newClaudeSessionId, transition } from './transition.ts';
 
 const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
@@ -79,6 +79,12 @@ export function create(_ctx: Context, services: Services): { module: ShubModule 
             const claudeSessionId = newClaudeSessionId(session.claudeSessionId, payload);
             if (claudeSessionId) services.sessions.setClaudeSessionId(session.id, claudeSessionId);
             return { ok: true };
+          }
+          // A session started without a prompt is "Session N" until its first prompt names it.
+          const prompt = typeof payload.prompt === 'string' ? payload.prompt.trim() : '';
+          const fromUser = payload.source === undefined || payload.source === 'user';
+          if (req.params.event === 'UserPromptSubmit' && fromUser && prompt && /^Session \d+$/.test(session.name)) {
+            services.sessions.rename(session.id, autoName({ prompt, n: 0 }), 'shub');
           }
           const change = transition(session.status, req.params.event, payload);
           if (!change) return { ok: true };
