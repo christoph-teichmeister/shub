@@ -30,6 +30,13 @@ test('notification: permission prompt needs you, but no second push after a perm
   assert.equal(transition('working', 'Notification', { notification_type: 'auth_success', message: 'ok' }), null);
 });
 
+test('a tool that ran after a permission question means working again', () => {
+  const p = { tool_name: 'Bash', tool_input: { command: 'ls' }, tool_response: {} };
+  assert.deepEqual(transition('needs-you', 'PostToolUse', p), { status: 'working', pendingPermission: null });
+  assert.equal(transition('working', 'PostToolUse', p), null);
+  assert.equal(transition('your-turn', 'PostToolUse', p), null);
+});
+
 test('summaries are truncated and fall back to JSON', () => {
   assert.equal(summarizeTool({ command: 'x'.repeat(500) }).length, 200);
   assert.equal(summarizeTool({ a: 1 }), '{"a":1}');
