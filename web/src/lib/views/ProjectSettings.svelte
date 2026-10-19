@@ -55,6 +55,7 @@
 
   let name = $state('');
   let group = $state('');
+  let newGroup = $state(false);
   let path = $state('');
   /** What is typed in the folder field; it becomes `path` (and saves) on blur or Enter, never half-typed. */
   let pathDraft = $state('');
@@ -77,6 +78,7 @@
   // Fill the form once per project (not on every projects reload, which would drop edits).
   $effect(() => {
     if (loadedFor === id) return;
+    newGroup = false;
     if (isNew) {
       name = path = pathDraft = '';
       group = app.config?.groups[0] ?? 'Projects';
@@ -104,7 +106,13 @@
     );
   });
 
-  const groups = $derived([...new Set([...(app.config?.groups ?? []), ...app.projects.map((p) => p.group)])]);
+  const NEW_GROUP = '\0new';
+  const groupOptions = $derived([
+    ...[...new Set([...(app.config?.groups ?? []), ...app.projects.map((p) => p.group), ...(newGroup ? [] : [group])])]
+      .filter(Boolean)
+      .map((g) => ({ value: g, label: g })),
+    { value: NEW_GROUP, label: 'New group…' },
+  ]);
   const detected = $derived<ResolvedIcon | null>(existing?.icon.kind === 'auto' ? existing.resolvedIcon : null);
   const preview = $derived<ResolvedIcon>(
     icon.kind === 'auto' ? (detected ?? { kind: 'none' }) : icon.kind === 'symbol' ? { ...icon } : { ...icon },
@@ -275,10 +283,27 @@
     {:else}
       <div class="grid">
         <TextField label="Name" bind:value={name} required autocomplete="off" />
-        <TextField label="Group" bind:value={group} list="groups" required autocomplete="off" />
-        <datalist id="groups"
-          >{#each groups as g (g)}<option value={g}></option>{/each}</datalist
-        >
+        <div class="group-field">
+          <SelectField
+            label="Group"
+            value={newGroup ? NEW_GROUP : group}
+            options={groupOptions}
+            onchange={(e) => {
+              newGroup = e.currentTarget.value === NEW_GROUP;
+              group = newGroup ? '' : e.currentTarget.value;
+            }}
+          />
+          {#if newGroup}
+            <TextField
+              label="New group name"
+              hideLabel
+              placeholder="New group name"
+              bind:value={group}
+              required
+              autocomplete="off"
+            />
+          {/if}
+        </div>
         <div class="span folder">
           <div class="grow">
             <TextField
@@ -632,6 +657,12 @@
 
   .end {
     align-items: flex-end;
+  }
+
+  .group-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
   }
 
   .stack {
