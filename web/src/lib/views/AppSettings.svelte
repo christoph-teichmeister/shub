@@ -175,15 +175,30 @@
     else void loadUpdate();
   }
 
-  async function installUpdate(version: string) {
-    const res = await api('updateInstall', { body: { version } }).catch(toastError);
-    if (res) toast(`Installing shub ${version}. shub restarts in a moment; sessions keep running.`, 'neutral', 8000);
+  /** Set while the launcher downloads, verifies and restarts shub; the line under the button says which step. */
+  let switching = $state<{ to: string; verb: string } | null>(null);
+
+  /** Starts the launcher, then polls until it reports a result or the new version answers (2 min at most). */
+  async function switchVersion(to: string, verb: string, start: () => Promise<unknown>) {
+    switching = { to, verb };
+    const since = Date.now();
+    if (await start().catch(toastError)) {
+      const done = () => {
+        const u = app.update;
+        return u?.current === to || (!!u?.last && Date.parse(u.last.at) >= since - 5000);
+      };
+      while (!done() && Date.now() - since < 120_000) {
+        await new Promise((r) => setTimeout(r, 2000));
+        await loadUpdate();
+      }
+      if (!done()) toast('No answer from the launcher after 2 minutes; see update.log in the shub home.', 'error');
+    }
+    switching = null;
   }
 
-  async function rollBack(version: string) {
-    const res = await api('updateRollback').catch(toastError);
-    if (res) toast(`Rolling back to shub ${version}. shub restarts in a moment.`, 'neutral', 8000);
-  }
+  const installUpdate = (version: string) =>
+    switchVersion(version, 'Installing', () => api('updateInstall', { body: { version } }));
+  const rollBack = (version: string) => switchVersion(version, 'Rolling back to', () => api('updateRollback'));
 
   const swatches = (id: string) => {
     const t = resolveTokens(themes.find((x) => x.id === id) ?? BUILT_IN_THEMES[0]);
@@ -353,15 +368,23 @@
                   <span class="strong">shub {update.latest} is available</span>
                   <pre class="log">{update.changelog || 'No release notes.'}</pre>
                   <span class="row">
-                    <Button variant="primary" onclick={() => update.latest && installUpdate(update.latest)}
-                      >Install {update.latest}</Button
+                    <Button
+                      variant="primary"
+                      disabled={!!switching}
+                      onclick={() => update.latest && installUpdate(update.latest)}>Install {update.latest}</Button
                     >
-                    <span class="muted small">shub restarts; sessions keep running.</span>
+                    {#if !switching}<span class="muted small">shub restarts; sessions keep running.</span>{/if}
                   </span>
                 </span>
               </div>
             {/if}
-            {#if lastNote}
+            {#if switching}
+              <p class="row muted" role="status">
+                <span class="spinner" aria-hidden="true"></span>
+                {switching.verb} shub {switching.to}: downloading, checking the signature, restarting. Sessions keep
+                running; this page reconnects by itself.
+              </p>
+            {:else if lastNote}
               <p class={lastNote.ok ? 'muted' : 'error'} role={lastNote.ok ? undefined : 'alert'}>
                 {lastNote.message}
               </p>
@@ -375,7 +398,7 @@
             <div class="row">
               <Button onclick={checkUpdates} disabled={checking}>{checking ? 'Checking' : 'Check now'}</Button>
               {#if update.previous}
-                <Button onclick={() => update.previous && rollBack(update.previous)}
+                <Button disabled={!!switching} onclick={() => update.previous && rollBack(update.previous)}
                   >Roll back to {update.previous}</Button
                 >
               {/if}
@@ -461,6 +484,28 @@
 </Dialog>
 
 <style>
+  .spinner {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    border: 2px solid var(--line);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      animation-duration: 3s;
+    }
+  }
+
   .page {
     min-height: 100%;
     padding: var(--space-8) var(--space-4) var(--space-12);

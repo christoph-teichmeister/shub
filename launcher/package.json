@@ -1,6 +1,6 @@
 {
   "name": "@christoph-teichmeister/shub",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Launcher for shub, your session hub: installs, updates and starts signed shub releases.",
   "license": "MIT",
   "type": "module",
