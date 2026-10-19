@@ -174,8 +174,13 @@ test('health, login, project, session, terminal, hooks, close', { timeout: 60_00
   assert.equal(after?.status, 'your-turn');
   assert.equal(after?.claudeSessionId, cleared, '/clear moved the Claude session id');
 
-  // Close: tmux session gone, token revoked.
-  await json('DELETE', `/api/sessions/${started.id}`);
+  // Close: a session may not close another one, only itself; you close any.
+  const other = await json<Session>('POST', '/api/sessions', { kind: 'claude', projectId: project.id });
+  assert.equal((await api('DELETE', `/api/sessions/${other.id}`, undefined, bearer)).status, 403);
+  await json('DELETE', `/api/sessions/${other.id}`);
+  assert.equal(await session(other.id), undefined);
+  // Closing itself: tmux session gone, token revoked.
+  await json('DELETE', `/api/sessions/${started.id}`, undefined, bearer);
   assert.equal(await session(started.id), undefined);
   assert.ok(!tmuxHas(`shub-${started.id}`));
   assert.equal((await api('POST', '/api/hooks/Stop', {}, bearer)).status, 401, 'session token revoked');

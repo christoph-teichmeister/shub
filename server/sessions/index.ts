@@ -100,7 +100,9 @@ function routes(sessions: SessionsService, services: Services, router: Router): 
     return sessions.rename(req.params.id, name, req.caller.id);
   });
   router.add(ROUTES.sessionClose, (req) => {
-    requireUser(req.caller);
+    // You close any session; a session only itself (also from inside it, e.g. `shub session close`).
+    const decision = services.permissions.decide(req.caller, { kind: 'session.close', sessionId: req.params.id });
+    if (decision.outcome !== 'allow') throw new HttpError(403, decision.reason);
     sessions.close(req.params.id, req.caller.id);
     return { ok: true };
   });
