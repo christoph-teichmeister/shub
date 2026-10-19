@@ -68,3 +68,27 @@ test('the guard denies changes to a protected main checkout and stays quiet othe
   assert.deepEqual(await ask('git checkout -b fix/x'), {});
   await assert.rejects(ask('git status', 'user'), /only answers shub sessions/);
 });
+
+test('the first prompt names a "Session N" session, later prompts and given names stay', async () => {
+  const renames: string[] = [];
+  let name = 'Session 8';
+  const services = {
+    sessions: {
+      get: () => ({ id: 's1', status: 'your-turn', claudeSessionId: null, name }),
+      rename: (_id: string, n: string) => renames.push((name = n)),
+      setPermissionMode: () => {},
+      setStatus: () => {},
+    },
+    notify: { yourTurn: () => {}, needsYou: () => {} },
+  } as unknown as Services;
+  let handler!: (req: Request) => Promise<unknown>;
+  const router = { add: (_spec: string, h: typeof handler) => (handler = h) } as unknown as Router;
+  create({} as Context, services).module.routes!(router);
+  const hook = (event: string, payload: object) =>
+    handler({ caller: { id: 'session:s1' }, params: { event }, json: async () => payload } as unknown as Request);
+  await hook('UserPromptSubmit', { prompt: 'system note', source: 'system' });
+  await hook('UserPromptSubmit', { prompt: '  ' });
+  await hook('UserPromptSubmit', { prompt: 'fix the login redirect after logout please now' });
+  await hook('UserPromptSubmit', { prompt: 'second prompt' });
+  assert.deepEqual(renames, ['fix the login redirect after logout…']);
+});

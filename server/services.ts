@@ -79,6 +79,7 @@ export interface Sessions {
   setClaudeSessionId(id: string, claudeSessionId: string): void;
   /** A hook reported the mode Claude runs in (needed for "inherit", or after Shift+Tab). */
   setPermissionMode(id: string, mode: PermissionMode): void;
+  rename(id: string, name: string, actor: string): Session;
   sendKeys(id: string, keys: string[]): void;
   oldSessions(projectId: string): OldSession[];
 }
