@@ -39,6 +39,14 @@ export interface Project {
   order: number;
   icon: ProjectIcon;
   buttons: ButtonDef[];
+  /** `path` is the main checkout: sessions may not change it, shub fetches and fast-forwards it. */
+  mainCheckout?: MainCheckout;
+}
+
+export interface MainCheckout {
+  branch: string;
+  /** Fetch (and fast-forward when clean) every n minutes; 0 = never. */
+  updateMinutes: number;
 }
 
 export interface ResolvedIcon {
@@ -376,6 +384,7 @@ export const ROUTES = {
   serviceInspect: 'GET /api/services/:containerId/inspect',
 
   hook: 'POST /api/hooks/:event', // Claude Code hooks, auth by per-session token
+  guard: 'POST /api/guard', // PreToolUse hook: deny changes to a protected main checkout, per-session token
 
   plugins: 'GET /api/plugins',
   pluginUpdate: 'PATCH /api/plugins/:name', // enable/disable, grant rights (user only)

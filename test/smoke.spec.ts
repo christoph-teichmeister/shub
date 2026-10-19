@@ -170,7 +170,10 @@ test('login on 401 and phone pairing', async ({ page }) => {
 });
 
 test('app settings and project settings', async ({ page }) => {
-  const { errors, calls } = await mockApi(page, { 'PATCH /api/settings': { ...config, activeTheme: 'dracula' } });
+  const { errors, calls } = await mockApi(page, {
+    'PATCH /api/settings': { ...config, activeTheme: 'dracula' },
+    '/api/projects/ai-portal/worktrees': [{ path: '~/PycharmProjects/work/ai-portal', branch: 'main' }],
+  });
   await page.goto('/#/settings');
   await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible();
   await page
@@ -214,6 +217,15 @@ test('app settings and project settings', async ({ page }) => {
         { skill: '/refine-ticket', label: 'Refine ticket', lockDefaultMode: true },
       ],
     });
+
+  const lastPatch = () => calls.filter((c) => c.method === 'PATCH').at(-1)?.body as { mainCheckout?: unknown };
+  await page.getByLabel('Protect this folder as the main checkout').check();
+  await expect(page.getByLabel('Branch')).toHaveValue('main');
+  await expect.poll(lastPatch).toMatchObject({ mainCheckout: { branch: 'main', updateMinutes: 15 } });
+  await page.getByLabel('Update every (minutes, 0 = never)').fill('30');
+  await expect.poll(lastPatch).toMatchObject({ mainCheckout: { branch: 'main', updateMinutes: 30 } });
+  await page.getByLabel('Protect this folder as the main checkout').uncheck();
+  await expect.poll(lastPatch).toMatchObject({ mainCheckout: null });
   expect(errors).toEqual([]);
 });
 

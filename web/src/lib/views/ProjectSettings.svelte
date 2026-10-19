@@ -2,11 +2,13 @@
   import type {
     ButtonAsk,
     ButtonDef,
+    MainCheckout,
     PermissionMode,
     ProjectIcon as ProjectIconDef,
     ResolvedIcon,
     SkillInfo,
     Visibility,
+    Worktree,
   } from '../../../../shared/api.ts';
   import Button from '../components/Button/Button.svelte';
   import Checkbox from '../components/Checkbox/Checkbox.svelte';
@@ -61,6 +63,7 @@
   let visibility = $state<Visibility>('pinned');
   let icon = $state<ProjectIconDef>({ kind: 'auto' });
   let buttons = $state<ButtonDef[]>([]);
+  let mainCheckout = $state<MainCheckout | null>(null);
   let loadedFor = $state<string | null>(null);
   let skills = $state<SkillInfo[] | null>(null);
   let skillsError = $state('');
@@ -83,6 +86,7 @@
       visibility = 'pinned';
       icon = { kind: 'auto' };
       buttons = [];
+      mainCheckout = null;
       loadedFor = id;
     } else if (existing) {
       savedJson = '';
@@ -90,6 +94,7 @@
       pathDraft = path;
       icon = structuredClone($state.snapshot(existing.icon));
       buttons = structuredClone($state.snapshot(existing.buttons));
+      mainCheckout = existing.mainCheckout ? { ...existing.mainCheckout } : null;
       loadedFor = id;
     }
   });
@@ -197,7 +202,15 @@
     visibility,
     icon: $state.snapshot(icon),
     buttons: $state.snapshot(buttons).map((b) => ({ ...b, label: b.label.trim() || label(b.skill ?? 'Prompt') })),
+    mainCheckout: mainCheckout && { branch: mainCheckout.branch.trim(), updateMinutes: mainCheckout.updateMinutes },
   });
+
+  /** Switching the protection on keeps the branch the folder is on now (develop when that is unknown). */
+  async function protect(on: boolean) {
+    if (!on) return void (mainCheckout = null);
+    const trees = await api<Worktree[]>('projectWorktrees', { params: { id } }).catch(() => []);
+    mainCheckout = { branch: trees.find((w) => w.path === path)?.branch || 'develop', updateMinutes: 15 };
+  }
 
   // Existing projects save themselves: every valid change goes to the server after a short pause (typing stays smooth).
   // The timer is not cleared on unmount, so a change made just before leaving the page still lands.
@@ -377,6 +390,33 @@
           >
         </div>
       </Section>
+
+      {#if !isNew}
+        <Section
+          title="Main checkout"
+          description="Sessions still start in this folder but may not edit files or switch, commit or rebase here; they work in a worktree. shub fetches it and fast-forwards it when it is clean and on its branch."
+        >
+          <Checkbox
+            label="Protect this folder as the main checkout"
+            checked={!!mainCheckout}
+            onchange={(e) => void protect(e.currentTarget.checked)}
+          />
+          {#if mainCheckout}
+            <div class="row tight end">
+              <TextField label="Branch" bind:value={mainCheckout.branch} required mono autocomplete="off" />
+              <TextField
+                label="Update every (minutes, 0 = never)"
+                type="number"
+                min="0"
+                max="1440"
+                step="1"
+                bind:value={mainCheckout.updateMinutes}
+                required
+              />
+            </div>
+          {/if}
+        </Section>
+      {/if}
 
       {#if !isNew}
         <Section
