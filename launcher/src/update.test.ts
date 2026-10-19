@@ -123,4 +123,7 @@ test('a tampered archive is never installed', async () => {
   await assert.rejects(update(deps, { to: '../../etc', channel: 'stable' }), /not a version/);
   await assert.rejects(update(deps, { to: '2027.1.0', channel: 'stable' }), /there is no release 2027\.1\.0/);
   await assert.rejects(rollback(setup().deps), /no previous version/);
+  const empty = setup();
+  empty.deps.source = { ...empty.deps.source, releases: async () => [] };
+  await assert.rejects(update(empty.deps, { channel: 'stable' }), /there is no stable release yet/);
 });

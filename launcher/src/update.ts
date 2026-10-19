@@ -131,6 +131,7 @@ export async function update(deps: Deps, opts: { to?: string; channel: Channel }
   try {
     const current = currentVersion(deps.home);
     const target = opts.to ?? (await check(deps, opts.channel)).latest;
+    if (!target && !current) throw new Error(`there is no ${opts.channel} release yet`);
     if (!target || target === current) {
       deps.log(`shub ${current} is up to date (${opts.channel}).`);
       return null;

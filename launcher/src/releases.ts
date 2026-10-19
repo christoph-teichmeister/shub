@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { pemKeys } from './signing.ts';
 
 export const REPO = 'christoph-teichmeister/shub';
-const API_URL = `https://api.github.com/repos/${REPO}/releases?per_page=50`;
+// ponytail: first page only; 100 releases cover months of betas. Page through (Link header) when they do not.
+const API_URL = `https://api.github.com/repos/${REPO}/releases?per_page=100`;
 const DOWNLOAD_PREFIX = `https://github.com/${REPO}/releases/download/`;
 
 export type Channel = 'stable' | 'beta';
