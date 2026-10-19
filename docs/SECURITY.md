@@ -13,6 +13,7 @@ protects against, the exact rules it enforces, and, just as important, what it d
 | A runaway session or plugin starting sessions in a loop                                                                      | Rate limit, "one level deep"                                     |
 | A plugin doing more than you agreed to                                                                                       | Per-plugin token with only the rights you granted                |
 | Secrets showing up in the Docker panel                                                                                       | Env values with secret-looking keys and URL passwords are masked |
+| A tampered or fake update                                                                                                    | Signed `SHA256SUMS`, downloads only from the GitHub releases     |
 
 Not covered: anything a process does with your Unix user's rights outside shub. See [Honest scope](#honest-scope).
 
@@ -62,6 +63,15 @@ So shub makes actions visible and stops mistakes; it is **not a wall** between s
 - Keep sessions that read untrusted input (reviews of other people's merge requests, unknown repositories, web content) out of prompt-skipping modes. Mark their buttons with `lockDefaultMode`.
 - Read the full prompt on an approval card before you start it. shub cannot tell where a prompt came from.
 - Install plugins only from code you have read. A plugin is a process with your user's rights; its shub token limits only what it can do through shub.
+
+## Updates
+
+The launcher installs only what the release key signed: each GitHub release carries `SHA256SUMS` and an ed25519
+signature of it (`SHA256SUMS.sig`), and an archive is unpacked only if its SHA-256 is listed in a SUMS file with a valid
+signature from a key in `launcher/release-keys.pem` (shipped with the launcher and inside every release). Downloads
+come only from `https://github.com/christoph-teichmeister/shub/releases`. Installing, rolling back and switching the
+channel from the web app are for the browser `user` only (not `cli`): the token file is readable by every process of
+your user, a device cookie is not. Key handling: [RELEASING.md](RELEASING.md).
 
 ## Docker
 

@@ -1,4 +1,5 @@
-# systemd user unit for shub. Template only: nothing installs or enables it.
+# systemd user unit for shub run from a git checkout. Template only: nothing installs or enables it.
+# Installed with the launcher, `shub service install` writes its own unit instead.
 # Install by hand:
 #   cp deploy/shub.service ~/.config/systemd/user/shub.service   (adjust paths below)
 #   systemctl --user daemon-reload && systemctl --user enable --now shub
