@@ -1,0 +1,23 @@
+name: Idea
+description: Suggest something shub should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is hard or slow today? One or two sentences about your situation.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: What should shub do? Could it be a plugin instead of a core feature (see docs/PLUGINS.md)?
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Mockups, alternatives you tried, links.

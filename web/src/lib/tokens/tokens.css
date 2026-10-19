@@ -1,0 +1,202 @@
+/* Sizes, spacing, radii, type, motion, layers and fixed brand colours.
+   Theme colours are set on :root by applyTheme() in tokens.ts; Monokai values below are the pre-JS fallback. */
+:root {
+  /* Monokai fallback (kept in sync with tokens.ts) */
+  --bg: #272822;
+  --panel: #1e1f1c;
+  --raised: #3e3d32;
+  --line: #3b3a32;
+  --line-strong: #49483e;
+  --fg: #f8f8f2;
+  --fg-2: #d6d6c8;
+  --muted: #a8a28a;
+  --primary: #ae81ff;
+  --primary-fg: #1e1f1c;
+  --on-accent: #1e1f1c;
+  --term-bg: #272822;
+  --selection: #49483e;
+  --link: #66d9ef;
+  --danger: #f92672;
+  --yellow: #e6db74;
+  --pink: #f92672;
+  --purple: #ae81ff;
+  --status-needs-you: #fd971f;
+  --status-needs-you-bg: #3a2f1c;
+  --status-needs-you-fg: #ffd9a8;
+  --status-working: #66d9ef;
+  --status-your-turn: #a6e22e;
+  --shadow: rgb(0 0 0 / 50%);
+
+  /* Fixed brand colours (same in every theme) */
+  --brand-gitlab: #fc6d26;
+  --brand-github: #f8f8f2;
+  --brand-on-tile: #1e1f1c;
+  --qr-paper: #fff;
+  --svc-python: #3776ab;
+  --svc-python-fg: #ffe873;
+  --svc-postgres: #336791;
+  --svc-postgres-fg: #fff;
+  --svc-redis: #dc382d;
+  --svc-redis-fg: #fff;
+  --svc-rabbitmq: #f60;
+  --svc-rabbitmq-fg: #1e1f1c;
+  --svc-celery: #a9cc54;
+  --svc-celery-fg: #1e1f1c;
+  --svc-node: #5fa04e;
+  --svc-node-fg: #fff;
+  --svc-nginx: #009639;
+  --svc-nginx-fg: #fff;
+
+  /* Spacing scale */
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-2-5: 10px;
+  --space-3: 12px;
+  --space-3-5: 14px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  /* Component sizes */
+  --hairline: 1px;
+  --ring: 2px;
+  --size-dot: 7px;
+  --size-check: 10px;
+  --size-icon-sm: 12px;
+  --size-icon: 14px;
+  --size-icon-md: 16px;
+  --size-tile-xs: 16px;
+  --size-tile: 22px;
+  --size-tile-lg: 32px;
+  --size-control-xs: 26px;
+  --size-control-sm: 28px;
+  --size-control: 32px;
+  --size-control-md: 36px;
+  --size-control-lg: 40px;
+  --size-tab: 38px;
+  --size-row: 26px;
+  --size-avatar: 30px;
+  --size-sidebar: 300px;
+  --size-sidebar-min: 260px;
+  --size-tree: 290px;
+  --size-toolbar: 36px;
+  --size-panel: 330px;
+  --size-menu: 280px;
+  --size-dialog: 560px;
+  --size-drawer: 640px;
+  --size-page: 760px;
+  --size-column: 320px;
+  --size-preview: 360px;
+  --size-preview-side: 160px;
+  --size-page-wide: 1120px;
+  --size-login: 380px;
+  --size-qr: 168px;
+  --size-phone-key: 56px;
+  --size-rename: 150px;
+  --size-toast: 360px;
+
+  /* Radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-round: 50%;
+  --radius-pill: 999px;
+
+  /* Type */
+  --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --text-3xs: 8px;
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-lg: 17px;
+  --text-xl: 18px;
+  --text-wordmark-xl: 56px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-black: 800;
+  --leading-tight: 1.2;
+  --leading-base: 1.45;
+  --leading-term: 1.6;
+  --tracking-label: 0.8px;
+  --tracking-wordmark: -0.5px;
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-blink: 1s;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Layers */
+  --z-raised: 1;
+  --z-sticky: 10;
+  --z-menu: 100;
+  --z-dialog: 200;
+  --z-toast: 300;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+  }
+}
+
+/* Base document styles (the only global CSS besides the tokens). */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--link);
+}
+
+:focus-visible {
+  outline: var(--ring) solid var(--primary);
+  outline-offset: var(--ring);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

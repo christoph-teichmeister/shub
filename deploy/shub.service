@@ -1,0 +1,23 @@
+# systemd user unit for shub. Template only: nothing installs or enables it.
+# Install by hand:
+#   cp deploy/shub.service ~/.config/systemd/user/shub.service   (adjust paths below)
+#   systemctl --user daemon-reload && systemctl --user enable --now shub
+# Phone access: `tailscale serve` in front of 127.0.0.1:4780 and SHUB_PUBLIC_URL set to that https URL.
+[Unit]
+Description=shub, your session hub
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/PycharmProjects/private/shub
+ExecStart=/usr/bin/env node %h/PycharmProjects/private/shub/server/main.ts
+Environment=NODE_ENV=production
+# Environment=SHUB_PORT=4780
+# Environment=SHUB_PUBLIC_URL=https://<machine>.<tailnet>.ts.net
+Restart=on-failure
+RestartSec=3
+# Sessions live in shub's tmux server, a child of this unit: keep it alive across restarts.
+KillMode=process
+
+[Install]
+WantedBy=default.target

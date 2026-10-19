@@ -1,0 +1,11 @@
+{
+  "name": "hello",
+  "version": "0.1.0",
+  "description": "Example plugin: shows how many sessions are running.",
+  "start": ["python3", "-u", "plugin.py"],
+  "rights": ["read", "ui.contribute"],
+  "contributes": {
+    "sidebarSections": [{ "id": "hello", "title": "Hello" }],
+    "settingsActions": [{ "id": "say-hello", "label": "Say hello" }]
+  }
+}

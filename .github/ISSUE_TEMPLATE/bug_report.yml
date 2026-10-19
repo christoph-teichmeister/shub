@@ -1,0 +1,57 @@
+name: Bug
+description: Something in shub does not work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start a session in a project with …
+        2. Click …
+        3. See …
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      multiple: true
+      options:
+        - Desktop browser
+        - Phone (PWA)
+        - shub CLI
+        - Plugin
+        - Server / service
+  - type: input
+    id: version
+    attributes:
+      label: shub version
+      description: Settings, or `shub --version`, or `curl 127.0.0.1:4780/api/health`.
+      placeholder: 2026.10.0
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, browser, Node, tmux and Claude Code versions.
+      placeholder: |
+        OS: Ubuntu 26.04
+        Browser: Firefox 140
+        node -v: v24.2.0
+        tmux -V: tmux 3.6
+        claude --version: 2.1.303
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Server log (`journalctl --user -u shub`) or browser console. Remove tokens and paths you do not want to share.
+      render: text

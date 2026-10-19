@@ -1,0 +1,157 @@
+<script lang="ts">
+  import type { Snippet } from 'svelte';
+  import type { SidebarSectionContent } from '../../../../../shared/api.ts';
+  import StatusBadge from '../StatusBadge/StatusBadge.svelte';
+
+  type Entry = SidebarSectionContent['entries'][number];
+  interface Props {
+    title: string;
+    badge?: SidebarSectionContent['badge'];
+    /** Plugin entries; rendered as small rows (link when `url`, button when `action`). */
+    entries?: Entry[];
+    onentry?: (entry: Entry) => void;
+    /** Drop target for dragging projects into this group. */
+    ondrop?: (e: DragEvent) => void;
+    children?: Snippet;
+  }
+  let { title, badge, entries, onentry, ondrop, children }: Props = $props();
+  let over = $state(false);
+</script>
+
+<section
+  class="section"
+  class:over
+  aria-label={title}
+  ondragover={ondrop ? (e) => (e.preventDefault(), (over = true)) : undefined}
+  ondragleave={() => (over = false)}
+  ondrop={ondrop ? (e) => ((over = false), ondrop(e)) : undefined}
+>
+  <h2 class="title">
+    <span>{title}</span>
+    {#if badge}<StatusBadge text={badge.text} tone={badge.tone} />{/if}
+  </h2>
+  {#if entries}
+    <ul class="entries">
+      {#each entries as entry (entry.id)}
+        <li>
+          {#if entry.url}
+            <a class="entry {entry.tone ?? 'neutral'}" href={entry.url} target="_blank" rel="noreferrer">
+              <span class="entry-title">{entry.title}</span>
+              {#if entry.subtitle}<span class="entry-sub">{entry.subtitle}</span>{/if}
+            </a>
+          {:else}
+            <button
+              type="button"
+              class="entry {entry.tone ?? 'neutral'}"
+              disabled={!entry.action}
+              onclick={() => onentry?.(entry)}
+            >
+              <span class="entry-title">{entry.title}</span>
+              {#if entry.subtitle}<span class="entry-sub">{entry.subtitle}</span>{/if}
+            </button>
+          {/if}
+        </li>
+      {/each}
+      {#if entries.length === 0}<li class="empty">Nothing here</li>{/if}
+    </ul>
+  {/if}
+  {#if children}<div class="body">{@render children()}</div>{/if}
+</section>
+
+<style>
+  .section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    border-radius: var(--radius-md);
+  }
+
+  .over {
+    outline: var(--hairline) dashed var(--primary);
+  }
+
+  .title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0 var(--space-1-5) var(--space-1-5);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .entries {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+  }
+
+  .entry {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    padding: var(--space-1-5) var(--space-2-5);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--fg-2);
+    font-size: var(--text-md);
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .entry:disabled {
+    cursor: default;
+  }
+
+  .entry:hover:not(:disabled) {
+    background: var(--raised);
+  }
+
+  .entry-sub {
+    font-size: var(--text-xs);
+    color: var(--muted);
+  }
+
+  :where(.entry:hover) .entry-sub {
+    color: var(--fg-2);
+  }
+
+  .needs-you {
+    background: var(--status-needs-you-bg);
+    color: var(--status-needs-you-fg);
+  }
+
+  .needs-you .entry-sub {
+    color: var(--status-needs-you);
+  }
+
+  .working .entry-sub {
+    color: var(--status-working);
+  }
+
+  .done .entry-sub {
+    color: var(--status-your-turn);
+  }
+
+  .empty {
+    padding: var(--space-1) var(--space-2-5);
+    font-size: var(--text-sm);
+    color: var(--muted);
+  }
+
+  .body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+  }
+</style>
