@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { SidebarSectionContent } from '../../../../../shared/api.ts';
+  import Icon from '../Icon/Icon.svelte';
   import StatusBadge from '../StatusBadge/StatusBadge.svelte';
 
   type Entry = SidebarSectionContent['entries'][number];
@@ -16,6 +17,26 @@
   }
   let { title, badge, entries, onentry, ondrop, children }: Props = $props();
   let over = $state(false);
+
+  // Remembered per browser; storage can be missing or throw (private window).
+  const key = $derived(`shub.collapsed.${title}`);
+  let collapsed = $state(false);
+  $effect(() => {
+    try {
+      collapsed = localStorage.getItem(key) === '1';
+    } catch {
+      collapsed = false;
+    }
+  });
+  function toggle() {
+    collapsed = !collapsed;
+    try {
+      if (collapsed) localStorage.setItem(key, '1');
+      else localStorage.removeItem(key);
+    } catch {
+      // not remembered, still toggles
+    }
+  }
 </script>
 
 <section
@@ -27,10 +48,13 @@
   ondrop={ondrop ? (e) => ((over = false), ondrop(e)) : undefined}
 >
   <h2 class="title">
-    <span>{title}</span>
+    <button type="button" class="toggle" aria-expanded={!collapsed} onclick={toggle}>
+      <Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size="xs" weight={2} />
+      <span class="grow">{title}</span>
+    </button>
     {#if badge}<StatusBadge text={badge.text} tone={badge.tone} />{/if}
   </h2>
-  {#if entries}
+  {#if entries && !collapsed}
     <ul class="entries">
       {#each entries as entry (entry.id)}
         <li>
@@ -55,7 +79,7 @@
       {#if entries.length === 0}<li class="empty">Nothing here</li>{/if}
     </ul>
   {/if}
-  {#if children}<div class="body">{@render children()}</div>{/if}
+  {#if !collapsed && children}<div class="body">{@render children()}</div>{/if}
 </section>
 
 <style>
@@ -82,6 +106,35 @@
     letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     color: var(--muted);
+  }
+
+  .toggle {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .toggle:hover {
+    color: var(--fg-2);
+  }
+
+  .grow {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .entries {
