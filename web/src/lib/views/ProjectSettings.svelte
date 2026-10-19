@@ -175,6 +175,21 @@
     toast('That image is too detailed for an icon; try a simpler one', 'error');
   }
 
+  /** Folder picker over GET /api/folders: the folders live on the shub machine, the dialog runs on this device. */
+  let browsing = $state<{ path: string; parent: string | null; folders: string[] } | null>(null);
+  async function browse(at = pathDraft.trim()) {
+    const res = await api<NonNullable<typeof browsing>>('folders', at ? { query: { path: at } } : {}).catch(() =>
+      at ? api<NonNullable<typeof browsing>>('folders') : null,
+    );
+    if (res) browsing = res;
+    else toast('Could not list folders', 'error');
+  }
+  function useFolder(folder: string) {
+    path = pathDraft = folder;
+    if (isNew && !name.trim()) name = folder.split('/').pop() ?? '';
+    browsing = null;
+  }
+
   const bodyOf = () => ({
     name: name.trim(),
     group: group.trim() || 'Projects',
@@ -264,16 +279,18 @@
         <datalist id="groups"
           >{#each groups as g (g)}<option value={g}></option>{/each}</datalist
         >
-        <div class="span">
-          <TextField
-            label="Folder (sessions start here)"
-            bind:value={pathDraft}
-            onchange={() => (path = pathDraft)}
-            required
-            mono
-            autocomplete="off"
-            hint={isNew ? 'An absolute path to an existing folder.' : undefined}
-          />
+        <div class="span folder">
+          <div class="grow">
+            <TextField
+              label="Folder (sessions start here)"
+              bind:value={pathDraft}
+              onchange={() => (path = pathDraft)}
+              required
+              mono
+              autocomplete="off"
+            />
+          </div>
+          <Button icon="folder" onclick={() => browse()}>Browse…</Button>
         </div>
       </div>
 
@@ -311,6 +328,18 @@
             }}
           />
         </div>
+        <TextField
+          label="Or an image URL"
+          type="url"
+          placeholder="https://…"
+          mono
+          autocomplete="off"
+          value={icon.kind === 'image' && icon.path.startsWith('https://') ? icon.path : ''}
+          onchange={(e) => {
+            const url = e.currentTarget.value.trim();
+            icon = url ? { kind: 'image', path: url } : { kind: 'auto' };
+          }}
+        />
         <span class="muted small">Or pick a symbol and colour:</span>
         <div class="row">
           <div class="row tight" role="group" aria-label="Symbol">
@@ -490,6 +519,23 @@
   </form>
 </div>
 
+<Dialog open={browsing !== null} title="Pick a folder" description={browsing?.path} onclose={() => (browsing = null)}>
+  <ul class="folders">
+    {#if browsing?.parent}<li>
+        <button type="button" onclick={() => browse(browsing!.parent!)}><Icon name="folder" /> ..</button>
+      </li>{/if}
+    {#each browsing?.folders ?? [] as f (f)}<li>
+        <button type="button" onclick={() => browse(`${browsing!.path === '/' ? '' : browsing!.path}/${f}`)}
+          ><Icon name="folder" /> {f}</button
+        >
+      </li>{:else}<li class="muted small">No subfolders</li>{/each}
+  </ul>
+  {#snippet actions()}
+    <Button variant="ghost" onclick={() => (browsing = null)}>Cancel</Button>
+    <Button variant="primary" onclick={() => useFolder(browsing!.path)}>Use this folder</Button>
+  {/snippet}
+</Dialog>
+
 <Dialog
   open={removing}
   title="Remove {name} from the hub?"
@@ -536,6 +582,41 @@
 
   .span {
     grid-column: 1 / -1;
+  }
+
+  .folders {
+    max-height: 50vh;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+  }
+
+  .folders button {
+    display: flex;
+    gap: var(--space-2-5);
+    align-items: center;
+    width: 100%;
+    padding: var(--space-2) var(--space-2-5);
+    font: inherit;
+    font-family: var(--font-mono);
+    color: var(--fg);
+    text-align: start;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+
+  .folders button:hover,
+  .folders button:focus-visible {
+    background: var(--raised);
+  }
+
+  .folder {
+    display: flex;
+    gap: var(--space-2-5);
+    align-items: end;
   }
 
   .row {
