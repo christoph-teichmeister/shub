@@ -18,6 +18,8 @@
   interface Row extends Candidate {
     add: boolean;
     group: string;
+    /** Typing a group that is not in the list yet. */
+    newGroup: boolean;
     visibility: Visibility;
   }
 
@@ -25,8 +27,19 @@
   let error = $state('');
   let adding = $state(false);
   const defaultGroup = app.config?.groups[0] ?? 'Projects';
-  const groups = $derived([
-    ...new Set([defaultGroup, ...(app.config?.groups ?? []), ...(rows ?? []).map((r) => r.group)]),
+  const NEW_GROUP = '\0new';
+  const groupOptions = $derived([
+    ...[
+      ...new Set([
+        defaultGroup,
+        ...(app.config?.groups ?? []),
+        ...app.projects.map((p) => p.group),
+        ...(rows ?? []).filter((r) => !r.newGroup).map((r) => r.group),
+      ]),
+    ]
+      .filter(Boolean)
+      .map((g) => ({ value: g, label: g })),
+    { value: NEW_GROUP, label: 'New group…' },
   ]);
   const count = $derived(rows?.filter((r) => r.add).length ?? 0);
 
@@ -36,6 +49,7 @@
         ...c,
         add: c.resolvedIcon.kind !== 'none' || c.sessions >= 5,
         group: defaultGroup,
+        newGroup: false,
         visibility: c.suggested,
       }))),
     (err: unknown) => (error = err instanceof Error ? err.message : String(err)),
@@ -83,9 +97,6 @@
     {:else if !rows.length}
       <p class="muted">No new folders found. Add one by hand.</p>
     {:else}
-      <datalist id="import-groups"
-        >{#each groups as g (g)}<option value={g}></option>{/each}</datalist
-      >
       <div class="table-wrap">
         <table>
           <thead>
@@ -115,7 +126,27 @@
                 <td>
                   {#if r.add}
                     <span class="as">
-                      <TextField label="Group for {r.name}" hideLabel bind:value={r.group} list="import-groups" />
+                      {#if r.newGroup}
+                        <!-- Back to the list once typed, so other rows can pick the new group too. -->
+                        <TextField
+                          label="New group for {r.name}"
+                          hideLabel
+                          placeholder="New group name"
+                          bind:value={r.group}
+                          onchange={() => (r.newGroup = !r.group.trim())}
+                        />
+                      {:else}
+                        <SelectField
+                          label="Group for {r.name}"
+                          hideLabel
+                          value={r.group}
+                          options={groupOptions}
+                          onchange={(e) => {
+                            r.newGroup = e.currentTarget.value === NEW_GROUP;
+                            r.group = r.newGroup ? '' : e.currentTarget.value;
+                          }}
+                        />
+                      {/if}
                       <SelectField
                         label="Visibility for {r.name}"
                         hideLabel
