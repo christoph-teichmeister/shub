@@ -1,9 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Request, Router } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import type { Services } from '../services.ts';
-import { create, hookSettings } from './index.ts';
+import { create, hookSettings, stableAppDir } from './index.ts';
 
 test('session settings hook every event and keep Claude tools off the secrets in stateDir', () => {
   const s = hookSettings('/app', '/home/u/.local/state/shub/') as {
@@ -19,6 +22,16 @@ test('session settings hook every event and keep Claude tools off the secrets in
     'Edit(//home/u/.local/state/shub/**)',
     'Write(//home/u/.local/state/shub/**)',
   ]);
+});
+
+test('hooks of an installed app go through current, so pruning an old version does not break sessions', () => {
+  const home = mkdtempSync(join(tmpdir(), 'shub-home-'));
+  const appDir = join(home, 'versions', '1.0.0');
+  mkdirSync(appDir, { recursive: true });
+  assert.equal(stableAppDir(`${appDir}/`), appDir);
+  symlinkSync('versions/1.0.0', join(home, 'current'));
+  assert.equal(stableAppDir(`${appDir}/`), join(home, 'current'));
+  assert.equal(stableAppDir('/home/u/src/shub/'), '/home/u/src/shub');
 });
 
 test('a hook reports the permission mode Claude runs in (for "inherit")', async () => {

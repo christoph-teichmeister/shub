@@ -1,5 +1,6 @@
 // Claude Code hooks: the per-session settings file and the route the hook script reports to.
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { ROUTES } from '../../shared/api.ts';
 import { HttpError } from '../api/router.ts';
 import type { Context } from '../context.ts';
@@ -13,10 +14,21 @@ import { HOOK_EVENTS, isHookEvent, newClaudeSessionId, transition } from './tran
 const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
 /**
+ * An installed app lives in <home>/versions/<version>/ next to <home>/current. Hooks go through current, so a
+ * session started before an update keeps working after the update removes its old version.
+ */
+export function stableAppDir(appDir: string): string {
+  const dir = resolve(appDir);
+  const current = join(dir, '..', '..', 'current');
+  return basename(dirname(dir)) === 'versions' && existsSync(current) ? current : dir;
+}
+
+/**
  * Content of `--settings <file>`: shub's hooks, so the user's own settings stay untouched, plus deny rules
  * that keep Claude's file tools out of stateDir (access token, client tokens, VAPID key).
  */
 export function hookSettings(appDir: string, stateDir: string): object {
+  appDir = stableAppDir(appDir);
   const script = shellQuote(join(appDir, 'server', 'hooks', 'report.sh'));
   const hooks: Record<string, object[]> = Object.fromEntries(
     HOOK_EVENTS.map((event) => [
