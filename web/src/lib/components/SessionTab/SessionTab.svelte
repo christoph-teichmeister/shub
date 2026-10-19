@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Session } from '../../../../../shared/api.ts';
+  import { PROMPT_SKIPPING_MODES, type PermissionMode, type Session } from '../../../../../shared/api.ts';
   import { STATUS_LABEL } from '../../status.ts';
   import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
@@ -15,6 +15,8 @@
     onmenu?: (e: MouseEvent) => void;
   }
   let { session, selected = false, renaming = $bindable(false), onselect, onrename, onclose, onmenu }: Props = $props();
+
+  const skipsPrompts = $derived(PROMPT_SKIPPING_MODES.includes(session.permissionMode as PermissionMode));
 
   let draft = $state('');
   let input = $state<HTMLInputElement>();
@@ -69,6 +71,11 @@
       {session.name}
     </button>
     <span id="status-{session.id}" class="visually-hidden">{STATUS_LABEL[session.status]}</span>
+  {/if}
+  {#if skipsPrompts}
+    <span class="skips" title="Runs in {session.permissionMode} mode: Claude acts without asking"
+      >{session.permissionMode === 'auto' ? 'auto' : 'bypass'}</span
+    >
   {/if}
   {#each session.links.slice(0, 1) as link (link.url)}
     <a class="chip" href={link.url} target="_blank" rel="noreferrer">{link.label}</a>
@@ -131,6 +138,14 @@
     background: var(--raised);
     color: var(--link);
     text-decoration: none;
+  }
+
+  .skips {
+    font-size: var(--text-xs);
+    padding: 0 var(--space-1-5);
+    border-radius: var(--radius-xs);
+    border: var(--hairline) solid var(--danger);
+    color: var(--danger);
   }
 
   .close {
