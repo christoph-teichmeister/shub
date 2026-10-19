@@ -5,7 +5,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import QRCode from 'qrcode';
-import { ROUTES, type ClientKind, type Device } from '../../shared/api.ts';
+import { ROUTES, type ClientKind, type Device, type Right } from '../../shared/api.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import { HttpError, requireUser, type Caller, type Router } from '../api/router.ts';
@@ -120,10 +120,15 @@ export class AuthService implements Auth {
   }
 
   #caller(kind: ClientKind, id: string): Caller {
-    const granted =
-      kind === 'plugin'
-        ? this.#services.config.get().plugins.find((p) => `plugin:${p.name}` === id)?.grantedRights
-        : undefined;
+    let granted: Right[] | undefined;
+    if (kind === 'plugin') {
+      // Granted in config AND requested by the manifest: a hand-edited config cannot widen a plugin's rights.
+      const name = id.slice('plugin:'.length);
+      const requested = this.#services.plugins?.requestedRights(name) ?? [];
+      granted = (this.#services.config.get().plugins.find((p) => p.name === name)?.grantedRights ?? []).filter((r) =>
+        requested.includes(r),
+      );
+    }
     return { kind, id, rights: this.#services.permissions.rightsFor(kind, granted) };
   }
 
@@ -148,7 +153,7 @@ export class AuthService implements Auth {
     if (Date.now() - Date.parse(device.last_seen_at) > LAST_SEEN_THROTTLE_MS) {
       this.#db.prepare('UPDATE devices SET last_seen_at = ? WHERE id = ?').run(new Date().toISOString(), device.id);
     }
-    return this.#caller('user', 'chris');
+    return { ...this.#caller('user', 'chris'), deviceId: device.id };
   }
 
   issueClientToken(caller: Caller): string {
@@ -217,21 +222,37 @@ export class AuthService implements Auth {
   }
 
   deleteDevice(id: string): boolean {
-    return Number(this.#db.prepare('DELETE FROM devices WHERE id = ?').run(id).changes) > 0;
+    const deleted = Number(this.#db.prepare('DELETE FROM devices WHERE id = ?').run(id).changes) > 0;
+    this.#services.notify?.forgetDevice(id);
+    return deleted;
   }
 
-  /** New access token; every device except `keepDeviceId` is signed out. Client tokens stay valid. */
-  rotate(keepDeviceId: string | undefined): void {
-    this.#writeToken();
-    this.#db.prepare('DELETE FROM devices WHERE id IS NOT ?').run(keepDeviceId ?? null);
+  /**
+   * New access token; every device except `keepDeviceId` is signed out. Client tokens stay valid.
+   * Returns the token for the one response that shows it; it is never logged or stored in clear elsewhere.
+   */
+  rotate(keepDeviceId: string | undefined): string {
+    const token = this.#writeToken();
+    const others = this.#db.prepare('SELECT id FROM devices WHERE id IS NOT ?').all(keepDeviceId ?? null) as {
+      id: string;
+    }[];
+    for (const { id } of others) this.deleteDevice(id);
+    return token;
   }
 }
 
-function setSessionCookie(req: IncomingMessage, res: ServerResponse, value: string, maxAge = SESSION_MAX_AGE_S): void {
+/** `maxAge` null: a browser-session cookie (the device row still expires after 30 days unseen). */
+function setSessionCookie(
+  req: IncomingMessage,
+  res: ServerResponse,
+  value: string,
+  maxAge: number | null = SESSION_MAX_AGE_S,
+): void {
   const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+  const age = maxAge === null ? '' : `; Max-Age=${maxAge}`;
   res.setHeader(
     'set-cookie',
-    `${COOKIE}=${encodeURIComponent(value)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${secure}`,
+    `${COOKIE}=${encodeURIComponent(value)}; HttpOnly; SameSite=Strict; Path=/${age}${secure}`,
   );
 }
 
@@ -244,9 +265,9 @@ function routes(auth: AuthService, router: Router): void {
   router.add(
     ROUTES.login,
     async (req, res) => {
-      const body = await req.json<{ token?: unknown; deviceName?: unknown }>();
+      const body = await req.json<{ token?: unknown; deviceName?: unknown; remember?: unknown }>();
       const { device, session } = auth.login(body.token, deviceName(body, req.raw));
-      setSessionCookie(req.raw, res, session);
+      setSessionCookie(req.raw, res, session, body.remember === false ? null : SESSION_MAX_AGE_S);
       return { device };
     },
     { public: true },
@@ -286,9 +307,9 @@ function routes(auth: AuthService, router: Router): void {
   });
   router.add(ROUTES.rotateToken, (req) => {
     requireUser(req.caller);
-    auth.rotate(auth.deviceOf(req.raw)?.id);
-    // The new value is only in the file; the UI tells the user where to find it.
-    return { ok: true, tokenFile: auth.tokenFile };
+    // Shown once: the response is no-store, and nothing else (logs, activity, /me) ever carries it.
+    const token = auth.rotate(req.caller.deviceId);
+    return { ok: true, token, tokenFile: auth.tokenFile };
   });
 }
 

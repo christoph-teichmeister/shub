@@ -26,7 +26,8 @@ shub listens on `127.0.0.1:4780` only; phones reach it through `tailscale serve`
   `x-forwarded-proto: https`. Each cookie is a device (`GET /api/devices`, `DELETE /api/devices/:id`).
 - Pairing codes are single use and valid 5 minutes.
 - `POST /api/auth/rotate` writes a new access token to the file and signs out every device except the caller's.
-  Client tokens stay valid. The response only names the file (`{ok, tokenFile}`).
+  Client tokens stay valid. The response `{ok, token, tokenFile}` is the only place the new token is shown
+  (`no-store`, never logged); afterwards it is only in the file.
 - `GET /api/auth/me` returns `{caller, device}`; `POST /api/auth/logout` removes the caller's device.
 - Rights of every caller come from the permission module at request time (`docs/SECURITY.md`).
   Routes that change things go through `permissions.decide`; an "ask" decision answers `200 {approval}` and the
@@ -50,19 +51,23 @@ JSON in, JSON out (`content-type: application/json`). Errors: `{ "error": "<mess
 
 All routes are in `ROUTES` in `shared/api.ts`. Notes on the ones that are not obvious:
 
-| Route                          | Body / result                                                                                                                                                |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /api/health`              | `{ok, version, apiVersion}`                                                                                                                                  |
-| `GET /api/config`              | `Config` (needs `read`)                                                                                                                                      |
-| `GET /api/projects`            | `ProjectView[]`, sorted by `order`; `resolvedIcon` from the git remote for `auto` icons; `accent` is the symbol colour or `#f92672`, never the status orange |
-| `POST /api/projects`           | `{name, path, group?, visibility?, icon?, buttons?}` -> `ProjectView`; `path` must be an existing absolute folder; new groups are added to `groups`          |
-| `PATCH /api/projects/:id`      | any of the same fields; changing `buttons` is also checked as `buttons.write`                                                                                |
-| `POST /api/projects/reorder`   | `{ids: string[]}` -> `ProjectView[]`; unlisted projects keep their relative order after the listed ones                                                      |
-| `DELETE /api/projects/:id`     | removes the entry only, never the folder                                                                                                                     |
-| `GET /api/projects/import`     | `{path, name, sessions, lastUsedAt, suggested: 'pinned'                                                                                                      | 'dormant', resolvedIcon}[]`from`~/.claude/projects`; worktrees merged, configured and vanished paths left out; pinned = used in the last 14 days |
-| `PUT /api/themes/:id`          | `{name, base?, tokens}` -> `ThemeDef`; built-in themes (`monokai`, `dracula`, `neutral-dark`) are read-only                                                  |
-| `PATCH /api/settings`          | `{activeTheme?, groups?, notifications?}` -> `Config`                                                                                                        |
-| `GET /api/projects/:id/skills` | `SkillInfo[]`: `<project>/.claude/skills`, `~/.claude/skills`, plugin skills (`<plugin>:<skill>`)                                                            |
+| Route                             | Body / result                                                                                                                                                         |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`                 | `{ok, version, apiVersion}`                                                                                                                                           |
+| `GET /api/config`                 | `Config` (needs `read`)                                                                                                                                               |
+| `GET /api/projects`               | `ProjectView[]`, sorted by `order`; `resolvedIcon` from the git remote for `auto` icons; `accent` is the symbol colour or `#f92672`, never the status orange          |
+| `POST /api/projects`              | `{name, path, group?, visibility?, icon?, buttons?}` -> `ProjectView`; `path` must be an existing absolute folder; new groups are added to `groups`                   |
+| `PATCH /api/projects/:id`         | any of the same fields; changing `buttons` is also checked as `buttons.write`                                                                                         |
+| `POST /api/projects/reorder`      | `{ids: string[]}` -> `ProjectView[]`; unlisted projects keep their relative order after the listed ones                                                               |
+| `DELETE /api/projects/:id`        | removes the entry only, never the folder                                                                                                                              |
+| `GET /api/projects/import`        | `{path, name, sessions, lastUsedAt, suggested: 'pinned'                                                                                                               | 'dormant', resolvedIcon}[]`from`~/.claude/projects`; worktrees merged, configured and vanished paths left out; pinned = used in the last 14 days |
+| `PUT /api/themes/:id`             | `{name, base?, tokens}` -> `ThemeDef`; built-in themes (`monokai`, `dracula`, `neutral-dark`) are read-only                                                           |
+| `PATCH /api/settings`             | `{activeTheme?, groups?, notifications?}` -> `Config`                                                                                                                 |
+| `GET /api/projects/:id/skills`    | `SkillInfo[]`: `<project>/.claude/skills`, `~/.claude/skills`, plugin skills (`<plugin>:<skill>`)                                                                     |
+| `GET /api/projects/:id/worktrees` | `Worktree[]` (`{path, branch}`) from `git worktree list --porcelain`; `branch` is `""` when detached, bare and pruned entries are left out, `[]` for a non-git folder |
+| `POST /api/sessions`              | `StartSessionRequest`; `resumeClaudeSessionId` (kind `claude`, an id from `old-sessions`, no prompt or button) reopens that conversation with `--resume`              |
+| `GET /api/plugins/:name/logs`     | `{lines: string[]}`, user only                                                                                                                                        |
+| `DELETE /api/plugins/:name`       | user only: stops the plugin, drops its config entry and deletes its folder                                                                                            |
 
 ## Events
 

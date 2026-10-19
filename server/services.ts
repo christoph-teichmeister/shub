@@ -73,6 +73,8 @@ export interface Sessions {
   /** Permission checks happen before; this just starts. */
   start(request: StartSessionRequest, startedBy: string): Promise<Session>;
   setStatus(id: string, status: SessionStatus, pendingPermission?: Session['pendingPermission']): void;
+  /** Claude switched conversations (/clear, compact): remember the new id for resume. */
+  setClaudeSessionId(id: string, claudeSessionId: string): void;
   sendKeys(id: string, keys: string[]): void;
   oldSessions(projectId: string): OldSession[];
 }
@@ -82,12 +84,21 @@ export interface Notify {
   needsYou(session: Session, text: string): void;
   yourTurn(session: Session): void;
   approval(approval: Approval): void;
-  test(): Promise<void>;
+  /** To the given device only, or to all devices. */
+  test(deviceId?: string): Promise<void>;
+  /** The device was signed out or removed: drop its push subscriptions. */
+  forgetDevice(deviceId: string): void;
 }
 
 /** server/docker: Engine API over the unix socket. */
 export interface Docker {
   containersFor(cwd: string): Promise<ServiceContainer[]>;
+}
+
+/** server/plugins: installed plugins under <configDir>/plugins. */
+export interface Plugins {
+  /** Rights the installed manifest requests; [] when the plugin is not installed or its manifest is broken. */
+  requestedRights(name: string): Right[];
 }
 
 /** server/skills: project and global skill discovery. */
@@ -104,4 +115,5 @@ export interface Services {
   notify: Notify;
   docker: Docker;
   skills: Skills;
+  plugins: Plugins;
 }

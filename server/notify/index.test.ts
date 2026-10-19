@@ -20,3 +20,20 @@ test('VAPID keys are generated once into a 0600 file', () => {
   assert.equal(new NotifyService(ctx, services).publicKey, first);
   rmSync(stateDir, { recursive: true, force: true });
 });
+
+test('forgetDevice drops only that device’s push subscriptions', () => {
+  const db = new DatabaseSync(':memory:');
+  const services = {
+    state: { db, migrate: (_: string, s: string[]) => s.forEach((x) => db.exec(x)) },
+  } as unknown as Services;
+  const notify = new NotifyService({ paths: {}, bus: new EventBus() } as unknown as Context, services);
+  const sub = (n: number) => ({ endpoint: `https://push.example/${n}`, keys: { p256dh: 'k', auth: 'a' } });
+  notify.subscribe(sub(1), 'phone');
+  notify.subscribe(sub(2), 'desktop');
+  notify.forgetDevice('phone');
+  const rows = db.prepare('SELECT device_id FROM push_subscriptions').all() as { device_id: string }[];
+  assert.deepEqual(
+    rows.map((r) => r.device_id),
+    ['desktop'],
+  );
+});

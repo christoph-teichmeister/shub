@@ -124,6 +124,22 @@ export interface StartSessionRequest {
   prompt?: string;
   parentId?: string; // for kind "shell"
   cwd?: string; // shell only: defaults to the parent's cwd
+  /** kind "claude" only: reopen this old Claude conversation (from oldSessions) with `--resume`. */
+  resumeClaudeSessionId?: string;
+}
+
+/** First-run suggestion from ~/.claude/projects (GET /api/projects/import adds resolvedIcon). */
+export interface ImportCandidate {
+  path: string;
+  name: string;
+  sessions: number;
+  lastUsedAt: string;
+  suggested: Visibility;
+}
+
+export interface Worktree {
+  path: string;
+  branch: string; // short name, "" when detached
 }
 
 export interface OldSession {
@@ -144,6 +160,16 @@ export type Right =
   | 'sessions.link'
   | 'buttons.write'
   | 'ui.contribute';
+
+export const RIGHTS: Right[] = [
+  'read',
+  'projects.write',
+  'sessions.start',
+  'sessions.start.button',
+  'sessions.link',
+  'buttons.write',
+  'ui.contribute',
+];
 
 export type ClientKind = 'user' | 'global-claude' | 'session' | 'spawned-session' | 'plugin' | 'cli';
 
@@ -186,6 +212,19 @@ export interface ServiceContainer {
   memBytes?: number;
 }
 
+export interface LogLine {
+  stream: 'stdout' | 'stderr';
+  /** ISO timestamp from Docker, or null when the line had none. */
+  at: string | null;
+  text: string;
+}
+
+export interface ServiceInspect {
+  env: { key: string; value: string; masked: boolean }[];
+  mounts: { type: string; source: string; destination: string; rw: boolean }[];
+  ports: { container: string; host: string[] }[];
+}
+
 // ---------- auth and devices ----------
 
 export interface Device {
@@ -216,7 +255,15 @@ export interface PluginManifest {
 /** What a plugin pushes for one of its sidebar sections (PUT /api/plugins/:name/sections/:id). */
 export interface SidebarSectionContent {
   badge?: { text: string; tone: 'needs-you' | 'working' | 'neutral' } | null;
-  entries: { id: string; title: string; subtitle?: string; tone?: 'needs-you' | 'working' | 'done' | 'neutral'; url?: string; action?: string }[];
+  /** An entry may carry both `url` and `action` (a declared action id; clicking sends its `entryId`). */
+  entries: {
+    id: string;
+    title: string;
+    subtitle?: string;
+    tone?: 'needs-you' | 'working' | 'done' | 'neutral';
+    url?: string;
+    action?: string;
+  }[];
 }
 
 export interface PluginInfo {
@@ -267,6 +314,7 @@ export const ROUTES = {
   settings: 'PATCH /api/settings',
 
   skills: 'GET /api/projects/:id/skills',
+  projectWorktrees: 'GET /api/projects/:id/worktrees', // -> Worktree[]
 
   sessions: 'GET /api/sessions',
   sessionStart: 'POST /api/sessions', // StartSessionRequest -> Session | { approval: Approval }
@@ -297,10 +345,14 @@ export const ROUTES = {
   pluginUpdate: 'PATCH /api/plugins/:name', // enable/disable, grant rights (user only)
   pluginSection: 'PUT /api/plugins/:name/sections/:sectionId', // SidebarSectionContent
   pluginAction: 'POST /api/plugins/:name/actions/:actionId', // user clicked an action -> forwarded as event
+  pluginLogs: 'GET /api/plugins/:name/logs', // -> { lines: string[] } user only
+  pluginRemove: 'DELETE /api/plugins/:name', // user only, deletes the plugin folder
 
   pushKey: 'GET /api/push/key',
   pushSubscribe: 'POST /api/push/subscribe',
   pushTest: 'POST /api/push/test',
+
+  eventsStream: 'GET /api/events/stream', // Server-Sent Events twin of the /api/events WebSocket
 } as const;
 
 // ---------- WebSockets ----------
@@ -320,7 +372,13 @@ export type ServerEvent =
   | { type: 'activity'; entry: ActivityEntry }
   | { type: 'services.changed'; sessionId: string }
   | { type: 'plugins.changed' }
-  | { type: 'plugin.action'; plugin: string; actionId: string; context: { sessionId?: string; projectId?: string } };
+  | {
+      type: 'plugin.action';
+      plugin: string;
+      actionId: string;
+      /** entryId: the sidebar section entry whose action was clicked. */
+      context: { sessionId?: string; projectId?: string; entryId?: string };
+    };
 
 export type TerminalControl = { type: 'resize'; cols: number; rows: number };
 

@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Config, PluginInfo, ServerEvent } from '../../shared/api.ts';
+import { ROUTES, type Config, type PluginInfo, type ServerEvent } from '../../shared/api.ts';
 import { HttpError, Router, type Caller } from '../api/router.ts';
 import { EventBus, type Context } from '../context.ts';
 import type { Services } from '../services.ts';
 import { decide, rightsFor } from '../permissions/rules.ts';
-import { create, EXTRA_ROUTES } from './index.ts';
+import { create } from './index.ts';
 import { PluginProcess } from './supervisor.ts';
 
 const user: Caller = { kind: 'user', id: 'chris', rights: rightsFor('user') };
@@ -107,12 +107,12 @@ test('plugin lifecycle: listed disabled, enabled with grants, sections, actions,
   list = (await call('GET /api/plugins', user)) as PluginInfo[];
   assert.deepEqual(list[0].sections[0].content, { badge: null, entries: [{ id: '1', title: 'One' }] });
 
-  await call('POST /api/plugins/demo/actions/go', user, { sessionId: 's1', evil: 1 });
+  await call('POST /api/plugins/demo/actions/go', user, { sessionId: 's1', entryId: '198', evil: 1 });
   assert.deepEqual(events.at(-1), {
     type: 'plugin.action',
     plugin: 'demo',
     actionId: 'go',
-    context: { sessionId: 's1' },
+    context: { sessionId: 's1', entryId: '198' },
   });
   await assert.rejects(call('POST /api/plugins/demo/actions/go', plugin, {}), /clicked by you/);
   await assert.rejects(call('POST /api/plugins/demo/actions/nope', user, {}), /not declared/);
@@ -129,7 +129,7 @@ test('remove stops the plugin, deletes its folder and config entry', async () =>
   const { module, call, config, dir } = setup();
   await module.start!();
   await call('PATCH /api/plugins/demo', user, { enabled: true });
-  await call(EXTRA_ROUTES.pluginRemove.replace(':name', 'demo'), user);
+  await call(ROUTES.pluginRemove.replace(':name', 'demo'), user);
   assert.equal(existsSync(dir), false);
   assert.deepEqual(config.plugins, []);
   await assert.rejects(call('DELETE /api/plugins/..', user), /invalid plugin name/);

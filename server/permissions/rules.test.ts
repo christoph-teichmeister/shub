@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { ButtonDef, ClientKind, Right, StartSessionRequest } from '../../shared/api.ts';
+import { RIGHTS, type ButtonDef, type ClientKind, type Right, type StartSessionRequest } from '../../shared/api.ts';
 import type { Caller } from '../api/router.ts';
 import type { PermissionAction } from '../services.ts';
 import { ALL_RIGHTS, AUTO_START_LIMIT, buttonPromptDiff, decide, rightsFor, type DecideEnv } from './rules.ts';
@@ -175,6 +175,7 @@ test('prompt-skipping mode allowed when the button explicitly sets it and is not
 });
 
 test('rightsFor', () => {
+  assert.deepEqual([...RIGHTS].sort(), [...ALL_RIGHTS].sort(), 'shared RIGHTS lists every Right');
   assert.deepEqual(rightsFor('user'), ALL_RIGHTS);
   assert.deepEqual(rightsFor('cli'), ALL_RIGHTS);
   assert.deepEqual(rightsFor('session'), ['read']);

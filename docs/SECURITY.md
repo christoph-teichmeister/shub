@@ -55,7 +55,7 @@ Every write through shub is written to the activity log (Settings > Activity) wi
 
 ## Honest scope
 
-These rules only cover requests that go **through shub**. A Claude session runs in a shell as your user. From there it can run `claude -p "..."`, `tmux new`, `tmux send-keys` into another session, read `<stateDir>/token` and call shub as `cli`, or simply edit files, without shub ever seeing a request. What stands in the way of that is Claude Code's own permission prompts, nothing else.
+These rules only cover requests that go **through shub**. A Claude session runs in a shell as your user. From there it can run `claude -p "..."`, `tmux new`, `tmux send-keys` into another session, read `<stateDir>/token` and call shub as `cli`, or simply edit files, without shub ever seeing a request. What stands in the way of that is Claude Code's own permission prompts, nothing else. The per-session settings deny Claude's Read tool on the token, the database and the VAPID key, and its Edit and Write tools on all of `<stateDir>`; that only stops Claude's own file tools, not a shell command such as `cat <stateDir>/token`.
 
 So shub makes actions visible and stops mistakes; it is **not a wall** between sessions. In practice:
 

@@ -22,6 +22,8 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS activity (
     seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, at TEXT NOT NULL,
     actor TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL, undo TEXT)`,
+  // Automatically allowed session starts by non-user callers (ms timestamps), so a restart keeps the budget.
+  `CREATE TABLE IF NOT EXISTS auto_starts (at INTEGER NOT NULL)`,
 ];
 
 type Row = Record<string, unknown>;
@@ -56,8 +58,6 @@ export function create(
     migrated = true;
     return services.state.db;
   };
-  // ponytail: in memory, so a restart resets the hourly start budget; move to sqlite if that matters.
-  let autoStarts: number[] = [];
   const waiters = new Map<string, ((approved: boolean) => void)[]>();
 
   const getApproval = (id: string): Approval | undefined => {
@@ -77,14 +77,17 @@ export function create(
   const service: Permissions & PermissionsExtra = {
     decide(caller: Caller, action: PermissionAction) {
       const now = Date.now();
-      autoStarts = autoStarts.filter((t) => t > now - AUTO_START_WINDOW_MS);
+      db()
+        .prepare('DELETE FROM auto_starts WHERE at <= ?')
+        .run(now - AUTO_START_WINDOW_MS);
+      const { n } = db().prepare('SELECT COUNT(*) AS n FROM auto_starts').get() as { n: number };
       const button =
         action.kind === 'session.start' && action.request.buttonId !== undefined && action.request.projectId
           ? services.config.project(action.request.projectId)?.buttons.find((b) => b.id === action.request.buttonId)
           : undefined;
-      const decision = decide(caller, action, { recentAutoStarts: autoStarts.length, button });
+      const decision = decide(caller, action, { recentAutoStarts: n, button });
       if (action.kind === 'session.start' && decision.outcome === 'allow' && caller.kind !== 'user') {
-        autoStarts.push(now);
+        db().prepare('INSERT INTO auto_starts (at) VALUES (?)').run(now);
       }
       return decision;
     },

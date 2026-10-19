@@ -1,5 +1,7 @@
 // Pure mapping of Docker Engine API responses to shub's shapes. index.ts does the socket I/O.
-import type { ServiceContainer } from '../../shared/api.ts';
+import type { LogLine, ServiceContainer, ServiceInspect } from '../../shared/api.ts';
+
+export type { LogLine, ServiceInspect };
 
 export interface EngineContainer {
   Id: string;
@@ -15,13 +17,6 @@ export interface EngineStats {
   cpu_stats?: { cpu_usage?: { total_usage?: number }; system_cpu_usage?: number; online_cpus?: number };
   precpu_stats?: { cpu_usage?: { total_usage?: number }; system_cpu_usage?: number };
   memory_stats?: { usage?: number; stats?: Record<string, number> };
-}
-
-export interface LogLine {
-  stream: 'stdout' | 'stderr';
-  /** ISO timestamp from Docker, or null when the line had none. */
-  at: string | null;
-  text: string;
 }
 
 const WORKING_DIR = 'com.docker.compose.project.working_dir';
@@ -135,12 +130,6 @@ export interface EngineInspect {
   Config?: { Env?: string[] };
   Mounts?: { Type?: string; Source?: string; Destination?: string; RW?: boolean }[];
   NetworkSettings?: { Ports?: Record<string, { HostIp?: string; HostPort?: string }[] | null> };
-}
-
-export interface ServiceInspect {
-  env: { key: string; value: string; masked: boolean }[];
-  mounts: { type: string; source: string; destination: string; rw: boolean }[];
-  ports: { container: string; host: string[] }[];
 }
 
 export function toInspect(i: EngineInspect): ServiceInspect {

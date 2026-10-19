@@ -3,15 +3,9 @@
 import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
-import type { Visibility } from '../../shared/api.ts';
+import type { ImportCandidate, Visibility } from '../../shared/api.ts';
 
-export interface ImportCandidate {
-  path: string;
-  name: string;
-  sessions: number;
-  lastUsedAt: string;
-  suggested: Visibility;
-}
+export type { ImportCandidate };
 
 const PINNED_WINDOW_MS = 14 * 24 * 3600 * 1000;
 const READ_BYTES = 64 * 1024;

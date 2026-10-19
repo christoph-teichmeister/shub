@@ -1,7 +1,7 @@
 // Runs real tmux on a test-only socket (shub-test-<pid>) with bash instead of claude; kills only that server.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -13,6 +13,7 @@ import { EventBus, type Context } from '../context.ts';
 import type { Services } from '../services.ts';
 import { openState } from '../state/index.ts';
 import type { LaunchSpec } from './launch.ts';
+import { encodeCwd } from './old.ts';
 import { SessionsService, tmuxName } from './service.ts';
 import { attachTerminals } from './terminal.ts';
 
@@ -176,4 +177,33 @@ test('after a reboot: restorable list, global Claude comes up, restore resumes',
   assert.deepEqual(svc.restorable(), []);
   const again = await svc.start({ kind: 'global', projectId: null }, 'chris');
   assert.equal(again.id, 'global', 'exactly one global Claude');
+});
+
+test('start can reopen an old conversation with --resume; /clear moves the id', async () => {
+  const claudeId = '0b0e4c2a-6a39-4d55-9f7e-0c6a1d2c3b4a';
+  const dir = join(root, 'claude', 'projects', encodeCwd(projectDir));
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${claudeId}.jsonl`), JSON.stringify({ type: 'user', message: { content: 'fix login' } }));
+  const before = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = join(root, 'claude');
+  try {
+    const req = { kind: 'claude' as const, projectId: 'p1', resumeClaudeSessionId: claudeId };
+    const s = await svc.start(req, 'chris');
+    assert.equal(s.claudeSessionId, claudeId);
+    assert.equal(s.name, 'fix login');
+    assert.equal(s.status, 'your-turn');
+    assert.equal(launches.at(-1)?.resume, true);
+    await assert.rejects(svc.start(req, 'chris'), /already open/);
+    await assert.rejects(svc.start({ ...req, resumeClaudeSessionId: '../../x' }, 'chris'), /UUID/);
+    await assert.rejects(
+      svc.start({ ...req, resumeClaudeSessionId: '1b0e4c2a-6a39-4d55-9f7e-0c6a1d2c3b4a' }, 'chris'),
+      /no such conversation/,
+    );
+    const fresh = '2b0e4c2a-6a39-4d55-9f7e-0c6a1d2c3b4a';
+    svc.setClaudeSessionId(s.id, fresh);
+    assert.equal(svc.get(s.id)?.claudeSessionId, fresh);
+  } finally {
+    if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = before;
+  }
 });

@@ -5,12 +5,15 @@ import { HttpError } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
-import { HOOK_EVENTS, isHookEvent, transition } from './transition.ts';
+import { HOOK_EVENTS, isHookEvent, newClaudeSessionId, transition } from './transition.ts';
 
 const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
-/** Content of `--settings <file>`: only shub's hooks, so the user's own settings stay untouched. */
-export function hookSettings(appDir: string): object {
+/**
+ * Content of `--settings <file>`: shub's hooks, so the user's own settings stay untouched, plus deny rules
+ * that keep Claude's file tools out of stateDir (access token, client tokens, VAPID key).
+ */
+export function hookSettings(appDir: string, stateDir: string): object {
   const script = shellQuote(join(appDir, 'server', 'hooks', 'report.sh'));
   const hooks = Object.fromEntries(
     HOOK_EVENTS.map((event) => [
@@ -18,7 +21,15 @@ export function hookSettings(appDir: string): object {
       [{ hooks: [{ type: 'command', command: `sh ${script} ${event}`, timeout: 5 }] }],
     ]),
   );
-  return { hooks };
+  // "//" marks an absolute path in Claude's permission rules. Reading stays allowed for the rest of
+  // stateDir, because pasted images live in <stateDir>/pastes and Claude reads them from there.
+  const dir = `/${stateDir.replace(/\/+$/, '')}`;
+  const deny = [
+    ...['token', 'shub.db*', 'vapid.json'].map((file) => `Read(${dir}/${file})`),
+    `Edit(${dir}/**)`,
+    `Write(${dir}/**)`,
+  ];
+  return { hooks, permissions: { deny } };
 }
 
 export function create(_ctx: Context, services: Services): { module: ShubModule } {
@@ -31,7 +42,13 @@ export function create(_ctx: Context, services: Services): { module: ShubModule 
           const session = sessionId ? services.sessions.get(sessionId) : undefined;
           if (!session) throw new HttpError(403, 'hooks only come from shub sessions');
           if (!isHookEvent(req.params.event)) throw new HttpError(404, 'unknown hook event');
-          const change = transition(session.status, req.params.event, await req.json<Record<string, unknown>>());
+          const payload = await req.json<Record<string, unknown>>();
+          if (req.params.event === 'SessionStart') {
+            const claudeSessionId = newClaudeSessionId(session.claudeSessionId, payload);
+            if (claudeSessionId) services.sessions.setClaudeSessionId(session.id, claudeSessionId);
+            return { ok: true };
+          }
+          const change = transition(session.status, req.params.event, payload);
           if (!change) return { ok: true };
           services.sessions.setStatus(session.id, change.status, change.pendingPermission);
           const updated = services.sessions.get(session.id) ?? session;

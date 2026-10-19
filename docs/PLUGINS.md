@@ -104,8 +104,10 @@ strings at most 200 chars (cut), `url` only `http`/`https`, tones `needs-you | w
 (badge: `needs-you | working | neutral`). Content is kept in memory and cleared when the plugin is stopped,
 so push it again after start.
 
-**Actions.** When you click a declared session-menu or settings action, shub emits
-`{ "type": "plugin.action", "plugin": "<name>", "actionId": "...", "context": { "sessionId"?, "projectId"? } }`.
+**Actions.** When you click a declared session-menu or settings action, or a section entry whose `action` names
+one, shub emits
+`{ "type": "plugin.action", "plugin": "<name>", "actionId": "...", "context": { "sessionId"?, "projectId"?, "entryId"? } }`
+(`entryId` is the clicked entry's `id`).
 
 ## Events
 

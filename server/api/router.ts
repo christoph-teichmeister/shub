@@ -8,6 +8,8 @@ export interface Caller {
   /** "chris", "session:<id>", "plugin:<name>", "cli". */
   id: string;
   rights: Right[];
+  /** The paired device of a cookie user; absent for Bearer callers. */
+  deviceId?: string;
 }
 
 export interface Request {

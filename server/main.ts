@@ -36,7 +36,7 @@ use(null, hooks.create(ctx, services));
 use('docker', docker.create(ctx, services));
 use('skills', skills.create(ctx, services));
 use(null, projects.create(ctx, services));
-use(null, plugins.create(ctx, services));
+use('plugins', plugins.create(ctx, services));
 
 // The api module owns the HTTP server: auth check, routing, events WebSocket, static web app.
 const server = await api.listen(ctx, services, modules);

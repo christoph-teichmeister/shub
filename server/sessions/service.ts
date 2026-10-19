@@ -1,6 +1,6 @@
 // Session records in sqlite plus their tmux sessions. One tmux session `shub-<id>` per shub session.
 import { randomUUID } from 'node:crypto';
-import { chmodSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -16,7 +16,7 @@ import type { Context } from '../context.ts';
 import { hookSettings } from '../hooks/index.ts';
 import type { Services, Sessions } from '../services.ts';
 import { autoName, buttonPrompt, defaultLauncher, permissionModeFor, slugify, type Launcher } from './launch.ts';
-import { listOldSessions } from './old.ts';
+import { claudeDir, encodeCwd, listOldSessions, summarizeTranscript } from './old.ts';
 import { Tmux } from './tmux.ts';
 
 const MIGRATIONS = [
@@ -47,6 +47,7 @@ const PASTE_TYPES: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
 };
 const RECONCILE_MS = 3000;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface Row {
   id: string;
@@ -184,6 +185,8 @@ export class SessionsService implements Sessions {
 
     const cwd = request.cwd ?? parent?.cwd ?? project?.path ?? homedir();
     if (!statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) throw new HttpError(400, `no such folder: ${cwd}`);
+    const resumeId = request.kind === 'claude' ? request.resumeClaudeSessionId : undefined;
+    const resumed = resumeId ? this.#resumable(cwd, resumeId) : undefined;
     const slug = project ? slugify(project.id) : GLOBAL_ID;
     const prefix = request.kind === 'shell' ? `${slug}-sh` : `${slug}-`;
     const n = request.kind === 'global' ? 1 : this.#nextNumber(prefix);
@@ -191,7 +194,9 @@ export class SessionsService implements Sessions {
     const prompt = button ? buttonPrompt(button, request.input) : request.prompt?.trim() || undefined;
     const name =
       request.name?.trim() ||
-      (request.kind === 'global' ? 'Global Claude' : autoName({ button, input: request.input, prompt, n }));
+      (request.kind === 'global'
+        ? 'Global Claude'
+        : autoName({ button, input: request.input, prompt: prompt ?? resumed?.firstPrompt, n }));
 
     const at = now();
     this.#db
@@ -203,7 +208,7 @@ export class SessionsService implements Sessions {
         name.slice(0, 200),
         cwd,
         prompt ? 'working' : 'your-turn',
-        request.kind === 'shell' ? null : randomUUID(),
+        request.kind === 'shell' ? null : (resumeId ?? randomUUID()),
         request.kind === 'shell' ? 'default' : permissionModeFor(button),
         startedBy,
         parent?.id ?? null,
@@ -214,7 +219,7 @@ export class SessionsService implements Sessions {
         null,
       );
     try {
-      this.#launch(this.#row(id)!, { prompt, resume: false });
+      this.#launch(this.#row(id)!, { prompt, resume: !!resumeId });
     } catch (err) {
       const token = this.#row(id)?.token;
       if (token) this.#services.auth.revokeClientToken(token);
@@ -225,6 +230,22 @@ export class SessionsService implements Sessions {
     this.#ctx.bus.emit({ type: 'session.started', session });
     this.#services.permissions.log({ actor: startedBy, action: 'session.start', detail: `${id}: ${session.name}` });
     return session;
+  }
+
+  /** An old conversation of this folder that no live shub session holds. */
+  #resumable(cwd: string, claudeSessionId: string): { firstPrompt: string } {
+    if (!UUID.test(claudeSessionId)) throw new HttpError(400, 'resumeClaudeSessionId must be a UUID');
+    if (this.list().some((s) => s.claudeSessionId === claudeSessionId)) {
+      throw new HttpError(409, 'that conversation is already open in a session');
+    }
+    const file = join(claudeDir(), 'projects', encodeCwd(cwd), `${claudeSessionId}.jsonl`);
+    let jsonl: string;
+    try {
+      jsonl = readFileSync(file, 'utf8');
+    } catch {
+      throw new HttpError(404, 'no such conversation in this project');
+    }
+    return summarizeTranscript(jsonl);
   }
 
   #clientKind(row: Row): ClientKind {
@@ -240,7 +261,10 @@ export class SessionsService implements Sessions {
     const settingsFile = join(this.#ctx.paths.stateDir, 'sessions', row.id, 'settings.json');
     if (row.kind !== 'shell') {
       mkdirSync(join(settingsFile, '..'), { recursive: true, mode: 0o700 });
-      writeFileSync(settingsFile, JSON.stringify(hookSettings(this.#ctx.paths.appDir), null, 2));
+      writeFileSync(
+        settingsFile,
+        JSON.stringify(hookSettings(this.#ctx.paths.appDir, this.#ctx.paths.stateDir), null, 2),
+      );
       // Stored in clear (stateDir is 0700) so it can be revoked after a restart; auth only keeps its hash.
       let token = row.token;
       if (!token) {
@@ -300,6 +324,13 @@ export class SessionsService implements Sessions {
       .prepare('UPDATE sessions SET status = ?, pending_permission = ?, last_activity_at = ? WHERE id = ?')
       .run(status, pending ? JSON.stringify(pending) : null, now(), id);
     this.#ctx.bus.emit({ type: 'session.status', sessionId: id, status });
+    this.#emitUpdated(id);
+  }
+
+  setClaudeSessionId(id: string, claudeSessionId: string): void {
+    const session = this.get(id);
+    if (!session || session.status === 'exited' || session.kind === 'shell') return;
+    this.#db.prepare('UPDATE sessions SET claude_session_id = ? WHERE id = ?').run(claudeSessionId, id);
     this.#emitUpdated(id);
   }
 

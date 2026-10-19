@@ -7,16 +7,10 @@ import { ROUTES } from '../../shared/api.ts';
 import { HttpError, requireUser, type Caller } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
-import type { Services } from '../services.ts';
+import type { Plugins, Services } from '../services.ts';
 import { isRight } from '../permissions/rules.ts';
-import { MANIFEST_FILE, NAME_RE, sanitizeSection, SectionError, validateManifest } from './manifest.ts';
+import { MANIFEST_FILE, MAX_STRING, NAME_RE, sanitizeSection, SectionError, validateManifest } from './manifest.ts';
 import { PluginProcess } from './supervisor.ts';
-
-// Not in shared/api.ts ROUTES (yet): log view in settings and `shub plugin remove`.
-export const EXTRA_ROUTES = {
-  pluginLogs: 'GET /api/plugins/:name/logs',
-  pluginRemove: 'DELETE /api/plugins/:name',
-} as const;
 
 interface Installed {
   manifest: PluginManifest;
@@ -55,7 +49,7 @@ function pluginName(value: string): string {
   return value;
 }
 
-export function create(ctx: Context, services: Services): { module: ShubModule } {
+export function create(ctx: Context, services: Services): { module: ShubModule; service: Plugins } {
   const pluginsDir = join(ctx.paths.configDir, 'plugins');
   const running = new Map<string, PluginProcess>();
   const sections = new Map<string, Map<string, SidebarSectionContent>>();
@@ -204,9 +198,11 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
     const declared = [...(contributes?.sessionMenuActions ?? []), ...(contributes?.settingsActions ?? [])];
     if (!declared.some((a) => a.id === actionId)) throw new HttpError(404, 'action not declared in the manifest');
     const raw = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
-    const context: { sessionId?: string; projectId?: string } = {};
-    if (typeof raw.sessionId === 'string') context.sessionId = raw.sessionId.slice(0, 200);
-    if (typeof raw.projectId === 'string') context.projectId = raw.projectId.slice(0, 200);
+    const context: { sessionId?: string; projectId?: string; entryId?: string } = {};
+    for (const key of ['sessionId', 'projectId', 'entryId'] as const) {
+      // Same cap as section entry ids.
+      if (typeof raw[key] === 'string') context[key] = raw[key].slice(0, MAX_STRING);
+    }
     ctx.bus.emit({ type: 'plugin.action', plugin: name, actionId, context });
     return { ok: true };
   }
@@ -219,7 +215,7 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
         requireUser(req.caller);
         return update(req.caller, pluginName(req.params.name), (await req.json()) ?? {});
       });
-      router.add(EXTRA_ROUTES.pluginRemove, (req) => {
+      router.add(ROUTES.pluginRemove, (req) => {
         requireUser(req.caller);
         return remove(req.caller, pluginName(req.params.name));
       });
@@ -230,7 +226,7 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
         const body = await req.json().catch(() => ({}));
         return action(req.caller, pluginName(req.params.name), req.params.actionId, body);
       });
-      router.add(EXTRA_ROUTES.pluginLogs, (req) => {
+      router.add(ROUTES.pluginLogs, (req) => {
         requireUser(req.caller);
         return { lines: logs.get(pluginName(req.params.name)) ?? [] };
       });
@@ -247,5 +243,15 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
       running.clear();
     },
   };
-  return { module };
+  const service: Plugins = {
+    requestedRights(name) {
+      if (!NAME_RE.test(name)) return [];
+      try {
+        return validateManifest(JSON.parse(readFileSync(join(pluginsDir, name, MANIFEST_FILE), 'utf8'))).rights;
+      } catch {
+        return [];
+      }
+    },
+  };
+  return { module, service };
 }

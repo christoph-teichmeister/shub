@@ -6,8 +6,7 @@ import { EventBus, type Context } from '../context.ts';
 import type { Services } from '../services.ts';
 import { create } from './index.ts';
 
-function setup() {
-  const db = new DatabaseSync(':memory:');
+function setup(db = new DatabaseSync(':memory:')) {
   const project: Project = {
     id: 'p1',
     name: 'One',
@@ -33,7 +32,7 @@ function setup() {
   const events: ServerEvent[] = [];
   ctx.bus.on((e) => events.push(e));
   const { service } = create(ctx, services);
-  return { service, config, events, notified };
+  return { service, config, events, notified, db };
 }
 
 const input = {
@@ -66,7 +65,7 @@ test('approval times out as rejected', async () => {
 });
 
 test('decide counts automatic starts and asks after the limit', () => {
-  const { service } = setup();
+  const { service, db } = setup();
   const g = { kind: 'global-claude' as const, id: 'session:g', rights: service.rightsFor('global-claude') };
   const action = {
     kind: 'session.start' as const,
@@ -76,6 +75,7 @@ test('decide counts automatic starts and asks after the limit', () => {
   };
   const outcomes = Array.from({ length: 6 }, () => service.decide(g, action).outcome);
   assert.deepEqual(outcomes, ['allow', 'allow', 'allow', 'allow', 'allow', 'ask']);
+  assert.equal(setup(db).service.decide(g, action).outcome, 'ask', 'the budget survives a restart');
   const user = { kind: 'user' as const, id: 'chris', rights: service.rightsFor('user') };
   assert.equal(service.decide(user, action).outcome, 'allow');
 });

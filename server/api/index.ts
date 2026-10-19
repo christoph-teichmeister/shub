@@ -81,7 +81,7 @@ function makeRequest(raw: IncomingMessage, path: string, params: Record<string, 
 function eventsRoutes(ctx: Context, router: Router, version: string): void {
   router.add(ROUTES.health, () => ({ ok: true, version, apiVersion: API_VERSION }), { public: true });
   // Server-Sent Events twin of the /api/events WebSocket, for plugin languages without a WS client.
-  router.add('GET /api/events/stream', (req, res) => {
+  router.add(ROUTES.eventsStream, (req, res) => {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
     const send = (event: ServerEvent) => res.write(`data: ${JSON.stringify(event)}\n\n`);
     send({ type: 'hello', apiVersion: API_VERSION });

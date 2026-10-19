@@ -13,13 +13,25 @@ const KINDS: SessionKind[] = ['claude', 'shell', 'global'];
 const optionalString = (v: unknown): boolean => v === undefined || typeof v === 'string';
 
 function parseStart(body: Partial<StartSessionRequest>): StartSessionRequest {
-  const fields = [body.name, body.buttonId, body.input, body.prompt, body.parentId, body.cwd];
+  const fields = [
+    body.name,
+    body.buttonId,
+    body.input,
+    body.prompt,
+    body.parentId,
+    body.cwd,
+    body.resumeClaudeSessionId,
+  ];
   if (!KINDS.includes(body.kind as SessionKind) || !fields.every(optionalString)) {
     throw new HttpError(400, 'invalid session request');
   }
   if (body.buttonId && body.prompt) throw new HttpError(400, 'give either buttonId or prompt');
   if (body.kind === 'shell' && !body.parentId) throw new HttpError(400, 'shells need a parentId');
   if (body.cwd && body.kind !== 'shell') throw new HttpError(400, 'cwd is only for shells');
+  if (body.resumeClaudeSessionId !== undefined) {
+    if (body.kind !== 'claude') throw new HttpError(400, 'only claude sessions can resume a conversation');
+    if (body.buttonId || body.prompt || body.input) throw new HttpError(400, 'a resumed session takes no prompt');
+  }
   return { ...body, projectId: typeof body.projectId === 'string' ? body.projectId : null } as StartSessionRequest;
 }
 
@@ -49,7 +61,9 @@ async function startRoute(
     action: 'session.start',
     projectId: request.projectId,
     summary: `Start ${button ? `"${button.label}"` : 'a session'} in ${project?.name ?? 'global'} (${decision.reason})`,
-    detail: button ? buttonPrompt(button, request.input) : (request.prompt ?? ''),
+    detail: button
+      ? buttonPrompt(button, request.input)
+      : (request.prompt ?? (request.resumeClaudeSessionId ? `resume ${request.resumeClaudeSessionId}` : '')),
   });
   services.permissions
     .waitForDecision(approval.id)

@@ -142,6 +142,8 @@ test('login needs the right token and sets a strict cookie', async () => {
   cookie = setCookie.split(';')[0];
   const https = await call('POST', '/api/auth/login', { token: accessToken }, { 'x-forwarded-proto': 'https' });
   assert.match(https.headers.get('set-cookie')!, /; Secure$/);
+  const once = await call('POST', '/api/auth/login', { token: accessToken, remember: false });
+  assert.match(once.headers.get('set-cookie')!, /^shub_session=[0-9a-f]{64}; HttpOnly; SameSite=Strict; Path=\/$/);
 });
 
 test('cookie requests that change state need an Origin', async () => {
@@ -246,8 +248,15 @@ test('static files with SPA fallback; unknown api paths are JSON 404', async () 
 test('rotate signs out other devices but keeps the caller', async () => {
   const other = await call('POST', '/api/auth/login', { token: accessToken });
   const otherCookie = other.headers.get('set-cookie')!.split(';')[0];
-  assert.equal((await asUser('POST', '/api/auth/rotate')).status, 200);
+  const rotated = await asUser('POST', '/api/auth/rotate');
+  assert.equal(rotated.status, 200);
+  assert.equal(rotated.headers.get('cache-control'), 'no-store');
+  const { token } = (await rotated.json()) as { token: string };
+  assert.equal(token, readFileSync(join(ctx.paths.stateDir, 'token'), 'utf8').trim(), 'new token, shown once');
   assert.equal((await call('GET', '/api/auth/me', undefined, { cookie: otherCookie })).status, 401);
-  assert.equal((await asUser('GET', '/api/auth/me')).status, 200);
+  const me = await asUser('GET', '/api/auth/me');
+  assert.equal(me.status, 200);
+  assert.ok(!(await me.text()).includes(token), 'not retrievable later');
   assert.equal((await call('POST', '/api/auth/login', { token: accessToken })).status, 401);
+  assert.equal((await call('POST', '/api/auth/login', { token })).status, 200);
 });

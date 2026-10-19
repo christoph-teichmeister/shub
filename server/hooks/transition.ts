@@ -7,10 +7,11 @@
 //   Notification:     { message, title?, notification_type }  types seen in the CLI: permission_prompt,
 //                     idle_prompt, elicitation_dialog, auth_success
 //   PermissionRequest:{ tool_name, tool_input, permission_suggestions?, mcp_server? }
-//   SessionStart:     { source: 'startup'|'resume'|'clear'|'compact' }  (not used: no status meaning)
+//   SessionStart:     { source: 'startup'|'resume'|'clear'|'compact' }  no status meaning, but /clear (and
+//                     compact, or a fresh start) can bring a new session_id: see newClaudeSessionId.
 import type { Session, SessionStatus } from '../../shared/api.ts';
 
-export const HOOK_EVENTS = ['UserPromptSubmit', 'Stop', 'Notification', 'PermissionRequest'] as const;
+export const HOOK_EVENTS = ['UserPromptSubmit', 'Stop', 'Notification', 'PermissionRequest', 'SessionStart'] as const;
 export type HookEvent = (typeof HOOK_EVENTS)[number];
 
 export interface Transition {
@@ -42,6 +43,16 @@ export function summarizeTool(input: unknown): string {
   return truncate(JSON.stringify(input));
 }
 
+const NEW_ID_SOURCES = new Set(['clear', 'compact', 'startup']);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The Claude session id to remember after a SessionStart, or null when it stays the same. */
+export function newClaudeSessionId(current: string | null, payload: Record<string, unknown>): string | null {
+  const id = payload.session_id;
+  if (!NEW_ID_SOURCES.has(String(payload.source)) || typeof id !== 'string' || !UUID.test(id)) return null;
+  return id === current ? null : id;
+}
+
 export function transition(
   current: SessionStatus,
   event: HookEvent,
@@ -70,5 +81,7 @@ export function transition(
       if (current === 'needs-you') return { status: 'needs-you' };
       return { status: 'needs-you', notify: { kind: 'needsYou', text: message || 'Claude needs you' } };
     }
+    case 'SessionStart':
+      return null;
   }
 }

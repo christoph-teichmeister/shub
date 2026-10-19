@@ -17,6 +17,7 @@ import type { ShubModule } from '../module.ts';
 import { HttpError, requireRight, requireUser, type Caller, type Request, type Router } from '../api/router.ts';
 import type { PermissionAction, Services } from '../services.ts';
 import { importCandidates } from './import.ts';
+import { listWorktrees } from './worktrees.ts';
 
 type Gated<T> = T | { approval: Approval };
 
@@ -242,6 +243,11 @@ function projectRoutes(services: Services, router: Router): void {
         return config.projectViews();
       },
     );
+  });
+
+  router.add(ROUTES.projectWorktrees, (req) => {
+    requireRight(req.caller, 'read');
+    return listWorktrees(existing(req.params.id).path);
   });
 
   router.add(ROUTES.importCandidates, (req) => {

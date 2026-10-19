@@ -3,7 +3,7 @@
   "version": "2026.10.0",
   "description": "shub - your session hub. All your Claude Code sessions in one window, grouped by project.",
   "scripts": {
-    "test": "node --test \"server/**/*.test.ts\" \"cli/**/*.test.ts\"",
+    "test": "node --test \"server/**/*.test.ts\" \"cli/**/*.test.ts\" \"test/**/*.test.ts\"",
     "dev": "node --watch server/main.ts",
     "start": "node server/main.ts",
     "web:dev": "vite --config web/vite.config.ts",

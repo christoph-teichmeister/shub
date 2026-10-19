@@ -81,14 +81,22 @@ export class NotifyService implements Notify {
     this.#db
       .prepare('INSERT OR REPLACE INTO push_subscriptions VALUES (?, ?, ?, ?)')
       .run(subscription.endpoint, deviceId, JSON.stringify(subscription), new Date().toISOString());
+    // The devices table belongs to auth; this flag only drives the "push on" label in Settings.
+    if (deviceId) this.#db.prepare('UPDATE devices SET push = 1 WHERE id = ?').run(deviceId);
   }
 
-  async push(payload: PushPayload): Promise<void> {
+  forgetDevice(deviceId: string): void {
+    this.#db.prepare('DELETE FROM push_subscriptions WHERE device_id = ?').run(deviceId);
+  }
+
+  /** To every subscription, or only those of one device. */
+  async push(payload: PushPayload, deviceId?: string): Promise<void> {
     this.#keys();
-    const rows = this.#db.prepare('SELECT endpoint, subscription FROM push_subscriptions').all() as {
-      endpoint: string;
-      subscription: string;
-    }[];
+    const rows = (
+      deviceId === undefined
+        ? this.#db.prepare('SELECT endpoint, subscription FROM push_subscriptions').all()
+        : this.#db.prepare('SELECT endpoint, subscription FROM push_subscriptions WHERE device_id = ?').all(deviceId)
+    ) as { endpoint: string; subscription: string }[];
     await Promise.all(
       rows.map(({ endpoint, subscription }) =>
         webpush.sendNotification(JSON.parse(subscription), JSON.stringify(payload), { TTL: 3600 }).catch((err) => {
@@ -121,9 +129,10 @@ export class NotifyService implements Notify {
     void this.push({ title, body: approval.summary, url: `/?approval=${approval.id}`, tag: `approval-${approval.id}` });
   }
 
-  async test(): Promise<void> {
+  /** Pushes to that device only; without one (cli) to all devices. */
+  async test(deviceId?: string): Promise<void> {
     desktop('shub', 'Test notification');
-    await this.push({ title: 'shub', body: 'Test notification', url: '/', tag: 'test' });
+    await this.push({ title: 'shub', body: 'Test notification', url: '/', tag: 'test' }, deviceId);
   }
 }
 
@@ -143,14 +152,12 @@ function routes(notify: NotifyService, services: Services, router: Router): void
     requireUser(req.caller);
     const body = await req.json();
     if (!isSubscription(body)) throw new HttpError(400, 'expected a PushSubscription');
-    // ponytail: deviceOf is not on the Auth interface yet; see the contract note in the report.
-    const auth = services.auth as Partial<{ deviceOf(r: typeof req.raw): { id: string } | undefined }>;
-    notify.subscribe({ endpoint: body.endpoint, keys: body.keys }, auth.deviceOf?.(req.raw)?.id ?? null);
+    notify.subscribe({ endpoint: body.endpoint, keys: body.keys }, req.caller.deviceId ?? null);
     return { ok: true };
   });
   router.add(ROUTES.pushTest, async (req) => {
     requireUser(req.caller);
-    await notify.test();
+    await notify.test(req.caller.deviceId);
     return { ok: true };
   });
 }
