@@ -9,9 +9,18 @@
 //   PermissionRequest:{ tool_name, tool_input, permission_suggestions?, mcp_server? }
 //   SessionStart:     { source: 'startup'|'resume'|'clear'|'compact' }  no status meaning, but /clear (and
 //                     compact, or a fresh start) can bring a new session_id: see newClaudeSessionId.
+//   PostToolUse:      { tool_name, tool_input, tool_response }  no status meaning; it is there for its
+//                     permission_mode, so a shift+tab switch shows during a turn, not only at its end.
 import type { Session, SessionStatus } from '../../shared/api.ts';
 
-export const HOOK_EVENTS = ['UserPromptSubmit', 'Stop', 'Notification', 'PermissionRequest', 'SessionStart'] as const;
+export const HOOK_EVENTS = [
+  'UserPromptSubmit',
+  'Stop',
+  'Notification',
+  'PermissionRequest',
+  'SessionStart',
+  'PostToolUse',
+] as const;
 export type HookEvent = (typeof HOOK_EVENTS)[number];
 
 export interface Transition {
@@ -82,6 +91,7 @@ export function transition(
       return { status: 'needs-you', notify: { kind: 'needsYou', text: message || 'Claude needs you' } };
     }
     case 'SessionStart':
+    case 'PostToolUse':
       return null;
   }
 }
