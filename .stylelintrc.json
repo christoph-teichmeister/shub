@@ -1,0 +1,12 @@
+{
+  "extends": ["stylelint-config-standard"],
+  "overrides": [{ "files": ["**/*.svelte"], "customSyntax": "postcss-html" }],
+  "rules": {
+    "color-no-hex": true,
+    "color-named": "never",
+    "function-disallowed-list": ["rgb", "rgba", "hsl", "hsla"],
+    "selector-class-pattern": null,
+    "custom-property-pattern": null
+  },
+  "ignoreFiles": ["web/src/lib/tokens/**", "web/dist/**"]
+}
