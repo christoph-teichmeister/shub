@@ -7,10 +7,11 @@
 //   Notification:     { message, title?, notification_type }  types seen in the CLI: permission_prompt,
 //                     idle_prompt, elicitation_dialog, auth_success
 //   PermissionRequest:{ tool_name, tool_input, permission_suggestions?, mcp_server? }
+//   PostToolUse:      { tool_name, tool_input, tool_response }  the tool ran, so any permission question was
+//                     answered (in the terminal or by the auto mode classifier).
+//                     Its permission_mode also lets a shift+tab switch show during a turn.
 //   SessionStart:     { source: 'startup'|'resume'|'clear'|'compact' }  no status meaning, but /clear (and
 //                     compact, or a fresh start) can bring a new session_id: see newClaudeSessionId.
-//   PostToolUse:      { tool_name, tool_input, tool_response }  no status meaning; it is there for its
-//                     permission_mode, so a shift+tab switch shows during a turn, not only at its end.
 import type { Session, SessionStatus } from '../../shared/api.ts';
 
 export const HOOK_EVENTS = [
@@ -18,8 +19,8 @@ export const HOOK_EVENTS = [
   'Stop',
   'Notification',
   'PermissionRequest',
-  'SessionStart',
   'PostToolUse',
+  'SessionStart',
 ] as const;
 export type HookEvent = (typeof HOOK_EVENTS)[number];
 
@@ -90,8 +91,9 @@ export function transition(
       if (current === 'needs-you') return { status: 'needs-you' };
       return { status: 'needs-you', notify: { kind: 'needsYou', text: message || 'Claude needs you' } };
     }
-    case 'SessionStart':
     case 'PostToolUse':
+      return current === 'needs-you' ? { status: 'working', pendingPermission: null } : null;
+    case 'SessionStart':
       return null;
   }
 }
