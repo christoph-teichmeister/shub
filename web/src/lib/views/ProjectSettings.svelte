@@ -56,6 +56,8 @@
   let name = $state('');
   let group = $state('');
   let path = $state('');
+  /** What is typed in the folder field; it becomes `path` (and saves) on blur or Enter, never half-typed. */
+  let pathDraft = $state('');
   let visibility = $state<Visibility>('pinned');
   let icon = $state<ProjectIconDef>({ kind: 'auto' });
   let buttons = $state<ButtonDef[]>([]);
@@ -65,19 +67,27 @@
   let removing = $state(false);
   let saving = $state(false);
   let fileInput = $state<HTMLInputElement>();
+  let form = $state<HTMLFormElement>();
+  /** JSON of what the server has, so autosave only sends real changes. */
+  let savedJson = '';
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The control changed last; it flashes green once its change is saved. */
+  let touched: Element | null = null;
 
   // Fill the form once per project (not on every projects reload, which would drop edits).
   $effect(() => {
     if (loadedFor === id) return;
     if (isNew) {
-      name = path = '';
+      name = path = pathDraft = '';
       group = app.config?.groups[0] ?? 'Projects';
       visibility = 'pinned';
       icon = { kind: 'auto' };
       buttons = [];
       loadedFor = id;
     } else if (existing) {
+      savedJson = '';
       ({ name, group, path, visibility } = existing);
+      pathDraft = path;
       icon = structuredClone($state.snapshot(existing.icon));
       buttons = structuredClone($state.snapshot(existing.buttons));
       loadedFor = id;
@@ -165,27 +175,61 @@
     toast('That image is too detailed for an icon; try a simpler one', 'error');
   }
 
-  async function save(e: SubmitEvent) {
+  const bodyOf = () => ({
+    name: name.trim(),
+    group: group.trim() || 'Projects',
+    path: path.trim(),
+    visibility,
+    icon: $state.snapshot(icon),
+    buttons: $state.snapshot(buttons).map((b) => ({ ...b, label: b.label.trim() || label(b.skill ?? 'Prompt') })),
+  });
+
+  // Existing projects save themselves: every valid change goes to the server after a short pause (typing stays smooth).
+  // The timer is not cleared on unmount, so a change made just before leaving the page still lands.
+  $effect(() => {
+    if (isNew || loadedFor !== id) return;
+    const json = JSON.stringify(bodyOf());
+    if (!savedJson) savedJson = json;
+    clearTimeout(saveTimer);
+    if (json === savedJson || !form?.checkValidity()) return;
+    const target = id;
+    const control = touched;
+    saveTimer = setTimeout(() => void autosave(target, json, control), 600);
+  });
+
+  function flash(el: Element | null) {
+    if (!el?.isConnected || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const green = getComputedStyle(el).getPropertyValue('--status-your-turn');
+    el.animate([{ boxShadow: `0 0 0 3px ${green}` }, { boxShadow: '0 0 0 3px transparent' }], 800);
+  }
+
+  async function autosave(target: string, json: string, control: Element | null) {
+    saving = true;
+    const res = await api<{ approval?: unknown }>('projectUpdate', {
+      params: { id: target },
+      body: JSON.parse(json),
+    }).catch(toastError);
+    saving = false;
+    if (!res) return;
+    savedJson = json;
+    if (res.approval) toast('Waiting for your approval', 'needs-you');
+    else {
+      toast('Saved', 'neutral', 1500);
+      flash(control);
+    }
+    await loadProjects();
+  }
+
+  async function create(e: SubmitEvent) {
     e.preventDefault();
     saving = true;
-    const body = {
-      name: name.trim(),
-      group: group.trim() || 'Projects',
-      path: path.trim(),
-      visibility,
-      icon: $state.snapshot(icon),
-      buttons: $state.snapshot(buttons).map((b) => ({ ...b, label: b.label.trim() || label(b.skill ?? 'Prompt') })),
-    };
-    const res = await (
-      isNew
-        ? api<{ id?: string; approval?: unknown }>('projectCreate', { body })
-        : api<{ id?: string; approval?: unknown }>('projectUpdate', { params: { id }, body })
-    ).catch(toastError);
+    const body = bodyOf();
+    const res = await api<{ id?: string; approval?: unknown }>('projectCreate', { body }).catch(toastError);
     saving = false;
     if (!res) return;
     await loadProjects();
     if (res.approval) toast('Waiting for your approval', 'needs-you');
-    else toast(isNew ? `Added ${body.name}` : 'Saved');
+    else toast(`Added ${body.name}`);
     go('p', res.id ?? id);
   }
 
@@ -200,7 +244,14 @@
 </script>
 
 <div class="page">
-  <form class="content" onsubmit={save}>
+  <form
+    class="content"
+    bind:this={form}
+    onsubmit={create}
+    oninputcapture={(e) => (touched = e.target as Element)}
+    onchangecapture={(e) => (touched = e.target as Element)}
+    onclickcapture={(e) => (touched = (e.target as Element).closest('button, input, select'))}
+  >
     <a class="back" href={isNew ? href() : href('p', id)}>← {isNew ? 'Back' : (existing?.name ?? 'Back')}</a>
     <h1>{isNew ? 'Add a project' : 'Project settings'}</h1>
 
@@ -216,7 +267,8 @@
         <div class="span">
           <TextField
             label="Folder (sessions start here)"
-            bind:value={path}
+            bind:value={pathDraft}
+            onchange={() => (path = pathDraft)}
             required
             mono
             autocomplete="off"
@@ -307,71 +359,76 @@
           {:else if !skills}
             <p class="muted">Looking for skills…</p>
           {:else}
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th scope="col"><span class="visually-hidden">Show as button</span></th>
-                    <th scope="col">Skill</th>
-                    <th scope="col">Asks for</th>
-                    <th scope="col">Confirm</th>
-                    <th scope="col">Permission mode</th>
-                  </tr>
-                </thead>
-                {#each SCOPES as sc (sc.scope)}
-                  {@const rows = skillRows.filter((s) => s.scope === sc.scope)}
-                  {#if rows.length}
-                    <tbody>
-                      <tr><th class="group" colspan="5" scope="colgroup">{sc.title}</th></tr>
-                      {#each rows as s (s.name)}
-                        {@const b = buttonFor(s)}
-                        <tr>
-                          <td>
-                            <Checkbox
-                              label="Show {s.name} as button"
-                              hideLabel
-                              checked={!!b}
-                              onchange={(e) => toggleSkill(s, e.currentTarget.checked)}
-                            />
-                          </td>
-                          <td>
-                            <span class="stack">
-                              <code>/{s.name}</code>
-                              {#if s.description}<span class="muted small">{s.description}</span>{/if}
-                            </span>
-                          </td>
-                          {#if b}
+            <details class="skills">
+              <summary
+                >{skillRows.length} skills, {skillRows.filter((s) => buttonFor(s)).length} shown as buttons</summary
+              >
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col"><span class="visually-hidden">Show as button</span></th>
+                      <th scope="col">Skill</th>
+                      <th scope="col">Asks for</th>
+                      <th scope="col">Confirm</th>
+                      <th scope="col">Permission mode</th>
+                    </tr>
+                  </thead>
+                  {#each SCOPES as sc (sc.scope)}
+                    {@const rows = skillRows.filter((s) => s.scope === sc.scope)}
+                    {#if rows.length}
+                      <tbody>
+                        <tr><th class="group" colspan="5" scope="colgroup">{sc.title}</th></tr>
+                        {#each rows as s (s.name)}
+                          {@const b = buttonFor(s)}
+                          <tr>
                             <td>
-                              <SelectField
-                                label="{s.name} asks for"
+                              <Checkbox
+                                label="Show {s.name} as button"
                                 hideLabel
-                                size="sm"
-                                bind:value={b.ask}
-                                options={ASKS}
+                                checked={!!b}
+                                onchange={(e) => toggleSkill(s, e.currentTarget.checked)}
                               />
                             </td>
-                            <td><Checkbox label="Confirm {s.name}" hideLabel bind:checked={b.confirm} /></td>
                             <td>
-                              <SelectField
-                                label="Permission mode for {s.name}"
-                                hideLabel
-                                size="sm"
-                                bind:value={() => modeOf(b), (v) => setMode(b, v)}
-                                options={MODES}
-                              />
+                              <span class="stack">
+                                <code>/{s.name}</code>
+                                {#if s.description}<span class="muted small">{s.description}</span>{/if}
+                              </span>
                             </td>
-                          {:else}
-                            <td class="muted">–</td>
-                            <td class="muted">–</td>
-                            <td class="muted">–</td>
-                          {/if}
-                        </tr>
-                      {/each}
-                    </tbody>
-                  {/if}
-                {/each}
-              </table>
-            </div>
+                            {#if b}
+                              <td>
+                                <SelectField
+                                  label="{s.name} asks for"
+                                  hideLabel
+                                  size="sm"
+                                  bind:value={b.ask}
+                                  options={ASKS}
+                                />
+                              </td>
+                              <td><Checkbox label="Confirm {s.name}" hideLabel bind:checked={b.confirm} /></td>
+                              <td>
+                                <SelectField
+                                  label="Permission mode for {s.name}"
+                                  hideLabel
+                                  size="sm"
+                                  bind:value={() => modeOf(b), (v) => setMode(b, v)}
+                                  options={MODES}
+                                />
+                              </td>
+                            {:else}
+                              <td class="muted">–</td>
+                              <td class="muted">–</td>
+                              <td class="muted">–</td>
+                            {/if}
+                          </tr>
+                        {/each}
+                      </tbody>
+                    {/if}
+                  {/each}
+                </table>
+              </div>
+            </details>
             {#if !skillRows.length}<p class="muted">No skills found in this project or in ~/.claude/skills.</p>{/if}
           {/if}
 
@@ -422,8 +479,12 @@
           </div>
         {/if}
         <span class="grow"></span>
-        <Button variant="ghost" onclick={() => history.back()}>Cancel</Button>
-        <Button variant="primary" type="submit" disabled={saving}>{isNew ? 'Add project' : 'Save'}</Button>
+        {#if isNew}
+          <Button variant="ghost" onclick={() => history.back()}>Cancel</Button>
+          <Button variant="primary" type="submit" disabled={saving}>Add project</Button>
+        {:else}
+          <span class="muted small" role="status">{saving ? 'Saving…' : 'Changes save automatically'}</span>
+        {/if}
       </div>
     {/if}
   </form>
@@ -524,6 +585,16 @@
     border: var(--hairline) dashed var(--muted);
     border-radius: var(--radius-md);
     color: var(--muted);
+  }
+
+  .skills summary {
+    cursor: pointer;
+    font-size: var(--text-md);
+    color: var(--fg-2);
+  }
+
+  .skills[open] summary {
+    margin-bottom: var(--space-2-5);
   }
 
   .table-wrap {
