@@ -77,6 +77,14 @@
       }))
       .filter((g) => g.projects.length);
   });
+  /** What a folded group still shows: who needs you, else what is working. */
+  function groupBadge(projects: ProjectView[]) {
+    const list = projects.flatMap((p) => sessionsOf(p.id));
+    const waiting = list.filter((s) => s.status === 'needs-you').length;
+    if (waiting) return { text: `${waiting} needs you`, tone: 'needs-you' as const };
+    const working = list.filter((s) => s.status === 'working').length;
+    return working ? { text: `${working} working`, tone: 'working' as const } : null;
+  }
   const dormantCount = $derived(app.projects.filter((p) => p.visibility === 'dormant').length);
   const pluginSections = $derived(
     app.plugins
@@ -430,7 +438,11 @@
       {/each}
 
       {#each groups as group (group.name)}
-        <SidebarSection title={group.name} ondrop={() => dropProject(group.name, null)}>
+        <SidebarSection
+          title={group.name}
+          collapsedBadge={groupBadge(group.projects)}
+          ondrop={() => dropProject(group.name, null)}
+        >
           {#each group.projects as p (p.id)}
             {@const list = sessionsOf(p.id)}
             <ProjectRow

@@ -136,6 +136,26 @@ test('app shell, wordmark and projects render', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('sidebar groups collapse and stay collapsed after reload', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  await page.goto('/#/');
+  const nav = page.getByRole('navigation', { name: 'Projects' });
+  const toggle = nav.getByRole('button', { name: 'Work' });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(nav.getByRole('link', { name: 'ai-portal' })).toBeVisible();
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(nav.getByRole('link', { name: 'ai-portal' })).toHaveCount(0);
+  await expect(nav.getByRole('region', { name: 'Work' }).getByText('1 needs you')).toBeVisible();
+
+  await page.reload();
+  await expect(nav.getByRole('button', { name: 'Work' })).toHaveAttribute('aria-expanded', 'false');
+  await nav.getByRole('button', { name: 'Work' }).click();
+  await expect(nav.getByRole('link', { name: 'ai-portal' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('styleguide renders every section', async ({ page }) => {
   const { errors } = await mockApi(page);
   await page.goto('/#/styleguide');
