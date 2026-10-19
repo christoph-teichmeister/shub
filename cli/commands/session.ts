@@ -5,7 +5,8 @@ import { findProject } from './lib/projects.ts';
 export const summary = 'List, start or inspect sessions.';
 export const usage = `shub session list [--project <id|name>]
 shub session start <project|global> [--prompt <text>] [--button <id> [--input <text>]] [--name <name>] [--shell]
-shub session status [<session id>]   (defaults to $SHUB_SESSION_ID inside a session)`;
+shub session status [<session id>]   (defaults to $SHUB_SESSION_ID inside a session)
+shub session close [<session id>]    (defaults to $SHUB_SESSION_ID; a session may only close itself)`;
 
 export async function run(args: string[], opts: { json: boolean }): Promise<void> {
   const [sub, ...rest] = args;
@@ -13,6 +14,7 @@ export async function run(args: string[], opts: { json: boolean }): Promise<void
   if (sub === 'list' || sub === undefined) return list(flags.project, opts.json);
   if (sub === 'start') return start(positional[0], flags, opts.json);
   if (sub === 'status') return status(positional[0] ?? process.env.SHUB_SESSION_ID, opts.json);
+  if (sub === 'close') return close(positional[0] ?? process.env.SHUB_SESSION_ID, opts.json);
   throw new CliError(`unknown subcommand "${sub}"\n${usage}`);
 }
 
@@ -61,4 +63,10 @@ async function status(id: string | undefined, json: boolean): Promise<void> {
     json,
     () => `${session.name} (${session.id}): ${session.status}, last activity ${session.lastActivityAt}`,
   );
+}
+
+async function close(id: string | undefined, json: boolean): Promise<void> {
+  if (!id) throw new CliError('which session? Pass an id (see "shub session list").');
+  const result = await api<{ ok: boolean }>('DELETE', `/api/sessions/${encodeURIComponent(id)}`);
+  output(result, json, () => `Closed ${id}.`);
 }
