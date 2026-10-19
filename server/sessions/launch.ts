@@ -1,5 +1,11 @@
 // Pure helpers for starting sessions: prompts from buttons, permission modes, names, commands.
-import type { ButtonDef, PermissionMode, SessionKind } from '../../shared/api.ts';
+import {
+  PERMISSION_MODES,
+  type ButtonDef,
+  type LaunchPermissionMode,
+  type PermissionMode,
+  type SessionKind,
+} from '../../shared/api.ts';
 
 const SIMPLE_INPUT = /^[A-Za-z0-9#._/-]{1,80}$/;
 
@@ -12,9 +18,25 @@ export function buttonPrompt(button: ButtonDef, input = ''): string {
   return (button.prompt ?? '').replaceAll('{input}', input);
 }
 
-/** Only a button may choose a prompt-skipping mode, and a locked button never runs outside default. */
-export function permissionModeFor(button: ButtonDef | undefined): PermissionMode {
-  return button && !button.lockDefaultMode ? (button.permissionMode ?? 'default') : 'default';
+/**
+ * A locked button never runs outside default; otherwise a button's own mode wins. Without one, only the user
+ * (and the global Claude) get the app setting, so sessions and plugins never inherit a prompt-skipping mode.
+ */
+export function permissionModeFor(
+  button: ButtonDef | undefined,
+  setting: LaunchPermissionMode = 'default',
+  byUser = false,
+): LaunchPermissionMode {
+  if (button?.lockDefaultMode) return 'default';
+  return button?.permissionMode ?? (byUser ? setting : 'default');
+}
+
+export function isPermissionMode(value: unknown): value is PermissionMode {
+  return (PERMISSION_MODES as unknown[]).includes(value);
+}
+
+export function isLaunchPermissionMode(value: unknown): value is LaunchPermissionMode {
+  return value === 'inherit' || isPermissionMode(value);
 }
 
 export function autoName(opts: { button?: ButtonDef; input?: string; prompt?: string; n: number }): string {
@@ -38,7 +60,7 @@ export interface LaunchSpec {
   kind: SessionKind;
   claudeSessionId: string | null;
   settingsFile: string;
-  permissionMode: PermissionMode;
+  permissionMode: LaunchPermissionMode;
   prompt?: string;
   /** Resume an existing Claude conversation instead of starting one. */
   resume: boolean;
@@ -50,7 +72,8 @@ export type Launcher = (spec: LaunchSpec) => string[];
 export const defaultLauncher: Launcher = (spec) => {
   if (spec.kind === 'shell') return [process.env.SHELL || '/bin/bash', '-l'];
   const id = spec.resume ? ['--resume', spec.claudeSessionId!] : ['--session-id', spec.claudeSessionId!];
-  // The mode is always passed: the user's own default may be a prompt-skipping one.
-  const args = ['claude', ...id, '--settings', spec.settingsFile, '--permission-mode', spec.permissionMode];
+  // Passed unless the setting says "inherit": the user's own default may be a prompt-skipping one.
+  const mode = spec.permissionMode === 'inherit' ? [] : ['--permission-mode', spec.permissionMode];
+  const args = ['claude', ...id, '--settings', spec.settingsFile, ...mode];
   return spec.prompt && !spec.resume ? [...args, '--', spec.prompt] : args;
 };

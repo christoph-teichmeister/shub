@@ -8,6 +8,7 @@ import type {
   Config,
   Decision,
   OldSession,
+  PermissionMode,
   Project,
   ProjectView,
   Right,
@@ -71,10 +72,13 @@ export interface Sessions {
   list(): Session[];
   get(id: string): Session | undefined;
   /** Permission checks happen before; this just starts. */
-  start(request: StartSessionRequest, startedBy: string): Promise<Session>;
+  /** byUser: the user (web or CLI) asked, so the app's default permission mode applies. */
+  start(request: StartSessionRequest, startedBy: string, byUser?: boolean): Promise<Session>;
   setStatus(id: string, status: SessionStatus, pendingPermission?: Session['pendingPermission']): void;
   /** Claude switched conversations (/clear, compact): remember the new id for resume. */
   setClaudeSessionId(id: string, claudeSessionId: string): void;
+  /** A hook reported the mode Claude runs in (needed for "inherit", or after Shift+Tab). */
+  setPermissionMode(id: string, mode: PermissionMode): void;
   sendKeys(id: string, keys: string[]): void;
   oldSessions(projectId: string): OldSession[];
 }

@@ -5,6 +5,7 @@ import { HttpError } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
+import { isPermissionMode } from '../sessions/launch.ts';
 import { HOOK_EVENTS, isHookEvent, newClaudeSessionId, transition } from './transition.ts';
 
 const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
@@ -43,6 +44,9 @@ export function create(_ctx: Context, services: Services): { module: ShubModule 
           if (!session) throw new HttpError(403, 'hooks only come from shub sessions');
           if (!isHookEvent(req.params.event)) throw new HttpError(404, 'unknown hook event');
           const payload = await req.json<Record<string, unknown>>();
+          if (isPermissionMode(payload.permission_mode)) {
+            services.sessions.setPermissionMode(session.id, payload.permission_mode);
+          }
           if (req.params.event === 'SessionStart') {
             const claudeSessionId = newClaudeSessionId(session.claudeSessionId, payload);
             if (claudeSessionId) services.sessions.setClaudeSessionId(session.id, claudeSessionId);

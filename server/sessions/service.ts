@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type {
   ClientKind,
   OldSession,
+  PermissionMode,
   Session,
   SessionLink,
   SessionStatus,
@@ -170,7 +171,7 @@ export class SessionsService implements Sessions {
     return 1 + Math.max(0, ...ids.map((r) => Number(pattern.exec(r.id)?.[1] ?? 0)));
   }
 
-  async start(request: StartSessionRequest, startedBy: string): Promise<Session> {
+  async start(request: StartSessionRequest, startedBy: string, byUser = false): Promise<Session> {
     if (request.kind === 'global') {
       const existing = this.get(GLOBAL_ID);
       if (existing && existing.status !== 'exited') {
@@ -217,7 +218,13 @@ export class SessionsService implements Sessions {
         cwd,
         prompt ? 'working' : 'your-turn',
         request.kind === 'shell' ? null : (resumeId ?? randomUUID()),
-        request.kind === 'shell' ? 'default' : permissionModeFor(button),
+        request.kind === 'shell'
+          ? 'default'
+          : permissionModeFor(
+              button,
+              this.#services.config.get().defaultPermissionMode,
+              byUser || request.kind === 'global',
+            ),
         startedBy,
         parent?.id ?? null,
         '[]',
@@ -339,6 +346,13 @@ export class SessionsService implements Sessions {
     const session = this.get(id);
     if (!session || session.status === 'exited' || session.kind === 'shell') return;
     this.#db.prepare('UPDATE sessions SET claude_session_id = ? WHERE id = ?').run(claudeSessionId, id);
+    this.#emitUpdated(id);
+  }
+
+  setPermissionMode(id: string, mode: PermissionMode): void {
+    const session = this.get(id);
+    if (!session || session.status === 'exited' || session.permissionMode === mode) return;
+    this.#db.prepare('UPDATE sessions SET permission_mode = ? WHERE id = ?').run(mode, id);
     this.#emitUpdated(id);
   }
 

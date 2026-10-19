@@ -54,7 +54,7 @@ async function startRoute(
     simpleInput: isSimpleInput(request.input),
   });
   if (decision.outcome === 'deny') throw new HttpError(403, decision.reason);
-  if (decision.outcome === 'allow') return sessions.start(request, caller.id);
+  if (decision.outcome === 'allow') return sessions.start(request, caller.id, isUser(caller));
 
   const approval = services.permissions.requestApproval({
     requestedBy: caller.id,

@@ -23,6 +23,7 @@ test('fresh install gets defaults and writes the file', () => {
   assert.deepEqual(config.projects, []);
   assert.deepEqual(config.groups, []);
   assert.equal(config.activeTheme, 'monokai');
+  assert.equal(config.defaultPermissionMode, 'default');
   assert.deepEqual(
     config.themes.map((t) => t.id),
     ['monokai', 'dracula', 'neutral-dark'],
@@ -43,6 +44,10 @@ test('update writes atomically, persists and emits events', () => {
   const reopened = new FileConfigStore(dir, new EventBus());
   assert.equal(reopened.project('a')?.path, dir);
   assert.equal(reopened.get().activeTheme, 'dracula');
+  store.update((c) => (c.defaultPermissionMode = 'inherit'), 'test');
+  assert.equal(new FileConfigStore(dir, new EventBus()).get().defaultPermissionMode, 'inherit');
+  store.update((c) => (c.defaultPermissionMode = 'yolo' as never), 'test');
+  assert.equal(store.get().defaultPermissionMode, 'default');
 });
 
 test('remote hosts map to icons', () => {

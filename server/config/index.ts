@@ -6,6 +6,7 @@ import type { Config, Project, ProjectView, ResolvedIcon, ThemeDef } from '../..
 import type { Context, EventBus } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { ConfigStore, Services } from '../services.ts';
+import { isLaunchPermissionMode } from '../sessions/launch.ts';
 
 export const DEFAULT_ACCENT = '#f92672';
 const STATUS_ORANGE = '#fd971f';
@@ -26,6 +27,7 @@ export function defaultConfig(): Config {
     activeTheme: 'monokai',
     notifications: { desktopNeedsYou: true, pushNeedsYou: true, pushYourTurn: false, noPushWhileDesktopFocused: true },
     plugins: [],
+    defaultPermissionMode: 'default',
   };
 }
 
@@ -39,6 +41,7 @@ function normalize(raw: Partial<Config>): Config {
     version: 1,
     notifications: { ...base.notifications, ...raw.notifications },
     themes: [...base.themes, ...custom.map((t) => ({ ...t, builtIn: false }))],
+    defaultPermissionMode: isLaunchPermissionMode(raw.defaultPermissionMode) ? raw.defaultPermissionMode : 'default',
   };
 }
 

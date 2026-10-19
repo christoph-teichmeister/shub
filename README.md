@@ -16,6 +16,7 @@ session's worktree next to it, and a phone view to answer permission questions o
   shub; after a reboot shub offers to resume them.
 - **Status** per session from Claude Code hooks: _needs you_, _your turn_, _working_. Desktop notifications and web push.
 - **Buttons** for your skills: shub lists the project's and your global Claude skills; tick the ones you want as buttons.
+- **Permission mode** for new sessions in Settings (default `default`; `auto` and the like skip prompts, `inherit` uses your Claude settings); a button's own mode wins.
 - **Services panel** with the Docker Compose containers of the session's folder or worktree, PyCharm style.
 - **Plain terminals** next to a session (`Alt T`).
 - **Global Claude**: one session not tied to a project, for quick questions or setting up new projects.

@@ -45,10 +45,11 @@ const issued: string[] = [];
 const revoked: string[] = [];
 const launches: LaunchSpec[] = [];
 const state = openState(ctx.paths.stateDir);
+let defaultPermissionMode: Config['defaultPermissionMode'] = 'default';
 const services = {
   state,
   config: {
-    get: () => ({ projects: [project] }) as unknown as Config,
+    get: () => ({ projects: [project], defaultPermissionMode }) as unknown as Config,
     project: (id: string) => (id === 'p1' ? project : undefined),
   },
   auth: {
@@ -207,5 +208,24 @@ test('start can reopen an old conversation with --resume; /clear moves the id', 
   } finally {
     if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = before;
+  }
+});
+
+test('the default permission mode setting reaches user starts only; hooks update the mode', async () => {
+  defaultPermissionMode = 'inherit';
+  try {
+    const mine = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris', true);
+    assert.equal(mine.permissionMode, 'inherit');
+    assert.equal(launches.at(-1)?.permissionMode, 'inherit');
+    const theirs = await svc.start({ kind: 'claude', projectId: 'p1' }, 'plugin:x');
+    assert.equal(theirs.permissionMode, 'default');
+    const button = await svc.start({ kind: 'claude', projectId: 'p1', buttonId: 'rev', input: 'x' }, 'chris', true);
+    assert.equal(button.permissionMode, 'acceptEdits');
+
+    svc.setPermissionMode(mine.id, 'auto');
+    assert.equal(svc.get(mine.id)?.permissionMode, 'auto');
+    for (const s of [mine, theirs, button]) svc.close(s.id, 'chris');
+  } finally {
+    defaultPermissionMode = 'default';
   }
 });

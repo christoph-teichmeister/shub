@@ -1,11 +1,19 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { ActivityEntry, Config, Device, PluginInfo, Right } from '../../../../shared/api.ts';
+  import type {
+    ActivityEntry,
+    Config,
+    Device,
+    LaunchPermissionMode,
+    PluginInfo,
+    Right,
+  } from '../../../../shared/api.ts';
   import Button from '../components/Button/Button.svelte';
   import Checkbox from '../components/Checkbox/Checkbox.svelte';
   import ChoiceButton from '../components/ChoiceButton/ChoiceButton.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
   import Section from '../components/Section/Section.svelte';
+  import SelectField from '../components/SelectField/SelectField.svelte';
   import StatusBadge from '../components/StatusBadge/StatusBadge.svelte';
   import { api } from '../stores/api.ts';
   import { pushEnabled, pushSupported, subscribePush } from '../stores/push.ts';
@@ -28,6 +36,15 @@
     { key: 'pushNeedsYou', label: 'Phone push: when a session needs me' },
     { key: 'pushYourTurn', label: 'Also on "your turn" (every finished turn)' },
     { key: 'noPushWhileDesktopFocused', label: 'No phone push while the desktop window is focused' },
+  ];
+
+  const MODES: { value: LaunchPermissionMode; label: string }[] = [
+    { value: 'default', label: 'Default (asks before acting)' },
+    { value: 'acceptEdits', label: 'Accept edits' },
+    { value: 'plan', label: 'Plan' },
+    { value: 'auto', label: 'Auto (skips prompts)' },
+    { value: 'bypassPermissions', label: 'Bypass permissions (skips prompts)' },
+    { value: 'inherit', label: 'My Claude settings' },
   ];
 
   const themes = $derived([...BUILT_IN_THEMES, ...(app.config?.themes ?? []).filter((t) => !t.builtIn)]);
@@ -73,6 +90,12 @@
     if (!app.config) return;
     const notifications = { ...app.config.notifications, [key]: value };
     const config = await api<Config>('settings', { body: { notifications } }).catch(toastError);
+    if (config) app.config = config;
+    else void loadConfig();
+  }
+
+  async function setDefaultMode(defaultPermissionMode: string) {
+    const config = await api<Config>('settings', { body: { defaultPermissionMode } }).catch(toastError);
     if (config) app.config = config;
     else void loadConfig();
   }
@@ -258,6 +281,15 @@
           </li>
         {/each}
       </ul>
+    </Section>
+
+    <Section title="Sessions">
+      <SelectField
+        label="Permission mode for new sessions"
+        hint="Auto and bypass let Claude run commands and edit files without asking. Used by sessions you start and the global Claude; a button's own mode wins."
+        bind:value={() => app.config?.defaultPermissionMode ?? 'default', (v) => setDefaultMode(v)}
+        options={MODES}
+      />
     </Section>
 
     <Section title="Notifications">

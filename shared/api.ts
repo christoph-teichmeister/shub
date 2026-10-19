@@ -77,6 +77,8 @@ export interface Config {
     noPushWhileDesktopFocused: boolean;
   };
   plugins: { name: string; enabled: boolean; grantedRights: Right[] }[];
+  /** Mode for sessions the user starts and the global Claude; a button's own mode wins. Default: "default". */
+  defaultPermissionMode: LaunchPermissionMode;
 }
 
 // ---------- sessions ----------
@@ -85,6 +87,9 @@ export type SessionKind = 'claude' | 'shell' | 'global';
 export type SessionStatus = 'working' | 'needs-you' | 'your-turn' | 'paused' | 'exited';
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'auto' | 'bypassPermissions';
 export const PROMPT_SKIPPING_MODES: PermissionMode[] = ['auto', 'bypassPermissions'];
+export const PERMISSION_MODES: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
+/** "inherit" passes no --permission-mode flag: Claude uses the user's own settings. */
+export type LaunchPermissionMode = PermissionMode | 'inherit';
 
 export interface SessionLink {
   /** Who added it, e.g. "plugin:kb-board". */
@@ -102,7 +107,8 @@ export interface Session {
   status: SessionStatus;
   /** Claude session UUID (passed as --session-id), for resume. Null for shells. */
   claudeSessionId: string | null;
-  permissionMode: PermissionMode;
+  /** "inherit" until the first hook reports the mode Claude actually runs in. */
+  permissionMode: LaunchPermissionMode;
   /** "chris" or "session:<id>" or "plugin:<name>". */
   startedBy: string;
   /** Parent shell/claude session for plain terminals. */

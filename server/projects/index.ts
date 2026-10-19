@@ -18,6 +18,7 @@ import { HttpError, requireRight, requireUser, type Caller, type Request, type R
 import type { PermissionAction, Services } from '../services.ts';
 import { importCandidates } from './import.ts';
 import { listWorktrees } from './worktrees.ts';
+import { isLaunchPermissionMode } from '../sessions/launch.ts';
 
 type Gated<T> = T | { approval: Approval };
 
@@ -279,11 +280,15 @@ function settingsRoutes(services: Services, router: Router): void {
 
   router.add(ROUTES.settings, async (req) => {
     requireUser(req.caller);
-    const body = await req.json<Partial<Pick<Config, 'activeTheme' | 'notifications' | 'groups'>>>();
+    const body =
+      await req.json<Partial<Pick<Config, 'activeTheme' | 'notifications' | 'groups' | 'defaultPermissionMode'>>>();
     const current = config.get();
     if (body.activeTheme !== undefined && !current.themes.some((t) => t.id === body.activeTheme)) bad('unknown theme');
     if (body.groups !== undefined && !(Array.isArray(body.groups) && body.groups.every((g) => typeof g === 'string'))) {
       bad('groups must be a list of strings');
+    }
+    if (body.defaultPermissionMode !== undefined && !isLaunchPermissionMode(body.defaultPermissionMode)) {
+      bad('unknown permission mode');
     }
     if (body.notifications !== undefined) {
       const known = Object.keys(current.notifications);
@@ -295,6 +300,7 @@ function settingsRoutes(services: Services, router: Router): void {
       if (body.activeTheme !== undefined) c.activeTheme = body.activeTheme;
       if (body.groups !== undefined) c.groups = body.groups;
       if (body.notifications !== undefined) Object.assign(c.notifications, body.notifications);
+      if (body.defaultPermissionMode !== undefined) c.defaultPermissionMode = body.defaultPermissionMode;
     }, req.caller.id);
   });
 }

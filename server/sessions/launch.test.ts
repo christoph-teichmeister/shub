@@ -25,10 +25,19 @@ test('simple input', () => {
   assert.ok(!isSimpleInput('x'.repeat(81)));
 });
 
-test('permission modes: only buttons choose, locked buttons stay default', () => {
+test('permission modes: button wins, lock stays default, only the user gets the setting', () => {
   assert.equal(permissionModeFor(undefined), 'default');
   assert.equal(permissionModeFor(button({ permissionMode: 'bypassPermissions' })), 'bypassPermissions');
   assert.equal(permissionModeFor(button({ permissionMode: 'auto', lockDefaultMode: true })), 'default');
+  // the app setting, for user starts only
+  assert.equal(permissionModeFor(undefined, 'auto', true), 'auto');
+  assert.equal(permissionModeFor(button({}), 'inherit', true), 'inherit');
+  assert.equal(permissionModeFor(undefined, 'auto', false), 'default');
+  assert.equal(permissionModeFor(button({}), 'bypassPermissions', false), 'default');
+  // a button's own mode and the lock beat the setting
+  assert.equal(permissionModeFor(button({ permissionMode: 'plan' }), 'auto', true), 'plan');
+  assert.equal(permissionModeFor(button({ lockDefaultMode: true }), 'auto', true), 'default');
+  assert.equal(permissionModeFor(button({ lockDefaultMode: true }), 'inherit', true), 'default');
 });
 
 test('auto names', () => {
@@ -37,7 +46,7 @@ test('auto names', () => {
   assert.equal(autoName({ n: 3 }), 'Session 3');
 });
 
-test('claude argv always names the mode and puts the prompt after --', () => {
+test('claude argv names the mode and puts the prompt after --', () => {
   const spec = {
     kind: 'claude' as const,
     claudeSessionId: 'u',
@@ -56,6 +65,22 @@ test('claude argv always names the mode and puts the prompt after --', () => {
     '-p evil',
   ]);
   assert.deepEqual(defaultLauncher({ ...spec, prompt: 'x', resume: true }).slice(0, 3), ['claude', '--resume', 'u']);
+  assert.deepEqual(defaultLauncher({ ...spec, permissionMode: 'auto', resume: false }).slice(-2), [
+    '--permission-mode',
+    'auto',
+  ]);
+});
+
+test('inherit passes no --permission-mode flag', () => {
+  const argv = defaultLauncher({
+    kind: 'claude',
+    claudeSessionId: 'u',
+    settingsFile: '/s.json',
+    permissionMode: 'inherit',
+    prompt: 'hi',
+    resume: false,
+  });
+  assert.deepEqual(argv, ['claude', '--session-id', 'u', '--settings', '/s.json', '--', 'hi']);
 });
 
 test('cwd encoding matches ~/.claude/projects folder names', () => {

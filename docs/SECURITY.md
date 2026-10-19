@@ -49,7 +49,7 @@ Every decision is `allow`, `ask` (an approval card on the desktop and a push on 
 - **buttons.write** from anyone but the user always asks (or is denied, see above). The approval shows a diff of the button prompts, because a button prompt later runs without a second look.
 - **projects.delete** and **closing another session** are user (and cli) only; everyone else is denied. Any session may close itself.
 - **Rate limit**: at most 5 automatically allowed session starts per rolling hour across all non-user callers. Beyond that, an `allow` becomes `ask` with the reason.
-- **Prompt-skipping modes** (`auto`, `bypassPermissions`): a session only runs in one if the button explicitly sets it. A button that sets such a mode and is also `lockDefaultMode` is inconsistent and every start through it is denied. A request that names both a button and a prompt, or an unknown button, is denied too.
+- **Prompt-skipping modes** (`auto`, `bypassPermissions`): a session only runs in one if its button sets it, or if you started it (or it is the global Claude) and Settings → "Permission mode for new sessions" picks one (or `inherit`, which passes no flag so your own Claude default applies). Sessions started by sessions or plugins get `default` unless their button says otherwise; `lockDefaultMode` always means `default`. A button that sets such a mode and is also `lockDefaultMode` is inconsistent and every start through it is denied. A request that names both a button and a prompt, or an unknown button, is denied too.
 
 Every write through shub is written to the activity log (Settings > Activity) with who did it. Adding or editing a project can be undone there by you.
 
