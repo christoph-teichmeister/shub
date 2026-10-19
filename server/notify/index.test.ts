@@ -26,6 +26,8 @@ test('forgetDevice drops only that device’s push subscriptions', () => {
   const services = {
     state: { db, migrate: (_: string, s: string[]) => s.forEach((x) => db.exec(x)) },
   } as unknown as Services;
+  db.exec('CREATE TABLE devices (id TEXT PRIMARY KEY, push INTEGER NOT NULL DEFAULT 0)');
+  db.exec("INSERT INTO devices (id) VALUES ('phone'), ('desktop')");
   const notify = new NotifyService({ paths: {}, bus: new EventBus() } as unknown as Context, services);
   const sub = (n: number) => ({ endpoint: `https://push.example/${n}`, keys: { p256dh: 'k', auth: 'a' } });
   notify.subscribe(sub(1), 'phone');
@@ -36,4 +38,5 @@ test('forgetDevice drops only that device’s push subscriptions', () => {
     rows.map((r) => r.device_id),
     ['desktop'],
   );
+  assert.equal((db.prepare("SELECT push FROM devices WHERE id = 'desktop'").get() as { push: number }).push, 1);
 });
