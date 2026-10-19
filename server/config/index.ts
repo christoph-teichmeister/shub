@@ -35,7 +35,7 @@ export function defaultConfig(): Config {
 function normalize(raw: Partial<Config>): Config {
   const base = defaultConfig();
   const custom = (raw.themes ?? []).filter((t) => !BUILT_IN_THEMES.some((b) => b.id === t.id));
-  return {
+  const config: Config = {
     ...base,
     ...raw,
     version: 1,
@@ -43,6 +43,8 @@ function normalize(raw: Partial<Config>): Config {
     themes: [...base.themes, ...custom.map((t) => ({ ...t, builtIn: false }))],
     defaultPermissionMode: isLaunchPermissionMode(raw.defaultPermissionMode) ? raw.defaultPermissionMode : 'default',
   };
+  if (config.updateChannel !== 'stable' && config.updateChannel !== 'beta') delete config.updateChannel;
+  return config;
 }
 
 export function hostOfRemote(remote: string): string | null {

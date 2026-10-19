@@ -3,7 +3,7 @@
   "version": "2026.10.0",
   "description": "shub - your session hub. All your Claude Code sessions in one window, grouped by project.",
   "scripts": {
-    "test": "env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_COMMON_DIR node --test \"server/**/*.test.ts\" \"cli/**/*.test.ts\" \"test/**/*.test.ts\"",
+    "test": "env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_COMMON_DIR node --test \"server/**/*.test.ts\" \"cli/**/*.test.ts\" \"test/**/*.test.ts\" \"scripts/**/*.test.ts\" \"launcher/src/**/*.test.ts\"",
     "dev": "node --watch server/main.ts",
     "start": "node server/main.ts",
     "web:dev": "vite --config web/vite.config.ts",
@@ -11,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && svelte-check --tsconfig web/tsconfig.json",
     "lint": "prettier --check . && stylelint \"web/src/**/*.{css,svelte}\"",
     "format": "prettier --write .",
-    "test:smoke": "playwright test"
+    "test:smoke": "playwright test",
+    "release:dry-run": "node scripts/release/dry-run.ts"
   },
   "license": "MIT",
   "type": "module",

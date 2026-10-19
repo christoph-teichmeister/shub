@@ -26,15 +26,32 @@ session's worktree next to it, and a phone view to answer permission questions o
 
 ## Requirements
 
-Linux or macOS, Node 24+, tmux 3.3+, Claude Code, optionally Docker and Tailscale.
+Linux or macOS, Node 24+, tmux 3.3+, Claude Code, optionally Docker and Tailscale. Windows only inside WSL2: install
+and run shub there.
 
-## Run
+## Install
+
+```sh
+npm i -g @christoph-teichmeister/shub && shub install && shub service install
+```
+
+The npm package is only the launcher (`shub`). `shub install` downloads the latest signed release from GitHub
+(`--channel beta` for pre-releases), `shub service install` runs it as a systemd user unit (Linux) or a launchd agent
+(macOS), at http://127.0.0.1:4780. `shub doctor` says what is missing. Versions live side by side in
+`~/.local/share/shub/versions/` (`SHUB_HOME`); Settings > Updates shows new versions with their notes and installs
+one when you click, `shub update` and `shub rollback` do the same in a terminal. If a new version does not come up
+within 30 seconds, the launcher switches back. Sessions keep running in tmux through updates. Every other command
+(`shub status`, `shub session start`, ...) goes to the installed version. Releases: [docs/RELEASING.md](docs/RELEASING.md).
+
+## Run from a git checkout
 
 ```sh
 npm install
 npm run build
 npm start            # http://127.0.0.1:4780
 ```
+
+Started like this, shub's updates are managed by git (Settings > Updates is read-only).
 
 On first start shub creates an access token and prints the file it lives in. Open the URL, paste the token, done.
 shub only ever listens on `127.0.0.1`. For your phone, put it behind `tailscale serve` (tailnet only, never Funnel) and
@@ -57,8 +74,9 @@ from its own shell, which only Claude Code's own permission prompts guard.
 ```sh
 npm run dev          # server with --watch
 npm run web:dev      # Vite dev server, proxies /api to :4780
-npm test             # node:test
+npm test             # node:test, including launcher/ and scripts/release/
 npm run test:smoke   # Playwright
+npm run release:dry-run   # pack, sign and install a release locally (after npm run build)
 npm run typecheck && npm run lint
 prek install --install-hooks   # pre-commit hooks (prek or pre-commit), tests on push
 ```

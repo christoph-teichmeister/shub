@@ -79,6 +79,8 @@ export interface Config {
   plugins: { name: string; enabled: boolean; grantedRights: Right[] }[];
   /** Mode for sessions the user starts and the global Claude; a button's own mode wins. Default: "default". */
   defaultPermissionMode: LaunchPermissionMode;
+  /** Release channel for updates. Absent: "beta" while a beta runs, else "stable". */
+  updateChannel?: UpdateChannel;
 }
 
 // ---------- sessions ----------
@@ -295,6 +297,33 @@ export interface SkillInfo {
   path: string;
 }
 
+// ---------- updates ----------
+
+export type UpdateChannel = 'stable' | 'beta';
+
+/**
+ * GET /api/updates. Installing and rolling back are done by the shub launcher (launcher/), which verifies the
+ * release, switches versions and restarts shub; a version that does not come up is rolled back automatically.
+ */
+export interface UpdateStatus {
+  /** The version that is running. */
+  current: string;
+  channel: UpdateChannel;
+  /** "git": shub runs from a checkout without the launcher, so git manages updates and the update routes refuse. */
+  managedBy: 'launcher' | 'git';
+  /** Newest release on the channel, only when it is newer than `current`. */
+  latest?: string;
+  /** Release notes (Markdown) of the releases after `current` up to `latest`. */
+  changelog?: string;
+  checkedAt: string | null;
+  /** Why the last check failed. */
+  checkError?: string;
+  /** The version "roll back" switches to. */
+  previous?: string;
+  /** The launcher's last install, update or rollback, e.g. an automatic rollback and its reason. */
+  last?: { at: string; from: string | null; to: string; ok: boolean; message: string };
+}
+
 // ---------- HTTP routes ----------
 // All under /api, JSON in and out, auth by cookie (browser) or `Authorization: Bearer <token>`.
 
@@ -359,6 +388,12 @@ export const ROUTES = {
   pushTest: 'POST /api/push/test',
 
   eventsStream: 'GET /api/events/stream', // Server-Sent Events twin of the /api/events WebSocket
+
+  updates: 'GET /api/updates', // -> UpdateStatus
+  updateCheck: 'POST /api/updates/check', // -> UpdateStatus, user only
+  updateInstall: 'POST /api/updates/install', // { version? } -> { ok, version }; the launcher restarts shub. User only
+  updateRollback: 'POST /api/updates/rollback', // -> { ok, version }, user only
+  updateChannel: 'PATCH /api/updates/channel', // { channel } -> UpdateStatus, user only
 } as const;
 
 // ---------- WebSockets ----------
@@ -378,6 +413,7 @@ export type ServerEvent =
   | { type: 'activity'; entry: ActivityEntry }
   | { type: 'services.changed'; sessionId: string }
   | { type: 'plugins.changed' }
+  | { type: 'updates.changed' }
   | {
       type: 'plugin.action';
       plugin: string;

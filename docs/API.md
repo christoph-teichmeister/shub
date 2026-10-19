@@ -68,6 +68,10 @@ All routes are in `ROUTES` in `shared/api.ts`. Notes on the ones that are not ob
 | `POST /api/sessions`              | `StartSessionRequest`; `resumeClaudeSessionId` (kind `claude`, an id from `old-sessions`, no prompt or button) reopens that conversation with `--resume`              |
 | `GET /api/plugins/:name/logs`     | `{lines: string[]}`, user only                                                                                                                                        |
 | `DELETE /api/plugins/:name`       | user only: stops the plugin, drops its config entry and deletes its folder                                                                                            |
+| `GET /api/updates`                | `UpdateStatus`: running version, channel, newer release and its notes, last check, the launcher's last result; `managedBy: 'git'` from a checkout                     |
+| `POST /api/updates/install`       | `{version?}` (default: `latest`) -> `{ok, version}`; browser user only; runs `shub update --to <version>` of the launcher, which restarts shub                        |
+| `POST /api/updates/rollback`      | -> `{ok, version}`; browser user only; runs `shub rollback`                                                                                                           |
+| `PATCH /api/updates/channel`      | `{channel: 'stable'\|'beta'}` -> `UpdateStatus`; browser user only; stored as `updateChannel` in config and checked again                                             |
 
 ## Events
 
@@ -89,3 +93,5 @@ Other modules add their own WebSocket paths (e.g. `/api/terminals/:id`) through 
 
 `shub status | project list|show|add | session list|start|status | open`, `--json` for machine output,
 `--help` per command. Talks to `SHUB_URL` (default `http://127.0.0.1:4780`) with `SHUB_TOKEN` or the token file.
+Installed with the launcher (`launcher/`), `shub` is the launcher: it handles `start`, `install`, `update`,
+`rollback`, `service` and `doctor` and passes every other command to this CLI of the installed version.

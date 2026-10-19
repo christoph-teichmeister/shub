@@ -462,7 +462,11 @@
           <span><Kbd keys="Alt J" /> next that needs you · <Kbd keys="Alt ?" /> shortcuts</span>
         </div>
         <a class="user" href={href('settings')}>
-          <span class="avatar" aria-hidden="true">{(app.me?.name ?? 'You').slice(0, 1).toUpperCase()}</span>
+          <span class="avatar" aria-hidden="true"
+            >{(app.me?.name ?? 'You').slice(0, 1).toUpperCase()}{#if app.update?.latest}<span class="update-dot"
+              ></span>{/if}</span
+          >
+          {#if app.update?.latest}<span class="visually-hidden">Update available</span>{/if}
           <span class="grow user-text">
             <span class="user-name">{app.me?.name ?? 'You'}</span>
             <span class="user-sub">{app.connected ? 'Connected' : 'Offline, reconnecting'}</span>
@@ -819,6 +823,7 @@
   }
 
   .avatar {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -828,6 +833,17 @@
     background: var(--purple);
     color: var(--on-accent);
     font-weight: var(--weight-semibold);
+  }
+
+  .update-dot {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: var(--size-dot);
+    height: var(--size-dot);
+    border-radius: var(--radius-round);
+    background: var(--pink);
+    box-shadow: 0 0 0 var(--hairline) var(--bg);
   }
 
   .user-text {

@@ -1,0 +1,113 @@
+name: release
+# Merge into develop = beta, merge into main = stable. Fully automatic once the checks pass; see docs/RELEASING.md.
+# The version is computed from the existing v* tags (scripts/release/release.ts version), never committed.
+on:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+# One release at a time, so two merges never compute the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  version:
+    needs: checks
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      channel: ${{ steps.version.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # Prints channel=... and version=... (empty when this commit already has its release).
+      - id: version
+        run: node --no-warnings scripts/release/release.ts version --branch "$GITHUB_REF_NAME" --sha "$GITHUB_SHA" | tee -a "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    if: needs.version.outputs.version != ''
+    strategy:
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-24.04
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+          - target: darwin-arm64
+            os: macos-15
+          - target: darwin-x64
+            os: macos-15-intel
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      ARCHIVE: release/shub-${{ needs.version.outputs.version }}-${{ matrix.target }}.tar.gz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: tmux for the dry run
+        run: if [ "$RUNNER_OS" = macOS ]; then brew install tmux; else sudo apt-get install -y tmux; fi
+      # npm ci builds node-pty for this runner's platform; pack keeps it and drops the dev dependencies.
+      - run: npm ci
+      - run: npm run build
+      - run: node --no-warnings scripts/release/release.ts pack --version "$VERSION" --out release
+      - run: test -f "$ARCHIVE"
+      # Install the archive with the packed launcher and start it once, on this platform.
+      - run: node --no-warnings scripts/release/dry-run.ts --archive "$ARCHIVE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}
+          if-no-files-found: error
+
+  publish:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      CHANNEL: ${{ needs.version.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: archive-*
+          path: release
+          merge-multiple: true
+      # The key stays in this environment variable; sign refuses a key whose public half is not in
+      # launcher/release-keys.pem.
+      - name: Sign SHA256SUMS
+        env:
+          SHUB_RELEASE_SIGNING_KEY: ${{ secrets.SHUB_RELEASE_SIGNING_KEY }}
+        run: node --no-warnings scripts/release/release.ts sign release
+      - name: Release notes
+        run: node --no-warnings scripts/release/release.ts changelog --channel "$CHANNEL" --sha "$GITHUB_SHA" > notes.md
+      # Creates the tag v$VERSION on this commit; tags are never moved or deleted.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          if [ "$CHANNEL" = beta ]; then prerelease="--prerelease"; fi
+          gh release create "v$VERSION" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "shub $VERSION" --notes-file notes.md $prerelease
