@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { shubHome } from './versions.ts';
 
 const MARKER = 'Written by `shub service install`';
 export const UNIT = 'shub.service';
@@ -103,7 +104,10 @@ export interface Service {
   file: string;
   install(o: ServiceOptions, force?: boolean): string;
   uninstall(): string;
-  /** Is the app of this launcher home running as our service? A unit not written by shub never counts. */
+  /**
+   * Is the app of this launcher home running as our service? A hand-written systemd unit counts only when its
+   * ExecStart runs `shub start` (the launcher) for this home; one that starts a git checkout never does.
+   */
   active(home: string): boolean;
   restart(): void;
 }
@@ -154,7 +158,12 @@ export function service(
     active(home) {
       const unit = text();
       const forHome = darwin ? `<string>${xml(home)}</string>` : `SHUB_HOME=${home}"`;
-      if (!unit?.includes(MARKER) || !unit.includes(forHome)) return false;
+      if (!unit) return false;
+      const handWritten =
+        !darwin &&
+        /^ExecStart=.*\bshub"?\s+start\s*$/m.test(unit) &&
+        (unit.includes('SHUB_HOME=') ? unit.includes(forHome) : home === shubHome({ ...env, SHUB_HOME: undefined }));
+      if (!handWritten && (!unit.includes(MARKER) || !unit.includes(forHome))) return false;
       return darwin
         ? succeeds(run, 'launchctl', ['print', `${target}/${LABEL}`])
         : succeeds(run, 'systemctl', ['--user', 'is-active', '--quiet', UNIT]);

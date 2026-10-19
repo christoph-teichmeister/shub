@@ -37,7 +37,7 @@ test('install and uninstall on Linux: our unit only, systemctl --user', () => {
   const calls: string[] = [];
   const s = service(
     'linux',
-    { XDG_CONFIG_HOME: root, HOME: root },
+    { XDG_CONFIG_HOME: root, XDG_DATA_HOME: join(root, '.local', 'share'), HOME: root },
     (cmd, args) => void calls.push([cmd, ...args].join(' ')),
   );
   assert.equal(s.file, join(root, 'systemd', 'user', 'shub.service'));
@@ -60,6 +60,14 @@ test('install and uninstall on Linux: our unit only, systemctl --user', () => {
   assert.equal(s.active(opts.home), false);
   s.install(opts, true);
   assert.equal(readFileSync(s.file, 'utf8'), systemdUnit(opts));
+
+  // A hand-written unit that runs the launcher is restarted after an update, for its own home only.
+  writeFileSync(s.file, `[Service]\nExecStart=%h/.local/bin/shub start\nEnvironment="SHUB_HOME=${opts.home}"\n`);
+  assert.equal(s.active(opts.home), true);
+  assert.equal(s.active('/somewhere/else'), false);
+  writeFileSync(s.file, '[Service]\nExecStart=%h/.local/bin/shub start\n');
+  assert.equal(s.active(join(root, '.local', 'share', 'shub')), true, 'no SHUB_HOME: the default home');
+  assert.equal(s.active(opts.home), false);
 });
 
 test('install on macOS: LaunchAgents plist, launchctl bootstrap', () => {
