@@ -28,12 +28,8 @@
   });
 </script>
 
-{#if route.name === 'styleguide'}
-  <Styleguide />
-{:else if signIn}
-  <Login pairCode={route.name === 'pair' ? route.code : undefined} />
-{:else if route.name === 'settings'}
-  {#if route.rest[0] === 'project' && route.rest[1]}
+{#snippet settings()}
+  {#if route.name !== 'settings'}{:else if route.rest[0] === 'project' && route.rest[1]}
     {#key route.rest[1]}<ProjectSettings id={route.rest[1]} />{/key}
   {:else if route.rest[0] === 'theme'}
     {#key route.rest[1]}<ThemeEditor id={route.rest[1] ?? 'new'} />{/key}
@@ -42,12 +38,21 @@
   {:else}
     <AppSettings />
   {/if}
-{:else if app.ready && app.projects.length === 0}
+{/snippet}
+
+{#if route.name === 'styleguide'}
+  <Styleguide />
+{:else if signIn}
+  <Login pairCode={route.name === 'pair' ? route.code : undefined} />
+{:else if route.name === 'settings' && (ui.phone || (app.ready && app.projects.length === 0))}
+  {@render settings()}
+{:else if route.name !== 'settings' && app.ready && app.projects.length === 0}
   <FirstRun firstRun />
 {:else if ui.phone}
   <Phone />
 {:else}
-  <Main />
+  <!-- One Main for both, so switching between settings and a project keeps the sidebar mounted. -->
+  <Main children={route.name === 'settings' ? settings : undefined} />
 {/if}
 {#if !signIn && route.name !== 'styleguide'}<Overlays />{/if}
 <Toast />

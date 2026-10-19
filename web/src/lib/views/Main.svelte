@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, type Snippet } from 'svelte';
   import type {
     ButtonDef,
     ProjectView,
@@ -48,6 +48,9 @@
   } from '../stores/state.svelte.ts';
   import { serviceAction, serviceInspect, serviceLogs } from '../stores/services.ts';
   import { toast, toastError } from '../stores/toasts.svelte.ts';
+
+  // Settings pages render here instead of the project, so the sidebar stays.
+  let { children }: { children?: Snippet } = $props();
 
   // ---------- derived view state ----------
   const route = $derived(router.route);
@@ -478,7 +481,9 @@
     </Sidebar>
   {/snippet}
 
-  {#if !project}
+  {#if children}
+    <div class="page-scroll">{@render children()}</div>
+  {:else if !project}
     <EmptyState
       title={route.name === 'project' && app.ready ? 'Project not found' : 'Pick a project'}
       body="Or open the global Claude with Alt G."
@@ -741,6 +746,12 @@
 </Drawer>
 
 <style>
+  .page-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+
   .brand {
     display: flex;
     align-items: center;
