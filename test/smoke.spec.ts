@@ -152,7 +152,10 @@ test('login on 401 and phone pairing', async ({ page }) => {
   await expect(page.getByText('your session hub')).toBeVisible();
   await page.getByLabel('Access token').fill('secret');
   await expect(page.getByLabel('Remember this device for 30 days')).toBeChecked();
+  // Login reloads the page; wait for that, or the reload races the goto below.
+  const reloaded = page.waitForEvent('load');
   await page.getByRole('button', { name: 'Sign in' }).click();
+  await reloaded;
   await expect.poll(() => calls.find((c) => c.path === '/api/auth/login')?.body).toMatchObject({ token: 'secret' });
 
   await page.goto('/pair/abc123');

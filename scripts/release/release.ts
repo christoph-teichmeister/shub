@@ -18,7 +18,7 @@ const ROOT = new URL('../../', import.meta.url).pathname;
 /** The one list of release public keys, shipped in the launcher and in every app archive. */
 export const KEYS_FILE = join(ROOT, 'launcher', 'release-keys.pem');
 
-const escape = (s: string) => s.replace(/\./g, '\\.');
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * stable: YYYY.M.MICRO with MICRO the next free number for this month among stable tags.
