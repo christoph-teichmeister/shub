@@ -11,7 +11,7 @@ export type Visibility = 'pinned' | 'dormant';
 export type ProjectIcon =
   | { kind: 'auto' } // detected from the git remote at read time
   | { kind: 'symbol'; symbol: string; color: string }
-  | { kind: 'image'; path: string };
+  | { kind: 'image'; path: string }; // data:image/... or https:// URL
 
 export type ButtonAsk = 'nothing' | 'text' | 'number' | 'pick-worktree';
 
@@ -345,6 +345,7 @@ export const ROUTES = {
   projectDelete: 'DELETE /api/projects/:id', // user only, never touches the folder
   projectsReorder: 'POST /api/projects/reorder',
   importCandidates: 'GET /api/projects/import', // first run suggestions
+  folders: 'GET /api/folders', // ?path= (default home) -> { path, parent, folders }, user only
   themes: 'PUT /api/themes/:id',
   settings: 'PATCH /api/settings',
 

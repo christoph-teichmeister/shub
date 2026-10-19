@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { WebSocket } from 'ws';
 import type { Right } from '../../shared/api.ts';
 import { createContext, type Context } from '../context.ts';
@@ -151,6 +151,16 @@ test('cookie requests that change state need an Origin', async () => {
   assert.equal((await asUser('POST', '/api/projects/reorder', { ids: [] })).status, 200);
 });
 
+test('folders: lists subfolders for the picker, user only', async () => {
+  const path = (globalThis as any).projectDir;
+  mkdirSync(join(path, 'sub'), { recursive: true });
+  mkdirSync(join(path, '.hidden'), { recursive: true });
+  const res = await asUser('GET', `/api/folders?path=${encodeURIComponent(path)}`);
+  assert.deepEqual(await res.json(), { path, parent: dirname(path), folders: ['sub'] });
+  assert.equal((await asUser('GET', '/api/folders?path=relative')).status, 400);
+  assert.equal((await call('GET', '/api/folders')).status, 401);
+});
+
 test('projects: create, update, reorder, delete', async () => {
   const path = (globalThis as any).projectDir;
   const created = await asUser('POST', '/api/projects', { name: 'My Proj', path, group: 'Private' });
@@ -160,6 +170,11 @@ test('projects: create, update, reorder, delete', async () => {
   assert.equal(view.accent, '#f92672');
   assert.equal((await asUser('POST', '/api/projects', { name: 'dup', path })).status, 409);
   assert.equal((await asUser('POST', '/api/projects', { name: 'x', path: 'relative' })).status, 400);
+  const url = 'https://example.com/logo.png';
+  const withUrl = await asUser('PATCH', '/api/projects/my-proj', { icon: { kind: 'image', path: url } });
+  assert.equal((await withUrl.json()).resolvedIcon.path, url);
+  for (const bad of ['http://example.com/a.png', 'javascript:alert(1)', '/etc/passwd'])
+    assert.equal((await asUser('PATCH', '/api/projects/my-proj', { icon: { kind: 'image', path: bad } })).status, 400);
   const updated = await asUser('PATCH', '/api/projects/my-proj', { visibility: 'dormant' });
   assert.equal((await updated.json()).visibility, 'dormant');
   const configRes = await (await asUser('GET', '/api/config')).json();
