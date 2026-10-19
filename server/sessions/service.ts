@@ -173,7 +173,15 @@ export class SessionsService implements Sessions {
   async start(request: StartSessionRequest, startedBy: string): Promise<Session> {
     if (request.kind === 'global') {
       const existing = this.get(GLOBAL_ID);
-      if (existing && existing.status !== 'exited') return existing;
+      if (existing && existing.status !== 'exited') {
+        // The global Claude runs all the time, so a prompt (already approved by the caller) is typed into it.
+        // ponytail: a paused global Claude keeps the prompt out; resume first if plugins need that.
+        if (request.prompt && existing.status !== 'paused') {
+          this.#tmux.paste(tmuxName(GLOBAL_ID), request.prompt);
+          this.#tmux.sendKey(tmuxName(GLOBAL_ID), 'Enter');
+        }
+        return existing;
+      }
       this.#db.prepare('DELETE FROM sessions WHERE id = ?').run(GLOBAL_ID);
     }
     const parent = request.kind === 'shell' ? this.require(request.parentId ?? '') : undefined;

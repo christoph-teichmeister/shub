@@ -177,6 +177,8 @@ test('after a reboot: restorable list, global Claude comes up, restore resumes',
   assert.deepEqual(svc.restorable(), []);
   const again = await svc.start({ kind: 'global', projectId: null }, 'chris');
   assert.equal(again.id, 'global', 'exactly one global Claude');
+  await svc.start({ kind: 'global', projectId: null, prompt: 'echo timesheet-handover' }, 'chris');
+  await waitFor(() => pane('global').includes('timesheet-handover'), 'prompt typed into the global Claude');
 });
 
 test('start can reopen an old conversation with --resume; /clear moves the id', async () => {
