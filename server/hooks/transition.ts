@@ -9,6 +9,7 @@
 //   PermissionRequest:{ tool_name, tool_input, permission_suggestions?, mcp_server? }
 //   PostToolUse:      { tool_name, tool_input, tool_response }  the tool ran, so any permission question was
 //                     answered (in the terminal or by the auto mode classifier).
+//                     Its permission_mode also lets a shift+tab switch show during a turn.
 //   SessionStart:     { source: 'startup'|'resume'|'clear'|'compact' }  no status meaning, but /clear (and
 //                     compact, or a fresh start) can bring a new session_id: see newClaudeSessionId.
 import type { Session, SessionStatus } from '../../shared/api.ts';

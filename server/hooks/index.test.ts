@@ -10,7 +10,7 @@ test('session settings hook every event and keep Claude tools off the secrets in
     hooks: Record<string, unknown>;
     permissions: { deny: string[] };
   };
-  assert.ok(s.hooks.SessionStart && s.hooks.Stop);
+  assert.ok(s.hooks.SessionStart && s.hooks.Stop && s.hooks.PostToolUse);
   assert.deepEqual(s.permissions.deny, [
     'Read(//home/u/.local/state/shub/token)',
     'Read(//home/u/.local/state/shub/shub.db*)',
@@ -37,7 +37,8 @@ test('a hook reports the permission mode Claude runs in (for "inherit")', async 
     handler({ caller: { id: 'session:s1' }, params: { event }, json: async () => payload } as unknown as Request);
   await hook('UserPromptSubmit', { permission_mode: 'auto' });
   await hook('SessionStart', { source: 'resume', permission_mode: 'bypassPermissions' });
+  await hook('PostToolUse', { tool_name: 'Bash', permission_mode: 'acceptEdits' });
   await hook('Stop', { permission_mode: 'nonsense' });
   await hook('Stop', {});
-  assert.deepEqual(modes, ['auto', 'bypassPermissions']);
+  assert.deepEqual(modes, ['auto', 'bypassPermissions', 'acceptEdits']);
 });
