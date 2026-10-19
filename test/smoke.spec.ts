@@ -194,6 +194,9 @@ test('app settings and project settings', async ({ page }) => {
   await page.goto('/#/settings/project/ai-portal');
   await expect(page.getByRole('heading', { name: 'Project settings' })).toBeVisible();
   await expect(page.getByLabel('Name')).toHaveValue('ai-portal');
+  await expect(page.getByLabel('Group').locator('option')).toHaveText(['Work', 'Private', 'New group…']);
+  await page.getByLabel('Group').selectOption('New group…');
+  await page.getByLabel('New group name').fill('Side');
   await expect(page.getByLabel('Show worktree-start as button')).toBeHidden();
   await page.getByText(/shown as buttons/).click();
   await expect(page.getByLabel('Show worktree-start as button')).toBeChecked();
@@ -209,6 +212,7 @@ test('app settings and project settings', async ({ page }) => {
     )
     .toMatchObject({
       name: 'ai-portal',
+      group: 'Side',
       buttons: [
         { skill: '/worktree-start' },
         { skill: '/refine-ticket', label: 'Refine ticket', lockDefaultMode: true },
