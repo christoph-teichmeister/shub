@@ -5,3 +5,4 @@ playwright-report/
 *.log
 launcher/dist/
 .claude/worktrees/
+graft/
