@@ -8,6 +8,8 @@
   interface Props {
     title: string;
     badge?: SidebarSectionContent['badge'];
+    /** Shown instead of `badge` only while collapsed, e.g. sessions that need you in a folded group. */
+    collapsedBadge?: SidebarSectionContent['badge'];
     /** Plugin entries; rendered as small rows (link when `url`, button when `action`). */
     entries?: Entry[];
     onentry?: (entry: Entry) => void;
@@ -15,7 +17,7 @@
     ondrop?: (e: DragEvent) => void;
     children?: Snippet;
   }
-  let { title, badge, entries, onentry, ondrop, children }: Props = $props();
+  let { title, badge, collapsedBadge, entries, onentry, ondrop, children }: Props = $props();
   let over = $state(false);
 
   // Remembered per browser; storage can be missing or throw (private window).
@@ -28,6 +30,7 @@
       collapsed = false;
     }
   });
+  const shown = $derived(collapsed ? (collapsedBadge ?? badge) : badge);
   function toggle() {
     collapsed = !collapsed;
     try {
@@ -52,7 +55,7 @@
       <Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size="xs" weight={2} />
       <span class="grow">{title}</span>
     </button>
-    {#if badge}<StatusBadge text={badge.text} tone={badge.tone} />{/if}
+    {#if shown}<StatusBadge text={shown.text} tone={shown.tone} />{/if}
   </h2>
   {#if entries && !collapsed}
     <ul class="entries">

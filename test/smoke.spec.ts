@@ -147,6 +147,7 @@ test('sidebar groups collapse and stay collapsed after reload', async ({ page })
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await expect(nav.getByRole('link', { name: 'ai-portal' })).toHaveCount(0);
+  await expect(nav.getByRole('region', { name: 'Work' }).getByText('1 needs you')).toBeVisible();
 
   await page.reload();
   await expect(nav.getByRole('button', { name: 'Work' })).toHaveAttribute('aria-expanded', 'false');
