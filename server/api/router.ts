@@ -94,3 +94,12 @@ export function sendJson(res: ServerResponse, status: number, value: unknown): v
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   res.end(body);
 }
+
+export function requireRight(caller: Caller, right: Right): void {
+  if (!caller.rights.includes(right)) throw new HttpError(403, `missing right: ${right}`);
+}
+
+/** Holders of the access token only: the browser user or the CLI with the token file. */
+export function requireUser(caller: Caller): void {
+  if (caller.kind !== 'user' && caller.kind !== 'cli') throw new HttpError(403, 'only the user may do this');
+}
