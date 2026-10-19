@@ -1,0 +1,60 @@
+# Run with prek (https://github.com/j178/prek) or pre-commit: `prek install --install-hooks`.
+# Fast checks on commit, the test suite on push. CI runs the same checks plus the browser smoke test.
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    # https://github.com/pre-commit/pre-commit-hooks/releases
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=600]
+      - id: check-executables-have-shebangs
+      - id: detect-private-key
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    # https://github.com/compilerla/conventional-pre-commit/releases
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+
+  # The project's own tools from node_modules (`npm ci` first), so versions match package-lock.json.
+  - repo: local
+    hooks:
+      # `protect --staged` works with old (apt) and new gitleaks; the official hook needs >= 8.19.
+      - id: gitleaks
+        name: gitleaks (staged secrets)
+        entry: gitleaks protect --staged --redact --no-banner
+        language: system
+        pass_filenames: false
+      - id: prettier
+        name: prettier
+        entry: npx prettier --write --ignore-unknown
+        language: system
+        types: [text]
+      - id: stylelint
+        name: stylelint (tokens only, no raw colours)
+        entry: npx stylelint --fix
+        language: system
+        files: ^web/src/.*\.(css|svelte)$
+      - id: typecheck
+        name: typecheck (tsc + svelte-check)
+        entry: npm run typecheck
+        language: system
+        types_or: [ts, svelte]
+        pass_filenames: false
+      - id: test
+        name: node tests
+        entry: npm test
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

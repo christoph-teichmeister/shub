@@ -60,6 +60,7 @@ npm run web:dev      # Vite dev server, proxies /api to :4780
 npm test             # node:test
 npm run test:smoke   # Playwright
 npm run typecheck && npm run lint
+prek install --install-hooks   # pre-commit hooks (prek or pre-commit), tests on push
 ```
 
 Architecture, the API contract and the style guide: [shared/api.ts](shared/api.ts), [docs/API.md](docs/API.md),
