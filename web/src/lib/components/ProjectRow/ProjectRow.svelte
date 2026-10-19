@@ -16,6 +16,8 @@
     /** Drag and drop to reorder; the parent decides what a drop means. */
     ondragstart?: (e: DragEvent) => void;
     ondrop?: (e: DragEvent) => void;
+    /** Right-click (or the context-menu key) on the row: the view opens the project menu. */
+    onmenu?: (e: MouseEvent) => void;
     /** Session rows under the project. */
     children?: Snippet;
   }
@@ -28,6 +30,7 @@
     onnewsession,
     ondragstart,
     ondrop,
+    onmenu,
     children,
   }: Props = $props();
   const badge = $derived(projectBadge(sessions.map((s) => s.status)));
@@ -43,6 +46,7 @@
     role="group"
     aria-label={project.name}
     {ondragstart}
+    oncontextmenu={onmenu ? (e) => (e.preventDefault(), onmenu(e)) : undefined}
     ondragover={ondrop ? (e) => (e.preventDefault(), e.stopPropagation(), (over = true)) : undefined}
     ondragleave={() => (over = false)}
     ondrop={ondrop ? (e) => (e.stopPropagation(), (over = false), ondrop(e)) : undefined}

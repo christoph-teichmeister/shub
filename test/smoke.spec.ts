@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
-import type { ProjectView, Session } from '../shared/api.ts';
+import type { Approval, ProjectView, Session } from '../shared/api.ts';
+import { contrastRatio } from '../web/src/lib/tokens/contrast.ts';
 
 const project: ProjectView = {
   id: 'ai-portal',
@@ -30,48 +31,89 @@ const session: Session = {
   lastActivityAt: '2026-10-19T14:02:00Z',
 };
 
-const API: Record<string, unknown> = {
-  '/api/config': {
-    version: 1,
-    groups: ['Work'],
-    projects: [project],
-    themes: [],
-    activeTheme: 'monokai',
-    notifications: {},
-    plugins: [],
-  },
-  '/api/projects': [project],
-  '/api/sessions': [session],
-  '/api/approvals': [],
-  '/api/plugins': [],
-  '/api/auth/me': { name: 'Chris' },
-  '/api/sessions/s1/services': [],
+const dormant: ProjectView = {
+  ...project,
+  id: 'street-tours',
+  name: 'street-tours',
+  path: '~/PycharmProjects/private/street-tours',
+  group: 'Private',
+  visibility: 'dormant',
+  buttons: [],
+  resolvedIcon: { kind: 'github', host: 'github.com' },
 };
 
-async function mockApi(page: Page): Promise<string[]> {
+const config = {
+  version: 1,
+  groups: ['Work'],
+  projects: [project, dormant],
+  themes: [],
+  activeTheme: 'monokai',
+  notifications: { desktopNeedsYou: true, pushNeedsYou: true, pushYourTurn: false, noPushWhileDesktopFocused: true },
+  plugins: [],
+};
+
+const API: Record<string, unknown> = {
+  '/api/config': config,
+  '/api/projects': [project, dormant],
+  '/api/sessions': [session],
+  '/api/sessions/restorable': [],
+  '/api/approvals': [],
+  '/api/plugins': [],
+  '/api/auth/me': { caller: { kind: 'user', id: 'user' }, device: null },
+  '/api/devices': [],
+  '/api/sessions/s1/services': [],
+  '/api/projects/ai-portal/old-sessions': [],
+  '/api/projects/street-tours/old-sessions': [],
+  '/api/projects/ai-portal/skills': [
+    { name: 'worktree-start', description: 'Start work on an isolated git worktree', scope: 'global', path: '' },
+    { name: 'refine-ticket', description: 'Interactive refinement of a ticket', scope: 'global', path: '' },
+  ],
+};
+
+type Mock = unknown | { status: number; json: unknown };
+interface Call {
+  method: string;
+  path: string;
+  body: unknown;
+}
+
+/** Mocks /api. `overrides` keys are "METHOD /path" or "/path"; `{status, json}` values set the status. */
+async function mockApi(page: Page, overrides: Record<string, Mock> = {}): Promise<{ errors: string[]; calls: Call[] }> {
   const errors: string[] = [];
+  const calls: Call[] = [];
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) =>
     r.fulfill({ status: 200, contentType: 'text/css', body: '' }),
   );
   await page.route('**/api/**', (r) => {
+    const method = r.request().method();
     const path = new URL(r.request().url()).pathname;
-    if (path in API) return r.fulfill({ json: API[path] });
+    const body = r.request().postDataJSON() as unknown;
+    calls.push({ method, path, body });
+    const table: Record<string, Mock> = { ...API, ...overrides };
+    const key = `${method} ${path}` in table ? `${method} ${path}` : path;
+    if (key in table && (method === 'GET' || key.includes(' '))) {
+      const hit = table[key];
+      if (hit && typeof hit === 'object' && 'status' in hit) return r.fulfill(hit as { status: number; json: unknown });
+      return r.fulfill({ json: hit });
+    }
+    if (method !== 'GET') return r.fulfill({ json: { ok: true } });
     return r.fulfill({ status: 404, json: { error: `no mock for ${path}` } });
   });
   await page.routeWebSocket('**/api/events', (ws) => ws.send(JSON.stringify({ type: 'hello', apiVersion: 1 })));
   await page.routeWebSocket('**/api/terminals/**', (ws) => ws.send('\u001b[32m●\u001b[0m mocked terminal\r\n'));
-  return errors;
+  return { errors, calls };
 }
 
 test('app shell, wordmark and projects render', async ({ page }) => {
-  const errors = await mockApi(page);
+  const { errors } = await mockApi(page);
   await page.goto('/#/');
   const nav = page.getByRole('navigation', { name: 'Projects' });
   await expect(nav).toBeVisible();
   await expect(nav.getByLabel('shub, a session needs you')).toBeVisible();
   await expect(nav.getByRole('link', { name: 'ai-portal' })).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'street-tours' })).toHaveCount(0);
   await expect(nav.getByText('1 needs you')).toBeVisible();
   await expect(page).toHaveTitle('(1) shub');
 
@@ -86,11 +128,149 @@ test('app shell, wordmark and projects render', async ({ page }) => {
 });
 
 test('styleguide renders every section', async ({ page }) => {
-  const errors = await mockApi(page);
+  const { errors } = await mockApi(page);
   await page.goto('/#/styleguide');
   for (const name of ['Brand', 'Tokens', 'Buttons', 'Status', 'Sidebar', 'Tabs', 'Bottom panel'])
     await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
   await page.getByLabel('Theme').selectOption('dracula');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dracula');
   expect(errors).toEqual([]);
+});
+
+test('login on 401 and phone pairing', async ({ page }) => {
+  const { errors, calls } = await mockApi(page, { '/api/config': { status: 401, json: { error: 'login required' } } });
+  await page.goto('/#/');
+  await expect(page.getByText('your session hub')).toBeVisible();
+  await page.getByLabel('Access token').fill('secret');
+  await expect(page.getByLabel('Remember this device for 30 days')).toBeChecked();
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect.poll(() => calls.find((c) => c.path === '/api/auth/login')?.body).toMatchObject({ token: 'secret' });
+
+  await page.goto('/pair/abc123');
+  await page.getByLabel('Device name').fill('Pixel');
+  await page.getByRole('button', { name: 'Pair this phone' }).click();
+  await expect(page.getByText('This phone is signed in as Pixel.')).toBeVisible();
+  expect(calls.find((c) => c.path === '/api/auth/pairing/redeem')?.body).toEqual({
+    code: 'abc123',
+    deviceName: 'Pixel',
+  });
+  expect(errors.filter((e) => !e.includes('401'))).toEqual([]);
+});
+
+test('app settings and project settings', async ({ page }) => {
+  const { errors, calls } = await mockApi(page, { 'PATCH /api/settings': { ...config, activeTheme: 'dracula' } });
+  await page.goto('/#/settings');
+  await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible();
+  await page
+    .getByRole('group', { name: 'Theme' })
+    .getByRole('button', { name: /Dracula/ })
+    .click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dracula');
+  expect(calls.find((c) => c.method === 'PATCH' && c.path === '/api/settings')?.body).toEqual({
+    activeTheme: 'dracula',
+  });
+  await expect(page.getByLabel('Phone push: when a session needs me')).toBeChecked();
+
+  await page.goto('/#/settings/project/ai-portal');
+  await expect(page.getByRole('heading', { name: 'Project settings' })).toBeVisible();
+  await expect(page.getByLabel('Name')).toHaveValue('ai-portal');
+  await expect(page.getByLabel('Show worktree-start as button')).toBeChecked();
+  await page.getByLabel('Show refine-ticket as button').check();
+  await page.getByLabel('Permission mode for refine-ticket').selectOption('locked');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect
+    .poll(
+      () =>
+        (calls.find((c) => c.method === 'PATCH') && calls.filter((c) => c.method === 'PATCH').at(-1)?.body) as {
+          buttons?: unknown[];
+        },
+    )
+    .toMatchObject({
+      name: 'ai-portal',
+      buttons: [
+        { skill: '/worktree-start' },
+        { skill: '/refine-ticket', label: 'Refine ticket', lockDefaultMode: true },
+      ],
+    });
+  expect(errors).toEqual([]);
+});
+
+test('approval dialog and search', async ({ page }) => {
+  const approval: Approval = {
+    id: 'a1',
+    requestedBy: 'session:s1',
+    action: 'session.start',
+    projectId: 'ai-portal',
+    summary: 'Start a session in ai-portal (free prompt)',
+    detail: 'Add this line to ~/.zshrc',
+    createdAt: '2026-10-19T14:02:00Z',
+    state: 'pending',
+  };
+  const { errors, calls } = await mockApi(page, {
+    '/api/approvals': [approval],
+    'POST /api/approvals/a1': { ...approval, state: 'rejected' },
+  });
+  await page.goto('/#/');
+  const dialog = page.getByRole('dialog', { name: 'A session wants to start a new session' });
+  await expect(dialog.getByText('Add this line to ~/.zshrc')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Reject' }).click();
+  await expect(dialog).toBeHidden();
+  expect(calls.find((c) => c.path === '/api/approvals/a1')?.body).toEqual({ approve: false });
+
+  await page.keyboard.press('Alt+KeyK');
+  const search = page.getByRole('dialog', { name: 'Search projects and sessions' });
+  await expect(search.getByRole('option', { name: /street-tours/ })).toBeVisible();
+  await page.keyboard.type('portal');
+  await expect(search.getByText('Pinned')).toBeVisible();
+  await expect(search.getByRole('option', { name: /ai-portal/ })).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(search).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'ai-portal', level: 1 })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('first run import screen', async ({ page }) => {
+  const { errors } = await mockApi(page, {
+    '/api/projects': [],
+    '/api/projects/import': [
+      {
+        path: '/home/me/dotfiles',
+        name: 'dotfiles',
+        sessions: 96,
+        lastUsedAt: new Date().toISOString(),
+        suggested: 'pinned',
+        resolvedIcon: { kind: 'github' },
+      },
+    ],
+  });
+  await page.goto('/#/');
+  await expect(page.getByRole('heading', { name: 'Pick your projects' })).toBeVisible();
+  await expect(page.getByLabel('Add dotfiles')).toBeChecked();
+  await expect(page.getByRole('button', { name: 'Add 1 project' })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
+test('phone overview answers a permission', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const asking = { ...session, pendingPermission: { tool: 'Bash', summary: 'pytest core/tests' } };
+  const { errors, calls } = await mockApi(page, { '/api/sessions': [asking] });
+  await page.goto('/#/');
+  await expect(page.getByRole('heading', { name: 'Needs you · 1' })).toBeVisible();
+  await page.getByRole('button', { name: 'Yes', exact: true }).click();
+  await expect.poll(() => calls.find((c) => c.path === '/api/sessions/s1/keys')?.body).toEqual({ keys: ['1'] });
+  await page.getByRole('link', { name: 'Open', exact: true }).click();
+  await expect(page.getByRole('group', { name: 'Quick keys' })).toBeVisible();
+  await page.getByLabel('Message to Claude').fill('go on');
+  await page.getByLabel('Message to Claude').press('Enter');
+  await expect
+    .poll(() => calls.filter((c) => c.path === '/api/sessions/s1/keys').at(-1)?.body)
+    .toEqual({ keys: ['go on', 'Enter'] });
+  expect(errors).toEqual([]);
+});
+
+test('contrast ratio follows WCAG', () => {
+  expect(contrastRatio('#000', '#fff')).toBeCloseTo(21, 1);
+  expect(contrastRatio('#f8f8f2', '#272822')!).toBeGreaterThan(4.5);
+  expect(contrastRatio('#777777', '#ffffff')!).toBeCloseTo(4.48, 1);
+  expect(contrastRatio('var(--x)', '#fff')).toBeNull();
 });

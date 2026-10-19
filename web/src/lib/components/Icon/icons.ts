@@ -9,6 +9,9 @@ export const ICONS = {
   check: { d: 'M3 8.5l3.2 3L13 4.5' },
   'chevron-down': { d: 'M4 6l4 4 4-4' },
   'chevron-right': { d: 'M6 4l4 4-4 4' },
+  'chevron-left': { d: 'M10 4L6 8l4 4' },
+  upload: { d: 'M8 11V3M4.5 6.5L8 3l3.5 3.5M3 13h10' },
+  send: { d: 'M2.5 8h10M9 4.5 12.5 8 9 11.5' },
   split: {
     d: 'M3 2.5h10A1.5 1.5 0 0 1 14.5 4v8a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 12V4A1.5 1.5 0 0 1 3 2.5zM8 2.5v11',
   },

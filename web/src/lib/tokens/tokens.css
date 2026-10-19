@@ -31,6 +31,7 @@
   --brand-gitlab: #fc6d26;
   --brand-github: #f8f8f2;
   --brand-on-tile: #1e1f1c;
+  --qr-paper: #fff;
   --svc-python: #3776ab;
   --svc-python-fg: #ffe873;
   --svc-postgres: #336791;
@@ -86,6 +87,15 @@
   --size-panel: 330px;
   --size-menu: 280px;
   --size-dialog: 560px;
+  --size-drawer: 640px;
+  --size-page: 760px;
+  --size-column: 320px;
+  --size-preview: 360px;
+  --size-preview-side: 160px;
+  --size-page-wide: 1120px;
+  --size-login: 380px;
+  --size-qr: 168px;
+  --size-phone-key: 56px;
   --size-rename: 150px;
   --size-toast: 360px;
 

@@ -9,8 +9,10 @@
     onclose: () => void;
     children?: Snippet;
     actions?: Snippet;
+    /** `needs-you` draws the orange frame (approvals: a decision waits on you). */
+    tone?: 'default' | 'needs-you';
   }
-  let { open, title, description, onclose, children, actions }: Props = $props();
+  let { open, title, description, onclose, children, actions, tone = 'default' }: Props = $props();
   let dialog = $state<HTMLDialogElement>();
   const id = `dialog-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -23,7 +25,7 @@
 
 <dialog
   bind:this={dialog}
-  class="dialog"
+  class="dialog {tone}"
   aria-labelledby="{id}-title"
   onclose={() => open && onclose()}
   onclick={(e) => e.target === dialog && onclose()}
@@ -50,6 +52,10 @@
     background: var(--panel);
     color: var(--fg);
     box-shadow: 0 var(--space-6) var(--space-12) var(--shadow);
+  }
+
+  .needs-you {
+    border: var(--ring) solid var(--status-needs-you);
   }
 
   .dialog::backdrop {

@@ -2,6 +2,7 @@
   import type { ResolvedIcon } from '../../../../../shared/api.ts';
   import Icon from '../Icon/Icon.svelte';
   import { isIconName } from '../Icon/icons.ts';
+  import { LOGOS } from './logos.ts';
 
   interface Props {
     icon: ResolvedIcon;
@@ -23,8 +24,9 @@
 </script>
 
 <span class="tile {size} {icon.kind}" {title} style:--tile={icon.kind === 'symbol' ? icon.color : undefined}>
-  {#if icon.kind === 'github'}GH
-  {:else if icon.kind === 'gitlab'}GL
+  {#if icon.kind === 'github' || icon.kind === 'gitlab'}<svg class="logo" viewBox="0 0 24 24" aria-hidden="true"
+      ><path d={LOGOS[icon.kind]} /></svg
+    >
   {:else if icon.kind === 'image' && icon.path}<img src={icon.path} alt="" />
   {:else if icon.kind === 'symbol' && icon.symbol && isIconName(icon.symbol)}<Icon
       name={icon.symbol}
@@ -79,6 +81,12 @@
 
   .none {
     color: var(--fg);
+  }
+
+  .logo {
+    width: 70%;
+    height: 70%;
+    fill: currentcolor;
   }
 
   img {

@@ -11,5 +11,6 @@ export const SHORTCUTS: [string, string[]][] = [
   ["Plain terminal in this session's folder", ['Alt T']],
   ['Rename session', ['Alt R']],
   ['Close session', ['Alt W']],
+  ['In search: new session / pin the project', ['Alt Enter', 'Alt P']],
   ['This overview', ['Alt ?']],
 ];

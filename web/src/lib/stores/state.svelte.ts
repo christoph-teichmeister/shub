@@ -2,14 +2,18 @@
 import type {
   Approval,
   Config,
+  Device,
   PluginInfo,
   ProjectView,
   ServerEvent,
   Session,
   SessionStatus,
+  StartSessionRequest,
 } from '../../../../shared/api.ts';
 import { applyTheme, findTheme } from '../tokens/tokens.ts';
 import { api, ApiError, wsUrl } from './api.ts';
+import { href } from './router.svelte.ts';
+import { toast, toastError } from './toasts.svelte.ts';
 
 export const app = $state({
   ready: false,
@@ -21,12 +25,40 @@ export const app = $state({
   sessions: [] as Session[],
   approvals: [] as Approval[],
   plugins: [] as PluginInfo[],
-  me: null as { name?: string } | null,
+  /** GET /api/auth/me: `{caller, device}`; `name` if the server ever sends one. */
+  me: null as { name?: string; caller?: { kind: string; id: string }; device?: Device | null } | null,
   /** Bumped per session on services.changed so views can refetch. */
   servicesVersion: {} as Record<string, number>,
   /** Bumped whenever the theme is re-applied (canvas consumers re-read tokens). */
   themeVersion: 0,
 });
+
+/** Overlays that any view can open (search, drawer, shortcuts) and the phone layout switch. */
+export const ui = $state({
+  search: false,
+  drawer: false,
+  shortcuts: false,
+  phone: matchMedia('(max-width: 699px)').matches,
+});
+matchMedia('(max-width: 699px)').addEventListener('change', (e) => (ui.phone = e.matches));
+
+export const sessionHref = (s: Session) => (s.projectId ? href('p', s.projectId, s.id) : href('g'));
+
+/** Starts a session; an approval answer only toasts (the approval dialog takes over). */
+export async function startSession(req: StartSessionRequest): Promise<Session | undefined> {
+  const res = await api<Session | { approval: Approval }>('sessionStart', { body: req }).catch(toastError);
+  if (!res) return;
+  if ('approval' in res) {
+    toast(`Waiting for your approval: ${res.approval.summary}`, 'needs-you');
+    return;
+  }
+  if (!app.sessions.some((s) => s.id === res.id)) app.sessions.push(res);
+  return res;
+}
+
+/** Sends tmux keys: named keys (Escape, C-c, Up, Down, Tab, Enter) or literal text. */
+export const sendKeys = (id: string, keys: string[]) =>
+  api('sessionKeys', { params: { id }, body: { keys } }).catch(toastError);
 
 export const needsYouCount = (sessions: Session[] = app.sessions): number =>
   sessions.filter((s) => s.status === 'needs-you').length;

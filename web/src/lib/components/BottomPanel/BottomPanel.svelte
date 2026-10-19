@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tabKeys } from '../../tabKeys.ts';
   import type { Snippet } from 'svelte';
   import IconButton from '../IconButton/IconButton.svelte';
 
@@ -18,10 +19,15 @@
 
 <section class="panel" aria-label="Bottom panel">
   <div class="bar">
-    <div class="tabs" role="tablist" aria-label="Bottom panel">
+    <div class="tabs" role="tablist" tabindex="-1" aria-label="Bottom panel" onkeydown={tabKeys}>
       {#each tabs as tab (tab.id)}
-        <button type="button" role="tab" class="tab" aria-selected={tab.id === active} onclick={() => onselect(tab.id)}
-          >{tab.label}</button
+        <button
+          type="button"
+          role="tab"
+          class="tab"
+          aria-selected={tab.id === active}
+          tabindex={tab.id === active ? 0 : -1}
+          onclick={() => onselect(tab.id)}>{tab.label}</button
         >
       {/each}
       {#if onnew}<IconButton

@@ -1,6 +1,10 @@
-// Hash router: #/, #/g, #/p/<projectId>[/<sessionId>], #/styleguide, #/settings/...
+// Hash router: #/, #/g, #/p/<projectId>[/<sessionId>], #/styleguide, #/login, #/settings/...
+// Plus one path route: /pair/<code> (the phone opens the QR link; the server serves index.html for it).
+// Settings: #/settings, #/settings/project/<id|new>, #/settings/theme/<id|new>, #/settings/import.
 export type Route =
   | { name: 'home' }
+  | { name: 'login' }
+  | { name: 'pair'; code: string }
   | { name: 'global' }
   | { name: 'project'; projectId: string; sessionId: string | null }
   | { name: 'styleguide' }
@@ -15,6 +19,8 @@ export function parseHash(hash: string): Route {
       return parts[1] ? { name: 'project', projectId: parts[1], sessionId: parts[2] ?? null } : { name: 'home' };
     case 'styleguide':
       return { name: 'styleguide' };
+    case 'login':
+      return { name: 'login' };
     case 'settings':
       return { name: 'settings', rest: parts.slice(1) };
     default:
@@ -22,9 +28,14 @@ export function parseHash(hash: string): Route {
   }
 }
 
-export const router = $state({ route: parseHash(location.hash) });
+function current(): Route {
+  const pair = /^\/pair\/([^/]+)\/?$/.exec(location.pathname);
+  return pair ? { name: 'pair', code: decodeURIComponent(pair[1]) } : parseHash(location.hash);
+}
 
-window.addEventListener('hashchange', () => (router.route = parseHash(location.hash)));
+export const router = $state({ route: current() });
+
+window.addEventListener('hashchange', () => (router.route = current()));
 
 export function href(...parts: (string | null | undefined)[]): string {
   return (

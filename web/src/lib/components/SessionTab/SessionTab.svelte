@@ -61,6 +61,7 @@
       role="tab"
       class="label"
       aria-selected={selected}
+      tabindex={selected ? 0 : -1}
       aria-describedby="status-{session.id}"
       onclick={onselect}
       ondblclick={() => (renaming = true)}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { tabKeys } from '../../tabKeys.ts';
 
   interface Props {
     label: string;
@@ -11,7 +12,7 @@
 </script>
 
 <div class="bar">
-  <div class="tabs" role="tablist" aria-label={label}>{@render children()}</div>
+  <div class="tabs" role="tablist" tabindex="-1" aria-label={label} onkeydown={tabKeys}>{@render children()}</div>
   {#if trailing}{@render trailing()}{/if}
 </div>
 

@@ -54,7 +54,9 @@ UI: IBM Plex Sans (`--font-ui`); wordmark, paths, ports, terminal: JetBrains Mon
 - Real `<button>`, `<a>` and `<label>` elements; icon-only buttons go through `IconButton`, which requires a `label` (aria-label + tooltip).
 - Focus ring: `:focus-visible` with `--ring` in `--primary` (global in `tokens.css`); do not remove outlines without a visible replacement.
 - Text contrast at least 4.5:1 in every built-in theme. `muted` passes on `bg` and `panel` but not on `raised`: use `fg-2` for small text on hovered or selected rows.
-- Shortcuts are all on Alt and handled by one capture-phase `keydown` listener on `window` in `views/Main.svelte`. Never bind Ctrl keys: they belong to Claude Code and the shell in the terminal.
+- Shortcuts are all on Alt and handled by one capture-phase `keydown` listener on `window` in `views/Main.svelte` (inside the search overlay, `Alt Enter` and `Alt P` are handled by its input). Never bind Ctrl keys: they belong to Claude Code and the shell in the terminal.
+- Tab lists (`role="tablist"`) move with Left / Right / Home / End via `lib/tabKeys.ts`; only the selected tab is in the Tab order.
+- Form controls come from `TextField`, `SelectField`, `Checkbox` and `ChoiceButton`, which always render a label (`hideLabel` keeps it for screen readers in table rows).
 
 ## Icons
 

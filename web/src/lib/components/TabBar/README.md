@@ -1,6 +1,6 @@
 # TabBar
 
-Row of session tabs (`role="tablist"`). Put `SessionTab`s in `children`, the "+" button in `trailing`.
+Row of session tabs (`role="tablist"`). Put `SessionTab`s in `children`, the "+" button in `trailing`. Left / Right / Home / End move between tabs and select them (`lib/tabKeys.ts`).
 
 | Prop       | Type                                 |
 | ---------- | ------------------------------------ |

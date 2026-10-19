@@ -1,6 +1,6 @@
 # SessionTab
 
-One session in the tab bar: status mark, name (`role="tab"`), first link as a chip, close button. Double-click (or Alt R from the view) renames in place; Enter saves, Escape cancels. Right-click opens the session menu.
+One session in the tab bar: status mark, name (`role="tab"`, only the selected one is in the Tab order; arrows move along the `TabBar`), first link as a chip, close button. Double-click (or Alt R from the view) renames in place; Enter saves, Escape cancels. Right-click opens the session menu.
 
 | Prop       | Type                      | Notes                    |
 | ---------- | ------------------------- | ------------------------ |

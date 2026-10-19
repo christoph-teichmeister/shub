@@ -10,12 +10,23 @@
     icon?: IconName;
     /** Toggle buttons: sets aria-pressed and the pressed look. */
     pressed?: boolean;
+    /** Full width, centred label (login form, phone actions). */
+    block?: boolean;
     children: Snippet;
   }
-  let { variant = 'secondary', size = 'md', icon, pressed, children, type = 'button', ...rest }: Props = $props();
+  let {
+    variant = 'secondary',
+    size = 'md',
+    icon,
+    pressed,
+    block = false,
+    children,
+    type = 'button',
+    ...rest
+  }: Props = $props();
 </script>
 
-<button {type} class="button {variant} {size}" class:pressed aria-pressed={pressed} {...rest}>
+<button {type} class="button {variant} {size}" class:pressed class:block aria-pressed={pressed} {...rest}>
   {#if icon}<Icon name={icon} />{/if}
   {@render children()}
 </button>
@@ -77,7 +88,15 @@
   }
 
   .danger {
+    border-color: var(--danger);
+    background: transparent;
     color: var(--danger);
+    font-weight: var(--weight-semibold);
+  }
+
+  .block {
+    width: 100%;
+    justify-content: center;
   }
 
   .pressed {

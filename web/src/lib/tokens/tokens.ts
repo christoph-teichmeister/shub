@@ -121,6 +121,15 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
 
 export const DEFAULT_THEME_ID = 'monokai';
 
+/** Colours offered for project symbols (stored as hex in the project). Never orange: that means "needs you". */
+export const PROJECT_COLORS = [
+  { name: 'Yellow', value: '#e6db74' },
+  { name: 'Green', value: '#a6e22e' },
+  { name: 'Blue', value: '#66d9ef' },
+  { name: 'Purple', value: '#ae81ff' },
+  { name: 'Pink', value: '#f92672' },
+] as const;
+
 const isToken = (name: string): name is TokenName => (TOKEN_NAMES as readonly string[]).includes(name);
 
 /** Full token set for a theme: built-in base (or Monokai), then the theme's own tokens, then overrides. */

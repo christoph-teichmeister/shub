@@ -2,6 +2,12 @@
   import { onMount, untrack } from 'svelte';
   import BottomPanel from '../components/BottomPanel/BottomPanel.svelte';
   import Button from '../components/Button/Button.svelte';
+  import Checkbox from '../components/Checkbox/Checkbox.svelte';
+  import ChoiceButton from '../components/ChoiceButton/ChoiceButton.svelte';
+  import Drawer from '../components/Drawer/Drawer.svelte';
+  import Section from '../components/Section/Section.svelte';
+  import SelectField from '../components/SelectField/SelectField.svelte';
+  import TextField from '../components/TextField/TextField.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
   import EmptyState from '../components/EmptyState/EmptyState.svelte';
   import Icon from '../components/Icon/Icon.svelte';
@@ -24,7 +30,7 @@
   import Toast from '../components/Toast/Toast.svelte';
   import Wordmark from '../components/Wordmark/Wordmark.svelte';
   import { app } from '../stores/state.svelte.ts';
-  import { applyTheme, BUILT_IN_THEMES, TOKEN_NAMES } from '../tokens/tokens.ts';
+  import { applyTheme, BUILT_IN_THEMES, PROJECT_COLORS, TOKEN_NAMES } from '../tokens/tokens.ts';
   import { CONTAINERS, LOG, PROJECTS, SESSIONS } from './fixtures.ts';
 
   const STATUSES = ['needs-you', 'working', 'your-turn', 'paused', 'exited'] as const;
@@ -32,6 +38,12 @@
 
   let themeId = $state(document.documentElement.dataset.theme ?? 'monokai');
   let dialogOpen = $state(false);
+  let drawerOpen = $state(false);
+  let approvalOpen = $state(false);
+  let text = $state('ai-portal');
+  let select = $state('text');
+  let checked = $state(true);
+  let choice = $state('pinned');
   let renaming = $state(false);
   let panelTab = $state('services');
   let liveId = $state('');
@@ -57,6 +69,8 @@
     'Sidebar',
     'Tabs',
     'Menu and dialog',
+    'Forms',
+    'Drawer',
     'Toast',
     'Empty state',
     'Split view',
@@ -237,6 +251,74 @@
       <div class="row"><Button size="sm" onclick={() => (renaming = true)}>Rename the third tab</Button></div>
     </section>
 
+    <section id="forms" aria-labelledby="h-forms">
+      <h2 id="h-forms">Forms</h2>
+      <div class="row wrap end">
+        <TextField label="Name" bind:value={text} />
+        <TextField label="Folder" value="~/PycharmProjects/work/ai-portal" mono hint="Sessions start here." />
+        <TextField label="Access token" value="" type="password" error="Wrong token" />
+        <TextField label="Disabled" value="read only" disabled />
+      </div>
+      <div class="row wrap end">
+        <TextField label="Prompt" value={'Review {input}'} rows={3} />
+        <SelectField
+          label="Asks for"
+          bind:value={select}
+          options={[
+            { value: 'nothing', label: 'Nothing' },
+            { value: 'text', label: 'Text' },
+          ]}
+          hint="What the button asks before it starts."
+        />
+        <SelectField
+          label="In a table"
+          hideLabel
+          size="sm"
+          value="default"
+          options={[{ value: 'default', label: 'Default' }]}
+        />
+      </div>
+      <div class="row wrap">
+        <Checkbox label="Remember this device for 30 days" bind:checked />
+        <Checkbox label="Unchecked" checked={false} />
+        <Checkbox label="Phone push" hint="When a session needs me" checked />
+        <Checkbox label="Disabled" checked disabled />
+      </div>
+      <div class="row wrap" role="group" aria-label="Choices">
+        <ChoiceButton pressed={choice === 'pinned'} onclick={() => (choice = 'pinned')}>Pinned in sidebar</ChoiceButton>
+        <ChoiceButton pressed={choice === 'dormant'} onclick={() => (choice = 'dormant')}
+          >Dormant (search only)</ChoiceButton
+        >
+        <ChoiceButton shape="card" pressed>Monokai</ChoiceButton>
+        <ChoiceButton shape="card" pressed={false}>Dracula</ChoiceButton>
+        <ChoiceButton shape="square" aria-label="Home symbol" pressed><Icon name="home" /></ChoiceButton>
+        <ChoiceButton shape="square" aria-label="Book symbol" pressed={false}><Icon name="book" /></ChoiceButton>
+        {#each PROJECT_COLORS as c, i (c.value)}
+          <ChoiceButton shape="swatch" swatch={c.value} aria-label={c.name} pressed={i === 0} />
+        {/each}
+      </div>
+      <Section title="Section title" description="One muted line under the title.">
+        {#snippet aside()}<code>shub plugin add &lt;git-url&gt;</code>{/snippet}
+        <p class="note">Section content.</p>
+      </Section>
+    </section>
+
+    <section id="drawer" aria-labelledby="h-drawer">
+      <h2 id="h-drawer">Drawer</h2>
+      <div class="row"><Button onclick={() => (drawerOpen = true)}>Open drawer</Button></div>
+      <Drawer
+        open={drawerOpen}
+        title="Global Claude"
+        subtitle="Not tied to a project"
+        closeLabel="Close drawer"
+        onclose={() => (drawerOpen = false)}
+      >
+        {#snippet actions()}<Button size="sm">New chat</Button>{/snippet}
+        <EmptyState title="Drawer body" body="Fills the height." />
+        {#snippet footer()}A muted note at the bottom.{/snippet}
+      </Drawer>
+    </section>
+
     <section id="menu-and-dialog" aria-labelledby="h-menu">
       <h2 id="h-menu">Menu and dialog</h2>
       <div class="row wrap start">
@@ -273,6 +355,19 @@
         {#snippet actions()}
           <Button variant="ghost" onclick={() => (dialogOpen = false)}>Cancel</Button>
           <Button variant="danger" onclick={() => (dialogOpen = false)}>Close</Button>
+        {/snippet}
+      </Dialog>
+      <Button onclick={() => (approvalOpen = true)}>Approval dialog</Button>
+      <Dialog
+        open={approvalOpen}
+        tone="needs-you"
+        title="A session wants to start a new session"
+        description="Free-form prompt, so shub asks you first"
+        onclose={() => (approvalOpen = false)}
+      >
+        {#snippet actions()}
+          <Button variant="danger" onclick={() => (approvalOpen = false)}>Reject</Button>
+          <Button onclick={() => (approvalOpen = false)}>Start</Button>
         {/snippet}
       </Dialog>
     </section>

@@ -1,6 +1,6 @@
 # ProjectIcon
 
-Square tile for a project: GitHub / GitLab letter tiles (auto-detected from the git remote), a symbol icon on the project colour, an image, or the first letter.
+Square tile for a project: the GitHub mark or GitLab tanuki (Simple Icons, CC0, in `logos.ts`; auto-detected from the git remote), a symbol icon on the project colour, an image, or the first letter.
 
 | Prop   | Type                   | Default | Notes                                  |
 | ------ | ---------------------- | ------- | -------------------------------------- |
