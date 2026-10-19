@@ -7,6 +7,7 @@ import {
   type Approval,
   type ButtonDef,
   type Config,
+  type MainCheckout,
   type Project,
   type ProjectIcon,
   type ThemeDef,
@@ -18,6 +19,7 @@ import type { ShubModule } from '../module.ts';
 import { HttpError, requireRight, requireUser, type Caller, type Request, type Router } from '../api/router.ts';
 import type { PermissionAction, Services } from '../services.ts';
 import { importCandidates } from './import.ts';
+import { updateMainCheckout } from './main-checkout.ts';
 import { listWorktrees } from './worktrees.ts';
 import { isLaunchPermissionMode } from '../sessions/launch.ts';
 
@@ -99,6 +101,14 @@ function buttons(value: unknown): ButtonDef[] {
   });
 }
 
+function mainCheckout(value: unknown): MainCheckout | undefined {
+  if (value === null) return undefined;
+  const v = value as MainCheckout;
+  const minutes = v?.updateMinutes;
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440) bad('mainCheckout.updateMinutes must be 0 to 1440');
+  return { branch: str(v.branch, 'mainCheckout.branch', 200), updateMinutes: minutes };
+}
+
 function slug(name: string, taken: Set<string>): string {
   const base =
     name
@@ -127,6 +137,8 @@ function parseProject(body: ProjectInput, partial: boolean): ProjectInput {
   }
   if (body.icon !== undefined) out.icon = icon(body.icon);
   if (body.buttons !== undefined) out.buttons = buttons(body.buttons);
+  // null switches the protection off; Object.assign then leaves `mainCheckout: undefined`, which JSON drops.
+  if (body.mainCheckout !== undefined) out.mainCheckout = mainCheckout(body.mainCheckout);
   return out;
 }
 
@@ -175,6 +187,7 @@ function projectRoutes(services: Services, router: Router): void {
             order,
             icon: input.icon ?? { kind: 'auto' },
             buttons: input.buttons ?? [],
+            ...(input.mainCheckout && { mainCheckout: input.mainCheckout }),
           });
           addGroup(c, input.group ?? '');
         }, req.caller.id);
@@ -321,7 +334,35 @@ function settingsRoutes(services: Services, router: Router): void {
   });
 }
 
+/** Every minute: update each protected main checkout whose interval is over (one git run per project at a time). */
+function mainCheckoutUpdates(services: Services): { start(): void; stop(): void } {
+  const last = new Map<string, number>();
+  const busy = new Set<string>();
+  const tick = () => {
+    for (const p of services.config.get().projects) {
+      const minutes = p.mainCheckout?.updateMinutes ?? 0;
+      if (!minutes || busy.has(p.id) || Date.now() - (last.get(p.id) ?? 0) < minutes * 60_000) continue;
+      busy.add(p.id);
+      last.set(p.id, Date.now());
+      updateMainCheckout(p.path, p.mainCheckout!.branch)
+        .then((result) => result.includes('instead of') && console.warn(`shub: ${p.name} main checkout ${result}`))
+        .catch((err: Error) => console.error(`shub: updating ${p.name} main checkout failed:`, err.message))
+        .finally(() => busy.delete(p.id));
+    }
+  };
+  let timer: ReturnType<typeof setInterval> | undefined;
+  return {
+    start() {
+      tick();
+      timer = setInterval(tick, 60_000);
+      timer.unref();
+    },
+    stop: () => clearInterval(timer),
+  };
+}
+
 export function create(_ctx: Context, services: Services): { module: ShubModule } {
+  const updates = mainCheckoutUpdates(services);
   return {
     module: {
       name: 'projects',
@@ -329,6 +370,8 @@ export function create(_ctx: Context, services: Services): { module: ShubModule 
         projectRoutes(services, router);
         settingsRoutes(services, router);
       },
+      start: updates.start,
+      stop: updates.stop,
     },
   };
 }

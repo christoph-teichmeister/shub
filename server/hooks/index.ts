@@ -5,6 +5,8 @@ import { HttpError } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
+import { guard, type GuardInput } from '../projects/main-checkout.ts';
+import { listWorktrees } from '../projects/worktrees.ts';
 import { isPermissionMode } from '../sessions/launch.ts';
 import { HOOK_EVENTS, isHookEvent, newClaudeSessionId, transition } from './transition.ts';
 
@@ -16,12 +18,20 @@ const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
  */
 export function hookSettings(appDir: string, stateDir: string): object {
   const script = shellQuote(join(appDir, 'server', 'hooks', 'report.sh'));
-  const hooks = Object.fromEntries(
+  const hooks: Record<string, object[]> = Object.fromEntries(
     HOOK_EVENTS.map((event) => [
       event,
       [{ hooks: [{ type: 'command', command: `sh ${script} ${event}`, timeout: 5 }] }],
     ]),
   );
+  // Asks shub on every call, so a main checkout protected after the session started is covered too.
+  const guard = shellQuote(join(appDir, 'server', 'hooks', 'guard.sh'));
+  hooks.PreToolUse = [
+    {
+      matcher: 'Bash|Edit|Write|MultiEdit|NotebookEdit',
+      hooks: [{ type: 'command', command: `sh ${guard}`, timeout: 5 }],
+    },
+  ];
   // "//" marks an absolute path in Claude's permission rules. Reading stays allowed for the rest of
   // stateDir, because pasted images live in <stateDir>/pastes and Claude reads them from there.
   const dir = `/${stateDir.replace(/\/+$/, '')}`;
@@ -38,6 +48,24 @@ export function create(_ctx: Context, services: Services): { module: ShubModule 
     module: {
       name: 'hooks',
       routes(router) {
+        router.add(ROUTES.guard, async (req) => {
+          const sessionId = /^session:(.+)$/.exec(req.caller.id)?.[1];
+          const session = sessionId ? services.sessions.get(sessionId) : undefined;
+          if (!session) throw new HttpError(403, 'the guard only answers shub sessions');
+          const project = session.projectId ? services.config.project(session.projectId) : undefined;
+          if (!project?.mainCheckout) return {};
+          const input = await req.json<GuardInput>();
+          const trees = (await listWorktrees(project.path)).map((w) => w.path);
+          const reason = guard(project.path, trees, project.mainCheckout.branch, input);
+          if (!reason) return {};
+          return {
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse',
+              permissionDecision: 'deny',
+              permissionDecisionReason: reason,
+            },
+          };
+        });
         router.add(ROUTES.hook, async (req) => {
           const sessionId = /^session:(.+)$/.exec(req.caller.id)?.[1];
           const session = sessionId ? services.sessions.get(sessionId) : undefined;
