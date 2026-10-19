@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["server", "shared", "cli", "examples", "test"]
+  "include": ["server", "shared", "cli", "examples", "test", "launcher/src", "launcher/test"]
 }

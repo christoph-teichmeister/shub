@@ -3,3 +3,5 @@ web/dist/
 test-results/
 playwright-report/
 *.log
+launcher/dist/
+.claude/worktrees/

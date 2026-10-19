@@ -1,0 +1,32 @@
+{
+  "name": "@christoph-teichmeister/shub",
+  "version": "1.0.0",
+  "description": "Launcher for shub, your session hub: installs, updates and starts signed shub releases.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/christoph-teichmeister/shub.git",
+    "directory": "launcher"
+  },
+  "bin": {
+    "shub": "dist/shub.js"
+  },
+  "files": [
+    "dist",
+    "release-keys.pem"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "os": [
+    "linux",
+    "darwin"
+  ]
+}
