@@ -1,6 +1,6 @@
 // Session records in sqlite plus their tmux sessions. One tmux session `shub-<id>` per shub session.
 import { randomUUID } from 'node:crypto';
-import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -370,7 +370,11 @@ export class SessionsService implements Sessions {
   resume(id: string, actor: string): Session {
     const session = this.require(id);
     if (this.#tmux.has(tmuxName(id))) throw new HttpError(409, 'session is already running');
-    this.#launch(this.#row(id)!, { resume: session.kind !== 'shell' });
+    // A conversation without a prompt has no transcript, and `claude --resume` would exit at once: start it fresh.
+    const transcript =
+      session.claudeSessionId &&
+      join(claudeDir(), 'projects', encodeCwd(session.cwd), `${session.claudeSessionId}.jsonl`);
+    this.#launch(this.#row(id)!, { resume: !!transcript && existsSync(transcript) });
     this.#restorable.delete(id);
     this.setStatus(id, 'your-turn', null);
     this.#services.permissions.log({ actor, action: 'session.resume', detail: `${id}: ${session.name}` });

@@ -16,6 +16,8 @@ Environment=NODE_ENV=production
 # Environment=SHUB_PUBLIC_URL=https://<machine>.<tailnet>.ts.net
 Restart=on-failure
 RestartSec=3
+# Sessions live in shub's tmux server, a child of this unit: keep it alive across restarts.
+KillMode=process
 
 [Install]
 WantedBy=default.target

@@ -150,10 +150,23 @@ test('pause and resume', async () => {
   svc.pause(s.id, 'chris');
   assert.equal(svc.get(s.id)?.status, 'paused');
   assert.ok(!svc.tmux.has(tmuxName(s.id)));
-  svc.resume(s.id, 'chris');
-  assert.equal(launches.at(-1)?.resume, true);
-  assert.equal(launches.at(-1)?.claudeSessionId, s.claudeSessionId);
-  assert.ok(svc.tmux.has(tmuxName(s.id)));
+  const before = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = join(root, 'claude-resume');
+  try {
+    svc.resume(s.id, 'chris');
+    assert.equal(launches.at(-1)?.resume, false, 'no transcript yet: starts fresh with the same id');
+    assert.equal(launches.at(-1)?.claudeSessionId, s.claudeSessionId);
+    const dir = join(root, 'claude-resume', 'projects', encodeCwd(s.cwd));
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${s.claudeSessionId}.jsonl`), '{}');
+    svc.pause(s.id, 'chris');
+    svc.resume(s.id, 'chris');
+    assert.equal(launches.at(-1)?.resume, true);
+    assert.ok(svc.tmux.has(tmuxName(s.id)));
+  } finally {
+    if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = before;
+  }
 });
 
 test('a session whose process exits is marked exited', async () => {
