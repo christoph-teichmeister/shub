@@ -7,11 +7,20 @@
 //   Notification:     { message, title?, notification_type }  types seen in the CLI: permission_prompt,
 //                     idle_prompt, elicitation_dialog, auth_success
 //   PermissionRequest:{ tool_name, tool_input, permission_suggestions?, mcp_server? }
+//   PostToolUse:      { tool_name, tool_input, tool_response }  the tool ran, so any permission question was
+//                     answered (in the terminal or by the auto mode classifier).
 //   SessionStart:     { source: 'startup'|'resume'|'clear'|'compact' }  no status meaning, but /clear (and
 //                     compact, or a fresh start) can bring a new session_id: see newClaudeSessionId.
 import type { Session, SessionStatus } from '../../shared/api.ts';
 
-export const HOOK_EVENTS = ['UserPromptSubmit', 'Stop', 'Notification', 'PermissionRequest', 'SessionStart'] as const;
+export const HOOK_EVENTS = [
+  'UserPromptSubmit',
+  'Stop',
+  'Notification',
+  'PermissionRequest',
+  'PostToolUse',
+  'SessionStart',
+] as const;
 export type HookEvent = (typeof HOOK_EVENTS)[number];
 
 export interface Transition {
@@ -81,6 +90,8 @@ export function transition(
       if (current === 'needs-you') return { status: 'needs-you' };
       return { status: 'needs-you', notify: { kind: 'needsYou', text: message || 'Claude needs you' } };
     }
+    case 'PostToolUse':
+      return current === 'needs-you' ? { status: 'working', pendingPermission: null } : null;
     case 'SessionStart':
       return null;
   }
