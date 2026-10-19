@@ -271,7 +271,7 @@ test('approval dialog and search', async ({ page }) => {
 });
 
 test('first run import screen', async ({ page }) => {
-  const { errors } = await mockApi(page, {
+  const { errors, calls } = await mockApi(page, {
     '/api/projects': [],
     '/api/projects/import': [
       {
@@ -287,7 +287,18 @@ test('first run import screen', async ({ page }) => {
   await page.goto('/#/');
   await expect(page.getByRole('heading', { name: 'Pick your projects' })).toBeVisible();
   await expect(page.getByLabel('Add dotfiles')).toBeChecked();
-  await expect(page.getByRole('button', { name: 'Add 1 project' })).toBeEnabled();
+  await expect(page.getByLabel('Group for dotfiles').locator('option')).toHaveText(['Work', 'New group…']);
+  await page.getByLabel('Group for dotfiles').selectOption('New group…');
+  await page.getByLabel('New group for dotfiles').fill('Side');
+  await page.getByLabel('New group for dotfiles').press('Tab');
+  await expect(page.getByLabel('Group for dotfiles')).toHaveValue('Side');
+  await page.getByRole('button', { name: 'Add 1 project' }).click();
+  await expect
+    .poll(() => calls.find((c) => c.method === 'POST' && c.path === '/api/projects')?.body)
+    .toMatchObject({
+      name: 'dotfiles',
+      group: 'Side',
+    });
   expect(errors).toEqual([]);
 });
 
