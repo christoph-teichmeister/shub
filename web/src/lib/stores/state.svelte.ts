@@ -9,6 +9,7 @@ import type {
   Session,
   SessionStatus,
   StartSessionRequest,
+  UpdateStatus,
 } from '../../../../shared/api.ts';
 import { applyTheme, findTheme } from '../tokens/tokens.ts';
 import { api, ApiError, wsUrl } from './api.ts';
@@ -25,6 +26,8 @@ export const app = $state({
   sessions: [] as Session[],
   approvals: [] as Approval[],
   plugins: [] as PluginInfo[],
+  /** GET /api/updates: the Settings notice and the dot on the user chip. */
+  update: null as UpdateStatus | null,
   /** GET /api/auth/me: `{caller, device}`; `name` if the server ever sends one. */
   me: null as { name?: string; caller?: { kind: string; id: string }; device?: Device | null } | null,
   /** Bumped per session on services.changed so views can refetch. */
@@ -94,6 +97,7 @@ export const loadProjects = async () => (app.projects = (await guard(api<Project
 export const loadSessions = async () => (app.sessions = (await guard(api<Session[]>('sessions'))) ?? app.sessions);
 export const loadApprovals = async () => (app.approvals = (await guard(api<Approval[]>('approvals'))) ?? app.approvals);
 export const loadPlugins = async () => (app.plugins = (await guard(api<PluginInfo[]>('plugins'))) ?? app.plugins);
+export const loadUpdate = async () => (app.update = (await guard(api<UpdateStatus>('updates'))) ?? app.update);
 
 export async function loadAll(): Promise<void> {
   await Promise.all([
@@ -102,6 +106,7 @@ export async function loadAll(): Promise<void> {
     loadSessions(),
     loadApprovals(),
     loadPlugins(),
+    loadUpdate(),
     guard(api<{ name?: string }>('me')).then((me) => (app.me = me ?? null)),
   ]);
   app.ready = true;
@@ -143,6 +148,9 @@ export function handleEvent(e: ServerEvent): void {
       return;
     case 'plugins.changed':
       void loadPlugins();
+      return;
+    case 'updates.changed':
+      void loadUpdate();
       return;
     default:
       return; // hello, activity, plugin.action: nothing to keep in state yet

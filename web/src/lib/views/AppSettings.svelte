@@ -7,6 +7,7 @@
     LaunchPermissionMode,
     PluginInfo,
     Right,
+    UpdateStatus,
   } from '../../../../shared/api.ts';
   import Button from '../components/Button/Button.svelte';
   import Checkbox from '../components/Checkbox/Checkbox.svelte';
@@ -18,7 +19,7 @@
   import { api } from '../stores/api.ts';
   import { pushEnabled, pushSupported, subscribePush } from '../stores/push.ts';
   import { href } from '../stores/router.svelte.ts';
-  import { app, loadConfig, loadPlugins, ui } from '../stores/state.svelte.ts';
+  import { app, loadConfig, loadPlugins, loadUpdate, ui } from '../stores/state.svelte.ts';
   import { toast, toastError } from '../stores/toasts.svelte.ts';
   import { applyTheme, BUILT_IN_THEMES, resolveTokens } from '../tokens/tokens.ts';
 
@@ -45,6 +46,11 @@
     { value: 'auto', label: 'Auto (skips prompts)' },
     { value: 'bypassPermissions', label: 'Bypass permissions (skips prompts)' },
     { value: 'inherit', label: 'My Claude settings' },
+  ];
+
+  const CHANNELS = [
+    { value: 'stable', label: 'Stable' },
+    { value: 'beta', label: 'Beta (pre-releases)' },
   ];
 
   const themes = $derived([...BUILT_IN_THEMES, ...(app.config?.themes ?? []).filter((t) => !t.builtIn)]);
@@ -147,6 +153,36 @@
   async function undo(e: ActivityEntry) {
     await api('undo', { params: { id: e.id } }).then(() => toast('Undone'), toastError);
     void showActivity();
+  }
+
+  const update = $derived(app.update);
+  /** A failed update, or a switch that waits for a restart; a plain success needs no line. */
+  const lastNote = $derived(
+    update?.last && (!update.last.ok || update.last.to !== update.current) ? update.last : null,
+  );
+  let checking = $state(false);
+
+  async function checkUpdates() {
+    checking = true;
+    const status = await api<UpdateStatus>('updateCheck').catch(toastError);
+    checking = false;
+    if (status) app.update = status;
+  }
+
+  async function setChannel(channel: string) {
+    const status = await api<UpdateStatus>('updateChannel', { body: { channel } }).catch(toastError);
+    if (status) app.update = status;
+    else void loadUpdate();
+  }
+
+  async function installUpdate(version: string) {
+    const res = await api('updateInstall', { body: { version } }).catch(toastError);
+    if (res) toast(`Installing shub ${version}. shub restarts in a moment; sessions keep running.`, 'neutral', 8000);
+  }
+
+  async function rollBack(version: string) {
+    const res = await api('updateRollback').catch(toastError);
+    if (res) toast(`Rolling back to shub ${version}. shub restarts in a moment.`, 'neutral', 8000);
   }
 
   const swatches = (id: string) => {
@@ -303,6 +339,58 @@
         {/each}
       </div>
     </Section>
+
+    {#if update}
+      <Section title="Updates">
+        {#snippet aside()}<span class="muted small">shub {update.current}</span>{/snippet}
+        {#if update.managedBy === 'git'}
+          <p class="muted">shub runs from a git checkout, so git manages its updates: pull, then restart shub.</p>
+        {:else}
+          <div class="stack gap">
+            {#if update.latest}
+              <div class="item top notice">
+                <span class="grow stack gap">
+                  <span class="strong">shub {update.latest} is available</span>
+                  <pre class="log">{update.changelog || 'No release notes.'}</pre>
+                  <span class="row">
+                    <Button variant="primary" onclick={() => update.latest && installUpdate(update.latest)}
+                      >Install {update.latest}</Button
+                    >
+                    <span class="muted small">shub restarts; sessions keep running.</span>
+                  </span>
+                </span>
+              </div>
+            {/if}
+            {#if lastNote}
+              <p class={lastNote.ok ? 'muted' : 'error'} role={lastNote.ok ? undefined : 'alert'}>
+                {lastNote.message}
+              </p>
+            {/if}
+            <SelectField
+              label="Release channel"
+              hint="Beta gets new versions first, from every merge into develop."
+              bind:value={() => update.channel, (v) => setChannel(v)}
+              options={CHANNELS}
+            />
+            <div class="row">
+              <Button onclick={checkUpdates} disabled={checking}>{checking ? 'Checking' : 'Check now'}</Button>
+              {#if update.previous}
+                <Button onclick={() => update.previous && rollBack(update.previous)}
+                  >Roll back to {update.previous}</Button
+                >
+              {/if}
+              <span class="muted small">
+                {update.checkError
+                  ? `Last check failed: ${update.checkError}`
+                  : update.checkedAt
+                    ? `Checked ${when(update.checkedAt)}${update.latest ? '' : ' · up to date'}`
+                    : 'Not checked yet'}
+              </span>
+            </div>
+          </div>
+        {/if}
+      </Section>
+    {/if}
 
     <Section title="More">
       <div class="row">
@@ -537,6 +625,15 @@
 
   .top {
     align-items: flex-start;
+  }
+
+  .notice {
+    border-color: var(--primary);
+  }
+
+  .error {
+    margin: 0;
+    color: var(--danger);
   }
 
   .rights {

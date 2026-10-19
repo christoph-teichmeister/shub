@@ -61,6 +61,15 @@ const API: Record<string, unknown> = {
   '/api/plugins': [],
   '/api/auth/me': { caller: { kind: 'user', id: 'user' }, device: null },
   '/api/devices': [],
+  '/api/updates': {
+    current: '2026.10.0',
+    channel: 'stable',
+    managedBy: 'launcher',
+    latest: '2026.10.1',
+    changelog: '## 2026.10.1\n\n### Features\n\n- launcher: add shub doctor',
+    checkedAt: '2026-10-19T14:00:00Z',
+    previous: '2026.9.0',
+  },
   '/api/sessions/s1/services': [],
   '/api/projects/ai-portal/old-sessions': [],
   '/api/projects/street-tours/old-sessions': [],
@@ -171,6 +180,14 @@ test('app settings and project settings', async ({ page }) => {
   });
   await expect(page.getByLabel('Phone push: when a session needs me')).toBeChecked();
 
+  const updates = page.getByRole('region', { name: 'Updates' });
+  await expect(updates.getByText('shub 2026.10.1 is available')).toBeVisible();
+  await expect(updates.getByText('- launcher: add shub doctor')).toBeVisible();
+  await expect(updates.getByLabel('Release channel')).toHaveValue('stable');
+  await updates.getByRole('button', { name: 'Install 2026.10.1' }).click();
+  await expect.poll(() => calls.find((c) => c.path === '/api/updates/install')?.body).toEqual({ version: '2026.10.1' });
+  await expect(updates.getByRole('button', { name: 'Roll back to 2026.9.0' })).toBeVisible();
+
   await page.goto('/#/settings/project/ai-portal');
   await expect(page.getByRole('heading', { name: 'Project settings' })).toBeVisible();
   await expect(page.getByLabel('Name')).toHaveValue('ai-portal');
@@ -192,6 +209,21 @@ test('app settings and project settings', async ({ page }) => {
         { skill: '/refine-ticket', label: 'Refine ticket', lockDefaultMode: true },
       ],
     });
+  expect(errors).toEqual([]);
+});
+
+test('update dot on the user chip; read-only updates from a git checkout', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  await page.goto('/#/');
+  await expect(page.getByRole('link', { name: /Update available/ })).toBeVisible();
+
+  const git = { current: '2026.10.0', channel: 'stable', managedBy: 'git', checkedAt: null };
+  await mockApi(page, { '/api/updates': git });
+  await page.goto('/#/settings');
+  await page.reload();
+  const updates = page.getByRole('region', { name: 'Updates' });
+  await expect(updates.getByText('git manages its updates')).toBeVisible();
+  await expect(updates.getByRole('button')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
