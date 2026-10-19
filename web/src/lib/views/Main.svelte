@@ -109,7 +109,7 @@
   const shells = $derived(active ? shellsOf(active.id) : []);
   const panelTabs = $derived([
     { id: 'services', label: 'Services' },
-    ...shells.map((s, i) => ({ id: s.id, label: `Terminal ${i + 1}` })),
+    ...shells.map((s, i) => ({ id: s.id, label: `Terminal ${i + 1}`, closable: true })),
   ]);
 
   $effect(() => {
@@ -588,6 +588,10 @@
         active={panelTabs.some((t) => t.id === panelTab) ? panelTab : 'services'}
         onselect={(id) => (panelTab = id)}
         onnew={newShell}
+        onclose={(id) => {
+          const s = shells.find((x) => x.id === id);
+          if (s) close(s);
+        }}
         onhide={() => (panelOpen = false)}
         context={services[0]?.project}
       >

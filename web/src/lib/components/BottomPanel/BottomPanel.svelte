@@ -4,17 +4,19 @@
   import IconButton from '../IconButton/IconButton.svelte';
 
   interface Props {
-    tabs: { id: string; label: string }[];
+    /** `closable` tabs get an "x" that calls `onclose`. */
+    tabs: { id: string; label: string; closable?: boolean }[];
     active: string;
     onselect: (id: string) => void;
     /** "+" button: new plain terminal (Alt T). */
     onnew?: () => void;
+    onclose?: (id: string) => void;
     onhide: () => void;
     /** Small mono context, e.g. the compose project. */
     context?: string;
     children: Snippet;
   }
-  let { tabs, active, onselect, onnew, onhide, context, children }: Props = $props();
+  let { tabs, active, onselect, onnew, onclose, onhide, context, children }: Props = $props();
 </script>
 
 <section class="panel" aria-label="Bottom panel">
@@ -29,6 +31,13 @@
           tabindex={tab.id === active ? 0 : -1}
           onclick={() => onselect(tab.id)}>{tab.label}</button
         >
+        {#if tab.closable && onclose}<IconButton
+            label="Close {tab.label}"
+            icon="close"
+            size="xs"
+            tone="muted"
+            onclick={() => onclose(tab.id)}
+          />{/if}
       {/each}
       {#if onnew}<IconButton
           label="New plain terminal (Alt T)"
