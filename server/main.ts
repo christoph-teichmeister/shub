@@ -17,6 +17,11 @@ import * as projects from './projects/index.ts';
 import * as plugins from './plugins/index.ts';
 import * as api from './api/index.ts';
 
+// Started from a git hook or another repo's tooling, GIT_DIR and friends would point every `git` call shub
+// and its sessions make at that repo instead of the folder they name.
+for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_PREFIX'])
+  delete process.env[key];
+
 const ctx = createContext();
 const services = {} as Services;
 const modules: ShubModule[] = [];
