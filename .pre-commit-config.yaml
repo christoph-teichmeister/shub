@@ -18,6 +18,10 @@ repos:
         args: [--maxkb=600]
       - id: check-executables-have-shebangs
       - id: detect-private-key
+      # Work happens on branches and lands on main through PRs, so releases stay deliberate.
+      - id: no-commit-to-branch
+        args:
+          ['--pattern', '^^(?!(?:dependabot-.*)|(?:feature|hotfix|bugfix|refactor|merge|maintenance)/[\w\d\-_#]+).*$']
 
   - repo: https://github.com/compilerla/conventional-pre-commit
     # https://github.com/compilerla/conventional-pre-commit/releases
