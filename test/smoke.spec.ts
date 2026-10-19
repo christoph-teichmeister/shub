@@ -194,10 +194,12 @@ test('app settings and project settings', async ({ page }) => {
   await page.goto('/#/settings/project/ai-portal');
   await expect(page.getByRole('heading', { name: 'Project settings' })).toBeVisible();
   await expect(page.getByLabel('Name')).toHaveValue('ai-portal');
+  await expect(page.getByLabel('Show worktree-start as button')).toBeHidden();
+  await page.getByText(/shown as buttons/).click();
   await expect(page.getByLabel('Show worktree-start as button')).toBeChecked();
   await page.getByLabel('Show refine-ticket as button').check();
   await page.getByLabel('Permission mode for refine-ticket').selectOption('locked');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('button', { name: 'Save' })).toHaveCount(0);
   await expect
     .poll(
       () =>
