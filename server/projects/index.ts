@@ -1,6 +1,7 @@
 // Project, theme and settings routes on top of the config store, gated by the permission model.
-import { statSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { readdirSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import {
   ROUTES,
   type Approval,
@@ -81,7 +82,11 @@ function icon(value: unknown): ProjectIcon {
   if (v?.kind === 'auto') return { kind: 'auto' };
   if (v?.kind === 'symbol')
     return { kind: 'symbol', symbol: str(v.symbol, 'icon.symbol', 8), color: str(v.color, 'icon.color', 40) };
-  if (v?.kind === 'image') return { kind: 'image', path: str(v.path, 'icon.path', 4096) };
+  if (v?.kind === 'image') {
+    const path = str(v.path, 'icon.path', 4096);
+    if (!/^(data:image\/|https:\/\/)/.test(path)) bad('icon.path must be a data:image URL or an https:// URL');
+    return { kind: 'image', path };
+  }
   bad('icon.kind must be auto, symbol or image');
 }
 
@@ -249,6 +254,17 @@ function projectRoutes(services: Services, router: Router): void {
   router.add(ROUTES.projectWorktrees, (req) => {
     requireRight(req.caller, 'read');
     return listWorktrees(existing(req.params.id).path);
+  });
+
+  // Folder browser for the project form: browsers never hand out real paths, so the server lists its own folders.
+  router.add(ROUTES.folders, (req) => {
+    requireUser(req.caller);
+    const path = dirPath(req.query.get('path') || homedir());
+    const folders = readdirSync(path, { withFileTypes: true })
+      .filter((d) => !d.name.startsWith('.') && statSync(join(path, d.name), { throwIfNoEntry: false })?.isDirectory())
+      .map((d) => d.name)
+      .sort((x, y) => x.localeCompare(y));
+    return { path, parent: path === '/' ? null : dirname(path), folders };
   });
 
   router.add(ROUTES.importCandidates, (req) => {

@@ -14,7 +14,7 @@ import { installUpgrades, onUpgrade } from './upgrade.ts';
 
 const SECURITY_HEADERS: Record<string, string> = {
   'content-security-policy':
-    "default-src 'self'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; " +
+    "default-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' ws: wss:; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; " +
     "frame-ancestors 'none'",
   'x-content-type-options': 'nosniff',
