@@ -147,7 +147,8 @@ test('supervisor restarts a crashing plugin with backoff and keeps 500 log lines
     backoff: { minMs: 10, maxMs: 40 },
   });
   proc.start();
-  await waitFor(() => spawns >= 3);
+  // The third run may still be writing; wait until the buffer is full, not just until it started.
+  await waitFor(() => spawns >= 3 && proc.logs.length === 500);
   await proc.stop();
   assert.ok(released >= 2);
   assert.equal(proc.logs.length, 500);
