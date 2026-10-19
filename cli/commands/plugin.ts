@@ -88,7 +88,10 @@ async function list(json: boolean): Promise<void> {
 async function enable(name: string, grant: string | true | undefined, json: boolean): Promise<void> {
   const body: { enabled: true; grantedRights?: string[] } = { enabled: true };
   if (typeof grant === 'string') {
-    const rights = grant.split(',').map((r) => r.trim()).filter(Boolean);
+    const rights = grant
+      .split(',')
+      .map((r) => r.trim())
+      .filter(Boolean);
     const unknown = rights.filter((r) => !isRight(r));
     if (unknown.length) throw new CliError(`unknown rights: ${unknown.join(', ')}`);
     body.grantedRights = rights;
