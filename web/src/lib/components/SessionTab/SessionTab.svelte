@@ -104,7 +104,11 @@
     border-color: var(--line);
     border-bottom-color: var(--term-bg);
     background: var(--term-bg);
-    margin-bottom: calc(-1 * var(--hairline));
+    color: var(--fg);
+  }
+
+  .tab:not(.selected):hover {
+    background: var(--raised);
     color: var(--fg);
   }
 

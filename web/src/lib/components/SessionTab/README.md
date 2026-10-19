@@ -12,4 +12,4 @@ One session in the tab bar: status mark, name (`role="tab"`, only the selected o
 | `onclose`  | `() => void`              | The view asks if working |
 | `onmenu`   | `(e: MouseEvent) => void` | Context menu             |
 
-States: selected, unselected, needs-you, working, your-turn, renaming, with link chip, prompt-skipping mode (`auto` / `bypass` badge in the danger colour, from `PROMPT_SKIPPING_MODES`).
+States: selected (open like a folder tab, no line under it), unselected, hover, needs-you, working, your-turn, renaming, with link chip, prompt-skipping mode (`auto` / `bypass` badge in the danger colour, from `PROMPT_SKIPPING_MODES`).
