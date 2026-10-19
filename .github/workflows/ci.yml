@@ -1,8 +1,11 @@
 name: ci
+# Pull requests run this directly; pushes to main and develop run it as the first job of release.yml.
 on:
-  push:
-    branches: [main, develop]
   pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   check:
