@@ -1,7 +1,7 @@
 {
   "name": "shub",
-  "version": "0.1.0",
-  "description": "All your Claude Code sessions in one window, grouped by project.",
+  "version": "2026.10.0",
+  "description": "shub - your session hub. All your Claude Code sessions in one window, grouped by project.",
   "scripts": {
     "test": "node --test \"server/**/*.test.ts\" \"cli/**/*.test.ts\"",
     "dev": "node --watch server/main.ts",
