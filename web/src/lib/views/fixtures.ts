@@ -28,7 +28,7 @@ export const SESSIONS: Session[] = [
     links: [{ source: 'plugin:kb-board', label: '#202', url: 'https://example.com/202' }],
   }),
   session('s3', 'Tailwind build fix', 'your-turn'),
-  session('s4', 'Old spike', 'paused'),
+  session('s4', 'Old spike', 'paused', { position: 3 }),
   session('s6', 'Restored after reboot', 'starting'),
   session('s5', 'Crashed run', 'exited'),
 ];
