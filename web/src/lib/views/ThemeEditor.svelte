@@ -42,7 +42,7 @@
   const previewVars = $derived(
     TOKEN_NAMES.map((n) =>
       n === active
-        ? `--${n}: var(--flash); --flash-from: ${tokens[n]}; --flash: ${invert(tokens[n])}`
+        ? `--${n}: var(--flash); --flash-from: ${tokens[n]}; --flash-to: ${flashTo(tokens[n])}; --flash: ${flashTo(tokens[n])}`
         : `--${n}: ${tokens[n]}`,
     ).join('; '),
   );
@@ -71,6 +71,8 @@
   /** Opposite colour so the blink stands out from the real one; magenta for non-hex values. */
   const invert = (v: string) =>
     isHex(v) ? `#${(0xffffff ^ parseInt(v.slice(1), 16)).toString(16).padStart(6, '0')}` : '#ff00ff';
+  /** Pulse target: part way to the opposite colour, so it's visible without glaring. */
+  const flashTo = (v: string) => `color-mix(in oklab, ${v}, ${invert(v)} 60%)`;
 
   function set(token: string, value: string) {
     if (value === resolveTokens(baseTheme)[token as TokenName]) delete overrides[token];
@@ -316,6 +318,10 @@
 
   .preview-wrap {
     flex: 1 1 var(--size-column);
+
+    /* Stays in view while the colour list scrolls past. */
+    position: sticky;
+    top: var(--space-4);
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
@@ -332,7 +338,8 @@
     font-size: var(--text-sm);
   }
 
-  /* Registered so it can animate; the active token points at it (see previewVars). */
+  /* Registered so it can animate; the active token points at it (see previewVars).
+     A soft pulse towards the opposite colour, not a hard on/off blink. */
   @property --flash {
     syntax: '<color>';
     inherits: true;
@@ -341,13 +348,17 @@
 
   @media (prefers-reduced-motion: no-preference) {
     .preview.flashing {
-      animation: flash var(--duration-blink) steps(1, end) infinite;
+      animation: flash calc(var(--duration-blink) * 0.8) ease-in-out infinite alternate;
     }
   }
 
   @keyframes flash {
-    50% {
+    from {
       --flash: var(--flash-from);
+    }
+
+    to {
+      --flash: var(--flash-to);
     }
   }
 
