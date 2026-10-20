@@ -48,8 +48,14 @@ export function project(id: string, name: string, icon: ProjectView['resolvedIco
 }
 
 export const PROJECTS: ProjectView[] = [
-  project('ai-portal', 'ai-portal', { kind: 'gitlab', host: 'gitlab.example.com' }, '#f92672'),
-  project('listo', 'listo', { kind: 'github', host: 'github.com' }, '#f92672'),
+  {
+    ...project('ai-portal', 'ai-portal', { kind: 'gitlab', host: 'gitlab.example.com' }, '#f92672'),
+    remoteUrl: 'https://gitlab.example.com/work/ai-portal',
+  },
+  {
+    ...project('listo', 'listo', { kind: 'github', host: 'github.com' }, '#f92672'),
+    remoteUrl: 'https://github.com/example/listo',
+  },
   project('kb-app', 'kb-app', { kind: 'symbol', symbol: 'table', color: '#ae81ff' }, '#ae81ff'),
   project('dotfiles', 'dotfiles', { kind: 'symbol', symbol: 'home', color: '#e6db74' }, '#e6db74'),
   project('knowledge-base', 'knowledge-base', { kind: 'symbol', symbol: 'book', color: '#a6e22e' }, '#a6e22e'),

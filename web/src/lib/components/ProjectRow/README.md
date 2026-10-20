@@ -1,6 +1,6 @@
 # ProjectRow
 
-A project in the sidebar: icon, name, status badge. Right-click opens the project menu (`onmenu`). On hover / keyboard focus the badge gives way to "+ new session" and "settings". Draggable for reordering when `ondragstart` is set.
+A project in the sidebar: icon, name, status badge. Right-click opens the project menu (`onmenu`). On hover / keyboard focus the badge gives way to "open remote" (when `project.remoteUrl` is set, new tab), "+ new session" and "settings". Draggable for reordering when `ondragstart` is set.
 
 | Prop           | Type                      | Notes                           |
 | -------------- | ------------------------- | ------------------------------- |
