@@ -176,6 +176,9 @@ test('health, login, project, session, terminal, hooks, close', { timeout: 60_00
 
   // Close: a session may not close another one, only itself; you close any.
   const other = await json<Session>('POST', '/api/sessions', { kind: 'claude', projectId: project.id });
+  // Rename follows the same rule (`shub session rename` from inside a skill).
+  assert.equal((await api('PATCH', `/api/sessions/${other.id}`, { name: 'x' }, bearer)).status, 403);
+  assert.equal((await json<Session>('PATCH', `/api/sessions/${started.id}`, { name: ' Mine ' }, bearer)).name, 'Mine');
   assert.equal((await api('DELETE', `/api/sessions/${other.id}`, undefined, bearer)).status, 403);
   await json('DELETE', `/api/sessions/${other.id}`);
   assert.equal(await session(other.id), undefined);
