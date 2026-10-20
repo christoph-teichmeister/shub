@@ -399,7 +399,16 @@ test('settings: calls to action on top, search across all areas', async ({ page 
   await expect(page.getByRole('region', { name: 'Permission mode for new sessions' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Notifications' })).toBeHidden();
   await expect(page.getByRole('region', { name: 'Devices', exact: true })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => CSS.highlights.get('settings-search')?.size ?? 0)).toBeGreaterThan(0);
+
+  // A hit inside a folded part opens it; ending the search folds it again.
+  await page.getByLabel('Search all settings').fill('letter spacing');
+  await expect(page.getByLabel('Letter spacing (px)')).toBeVisible();
   await page.getByLabel('Search all settings').press('Escape');
+  await expect.poll(() => page.evaluate(() => CSS.highlights.get('settings-search')?.size)).toBe(0);
+  await page.goto('/#/settings/appearance');
+  await expect(page.getByLabel('Letter spacing (px)')).toBeHidden();
+  await page.goto('/#/settings');
   await expect(page.getByRole('region', { name: 'Appearance' })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Sessions', exact: true })).toBeVisible();
   expect(errors).toEqual([]);

@@ -108,19 +108,52 @@
    * Search reads what the cards show (titles, labels, hints, options), so new settings are found without a word list.
    * Hides cards without every query word and areas without such a card; reruns when the query or the rendered text changes.
    */
+  const HIGHLIGHT = 'settings-search';
+  /** Folded parts that search opened to show a hit; they close again when the search ends. */
+  const opened = new Set<HTMLDetailsElement>();
+
   function filterCards() {
     const next: Record<string, number> = {};
+    const ranges: Range[] = [];
     for (const pane of main?.querySelectorAll<HTMLElement>('.pane') ?? []) {
       let n = 0;
       for (const card of pane.querySelectorAll<HTMLElement>('.card')) {
         const text = card.textContent?.toLowerCase() ?? '';
         card.hidden = !words.every((w) => text.includes(w));
-        if (!card.hidden) n++;
+        if (card.hidden) continue;
+        n++;
+        if (words.length) markWords(card, ranges);
       }
       next[pane.dataset.area ?? ''] = n;
     }
     hits = next;
+    if (!words.length) {
+      for (const d of opened) d.open = false;
+      opened.clear();
+    }
+    CSS.highlights?.set(HIGHLIGHT, new Highlight(...ranges));
   }
+
+  /** Adds a range for every query word in the card's text and opens folded parts that hold one. */
+  function markWords(card: HTMLElement, ranges: Range[]) {
+    const walk = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+    for (let node = walk.nextNode(); node; node = walk.nextNode()) {
+      const text = node.textContent?.toLowerCase() ?? '';
+      for (const w of words)
+        for (let i = text.indexOf(w); i >= 0; i = text.indexOf(w, i + w.length)) {
+          const range = new Range();
+          range.setStart(node, i);
+          range.setEnd(node, i + w.length);
+          ranges.push(range);
+          const fold = node.parentElement?.closest('details');
+          if (fold && !fold.open && !node.parentElement?.closest('summary')) {
+            fold.open = true;
+            opened.add(fold);
+          }
+        }
+    }
+  }
+
   $effect(() => {
     void words;
     void tick().then(filterCards);
@@ -129,7 +162,7 @@
     if (!main) return;
     const watch = new MutationObserver(filterCards);
     watch.observe(main, { childList: true, subtree: true, characterData: true });
-    return () => watch.disconnect();
+    return () => (watch.disconnect(), CSS.highlights?.delete(HIGHLIGHT));
   });
 
   function onKeydown(e: KeyboardEvent) {
