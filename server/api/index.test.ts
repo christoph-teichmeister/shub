@@ -1,4 +1,5 @@
 // End-to-end over HTTP: api + auth + config + state + projects + skills, with a stub permission model.
+import { hostname } from 'node:os';
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -111,7 +112,7 @@ test('token file is 0600 and 64 hex chars', () => {
 test('health is public and reports the version', async () => {
   const res = await call('GET', '/api/health');
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { ok: true, version: '2026.10.0', apiVersion: 1 });
+  assert.deepEqual(await res.json(), { ok: true, version: '2026.10.0', apiVersion: 1, machine: hostname() });
   assert.match(res.headers.get('content-security-policy')!, /frame-ancestors 'none'/);
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
 });
@@ -276,6 +277,44 @@ test('pairing: a phone pairs with its key, waits for approval and then signs in 
   assert.equal((await asUser('DELETE', `/api/devices/${device.id}`)).status, 200);
   await closed;
   assert.equal((await asPhone('GET', '/api/devices')).status, 401);
+});
+
+test("another machine's app pairs cross-origin with a short code and may call this machine afterwards", async () => {
+  const { generateKeyPairSync } = await import('node:crypto');
+  const app = 'https://other-machine.example.ts.net';
+  const foreign = (method: string, path: string, origin: string, body?: unknown) =>
+    fetch(base + path, {
+      method,
+      headers: { origin, 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  assert.equal((await foreign('GET', '/api/devices', app)).status, 403);
+  // Health is open to any origin: an app reads the machine's name before pairing.
+  assert.equal((await foreign('GET', '/api/health', app)).status, 200);
+
+  const { code } = await (await asUser('POST', '/api/auth/pairing')).json();
+  assert.match(code, /^[A-HJ-NP-Z2-9]{8}$/);
+  const preflight = await foreign('OPTIONS', '/api/auth/pairing/redeem', app);
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get('access-control-allow-origin'), app);
+  // Typed by hand: lower case with a dash is the same code.
+  const typed = `${code.slice(0, 4)}-${code.slice(4)}`.toLowerCase();
+  const { publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const redeem = await foreign('POST', '/api/auth/pairing/redeem', app, {
+    code: typed,
+    deviceName: 'Pixel',
+    publicKey: publicKey.export({ format: 'jwk' }),
+  });
+  assert.equal(redeem.status, 200);
+  assert.equal(redeem.headers.get('access-control-allow-origin'), app);
+
+  // Now the app's origin is known: CORS answers, a third origin still does not.
+  const health = await foreign('GET', '/api/health', app);
+  assert.equal(health.headers.get('access-control-allow-origin'), app);
+  assert.equal(typeof (await health.json()).machine, 'string');
+  // Other routes now answer the app's origin (401 without a token, not 403), a third origin still gets 403.
+  assert.equal((await foreign('GET', '/api/devices', app)).status, 401);
+  assert.equal((await foreign('GET', '/api/devices', 'https://evil.example')).status, 403);
 });
 
 test('a device can be renamed', async () => {

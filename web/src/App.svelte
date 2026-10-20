@@ -2,7 +2,9 @@
   import { onMount } from 'svelte';
   import Toast from './lib/components/Toast/Toast.svelte';
   import UpdateCurtain from './lib/components/UpdateCurtain/UpdateCurtain.svelte';
-  import { router } from './lib/stores/router.svelte.ts';
+  import { select } from './lib/stores/device.ts';
+  import { loadMachines } from './lib/stores/machines.svelte.ts';
+  import { go, router } from './lib/stores/router.svelte.ts';
   import { app, connectEvents, loadAll, needsYouCount, ui } from './lib/stores/state.svelte.ts';
   import AppSettings from './lib/views/AppSettings.svelte';
   import FirstRun from './lib/views/FirstRun.svelte';
@@ -19,7 +21,17 @@
 
   onMount(() => {
     if (route.name === 'pair' || route.name === 'login') return;
-    void loadAll();
+    // A tapped notification: ?machine=<origin> (from another machine) and ?session=<id>.
+    const params = new URLSearchParams(location.search);
+    const machine = params.get('machine');
+    const session = params.get('session');
+    if (machine) select(machine);
+    if (machine || session) history.replaceState(null, '', location.pathname + location.hash);
+    void loadMachines();
+    void loadAll().then(() => {
+      const s = session ? app.sessions.find((x) => x.id === session) : undefined;
+      if (s) go(...(s.projectId ? ['p', s.projectId, s.id] : ['g']));
+    });
     return connectEvents();
   });
 
@@ -45,9 +57,9 @@
   <Styleguide />
 {:else if signIn}
   <Login pairCode={route.name === 'pair' ? route.code : undefined} />
-{:else if route.name === 'settings' && (ui.phone || (app.ready && app.projects.length === 0))}
+{:else if route.name === 'settings' && (ui.phone || (app.ready && !app.unreachable && app.projects.length === 0))}
   {@render settings()}
-{:else if route.name !== 'settings' && app.ready && app.projects.length === 0}
+{:else if route.name !== 'settings' && app.ready && !app.unreachable && app.projects.length === 0}
   <FirstRun firstRun />
 {:else if ui.phone}
   <Phone />

@@ -15,7 +15,7 @@ import type {
 } from '../../../../shared/api.ts';
 import { TERMINAL_SETTINGS_DEFAULTS, terminalSettingsError } from '../../../../shared/api.ts';
 import { applyTheme, findTheme } from '../tokens/tokens.ts';
-import { api, ApiError, wsProtocols, wsUrl } from './api.ts';
+import { api, ApiError, wsTarget } from './api.ts';
 import { href } from './router.svelte.ts';
 import { toast, toastError } from './toasts.svelte.ts';
 
@@ -24,6 +24,8 @@ export const app = $state({
   /** True after a 401: the login / pairing view (not built yet) takes over. */
   authRequired: false,
   connected: false,
+  /** The shown machine did not answer at all (network error, not an HTTP status). */
+  unreachable: false,
   config: null as Config | null,
   projects: [] as ProjectView[],
   sessions: [] as Session[],
@@ -129,7 +131,10 @@ export function shellsOf(sessionId: string): Session[] {
 function guard<T>(p: Promise<T>): Promise<T | undefined> {
   return p.catch((err: unknown) => {
     if (err instanceof ApiError && err.status === 401) app.authRequired = true;
-    else console.warn(err);
+    // The machine is off or out of reach: fetch failed, or `tailscale serve` answers 502/504 for a stopped shub.
+    else if (err instanceof TypeError || (err instanceof ApiError && [502, 503, 504].includes(err.status))) {
+      app.unreachable = true;
+    } else console.warn(err);
     return undefined;
   });
 }
@@ -261,9 +266,9 @@ export function connectEvents(): () => void {
   let everOpen = false;
 
   const open = async () => {
-    const protocols = await wsProtocols();
+    const { url, protocols } = await wsTarget('/api/events');
     if (stopped) return;
-    ws = new WebSocket(wsUrl('/api/events'), protocols);
+    ws = new WebSocket(url, protocols);
     ws.onopen = () => {
       app.connected = true;
       delay = 1000;

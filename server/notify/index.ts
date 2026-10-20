@@ -1,6 +1,7 @@
 // Desktop notifications (notify-send) and web push (VAPID keys in <stateDir>/vapid.json, subscriptions in sqlite).
 import { execFile } from 'node:child_process';
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { join } from 'node:path';
 import webpush from 'web-push';
 import { ROUTES, type Approval, type Session } from '../../shared/api.ts';
@@ -13,6 +14,8 @@ import type { Notify, Services } from '../services.ts';
 const MIGRATIONS = [
   `CREATE TABLE push_subscriptions (
      endpoint TEXT PRIMARY KEY, device_id TEXT, subscription TEXT NOT NULL, created_at TEXT NOT NULL)`,
+  // A phone app that knows several machines owns its VAPID pair and hands it to each; null = this machine's.
+  `ALTER TABLE push_subscriptions ADD COLUMN vapid TEXT`,
 ];
 
 export interface PushPayload {
@@ -20,6 +23,10 @@ export interface PushPayload {
   body: string;
   url: string;
   tag: string;
+  /** This machine's public URL, so an app that knows several opens the right one. */
+  origin?: string;
+  /** This machine's name (as in GET /api/health), shown in the title on another machine's app. */
+  machine?: string;
 }
 
 interface Vapid {
@@ -39,6 +46,9 @@ function loadVapid(stateDir: string): Vapid {
     return keys;
   }
 }
+
+/** How this computer is called in a phone app that knows several (SHUB_MACHINE_NAME overrides the hostname). */
+export const machineName = (): string => process.env.SHUB_MACHINE_NAME || hostname();
 
 function desktop(title: string, body: string): void {
   // Callback swallows ENOENT: no notify-send installed means no desktop notifications.
@@ -78,10 +88,18 @@ export class NotifyService implements Notify {
     return this.#vapid;
   }
 
-  subscribe(subscription: webpush.PushSubscription, deviceId: string | null): void {
+  subscribe(subscription: webpush.PushSubscription, deviceId: string | null, vapid?: Vapid): void {
     this.#db
-      .prepare('INSERT OR REPLACE INTO push_subscriptions VALUES (?, ?, ?, ?)')
-      .run(subscription.endpoint, deviceId, JSON.stringify(subscription), new Date().toISOString());
+      .prepare(
+        'INSERT OR REPLACE INTO push_subscriptions (endpoint, device_id, subscription, created_at, vapid) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run(
+        subscription.endpoint,
+        deviceId,
+        JSON.stringify(subscription),
+        new Date().toISOString(),
+        vapid ? JSON.stringify(vapid) : null,
+      );
     // The devices table belongs to auth; this flag only drives the "push on" label in Settings.
     if (deviceId) this.#db.prepare('UPDATE devices SET push = 1 WHERE id = ?').run(deviceId);
   }
@@ -99,17 +117,27 @@ export class NotifyService implements Notify {
     this.#keys();
     const rows = (
       deviceId === undefined
-        ? this.#db.prepare('SELECT endpoint, subscription FROM push_subscriptions').all()
-        : this.#db.prepare('SELECT endpoint, subscription FROM push_subscriptions WHERE device_id = ?').all(deviceId)
-    ) as { endpoint: string; subscription: string }[];
+        ? this.#db.prepare('SELECT endpoint, subscription, vapid FROM push_subscriptions').all()
+        : this.#db
+            .prepare('SELECT endpoint, subscription, vapid FROM push_subscriptions WHERE device_id = ?')
+            .all(deviceId)
+    ) as { endpoint: string; subscription: string; vapid: string | null }[];
+    const url = publicUrl(this.#services.config.get());
+    const body = JSON.stringify({ ...payload, origin: url ? new URL(url).origin : undefined, machine: machineName() });
+    const subject = url?.startsWith('https://') ? url : 'mailto:shub@localhost';
     await Promise.all(
-      rows.map(({ endpoint, subscription }) =>
-        webpush.sendNotification(JSON.parse(subscription), JSON.stringify(payload), { TTL: 3600 }).catch((err) => {
-          // Gone or unknown: the browser dropped the subscription.
-          if (err?.statusCode === 404 || err?.statusCode === 410) {
-            this.#db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
-          } else console.error('shub: push failed', err?.statusCode ?? err);
-        }),
+      rows.map(({ endpoint, subscription, vapid }) =>
+        webpush
+          .sendNotification(JSON.parse(subscription), body, {
+            TTL: 3600,
+            ...(vapid ? { vapidDetails: { subject, ...(JSON.parse(vapid) as Vapid) } } : {}),
+          })
+          .catch((err) => {
+            // Gone or unknown: the browser dropped the subscription.
+            if (err?.statusCode === 404 || err?.statusCode === 410) {
+              this.#db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
+            } else console.error('shub: push failed', err?.statusCode ?? err);
+          }),
       ),
     );
   }
@@ -151,13 +179,24 @@ function isSubscription(value: unknown): value is webpush.PushSubscription {
   );
 }
 
+/** The app's own VAPID pair: raw P-256 public key (65 bytes) and private scalar (32 bytes), base64url. */
+function isVapid(value: unknown): value is Vapid {
+  const v = value as Vapid;
+  const bytes = (s: unknown) =>
+    typeof s === 'string' && /^[A-Za-z0-9_-]+$/.test(s) ? Buffer.from(s, 'base64url').length : 0;
+  return bytes(v?.publicKey) === 65 && bytes(v?.privateKey) === 32;
+}
+
 function routes(notify: NotifyService, services: Services, router: Router): void {
   router.add(ROUTES.pushKey, () => ({ publicKey: notify.publicKey }));
   router.add(ROUTES.pushSubscribe, async (req) => {
     requireUser(req.caller);
-    const body = await req.json();
+    const body = await req.json<webpush.PushSubscription & { vapid?: unknown }>();
     if (!isSubscription(body)) throw new HttpError(400, 'expected a PushSubscription');
-    notify.subscribe({ endpoint: body.endpoint, keys: body.keys }, req.caller.deviceId ?? null);
+    if (body.vapid !== undefined && !isVapid(body.vapid)) {
+      throw new HttpError(400, 'vapid: { publicKey, privateKey } as base64url P-256 keys');
+    }
+    notify.subscribe({ endpoint: body.endpoint, keys: body.keys }, req.caller.deviceId ?? null, body.vapid);
     return { ok: true };
   });
   router.add(ROUTES.pushTest, async (req) => {

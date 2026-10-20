@@ -1,24 +1,42 @@
-// This phone's sign-in (docs/SECURITY.md): a P-256 key pair whose private half cannot be read out, kept in
-// IndexedDB; every few minutes the app signs a challenge and gets a short-lived token, held in memory only.
-// Desktop browsers have no key here and keep their cookie.
+// A phone's sign-in on each of its machines (docs/SECURITY.md): per machine a P-256 key pair whose private half
+// cannot be read out, kept in IndexedDB; every few minutes the app signs a challenge and gets a short-lived
+// token, held in memory only. Desktop browsers have no machines here and keep their cookie.
 import { ROUTES } from '../../../../shared/api.ts';
 
-interface Stored {
+export interface Machine {
+  /** https://host[:port] of that machine's shub; this page's own origin for the machine the app came from. */
+  origin: string;
   deviceId: string;
   keys: CryptoKeyPair;
+  /** Its hostname (GET /api/health `machine`), or the host part of the origin. */
+  name: string;
 }
 
 /** The device exists but nobody approved it on the machine yet. */
 export class PendingError extends Error {}
 
 const DB = 'shub-device';
-const STORE = 'device';
+const STORE = 'machines';
 const RENEW_BEFORE_MS = 30_000;
+const SELECTED = 'shub.machine';
+
+export const here = location.origin;
 
 function db(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    const req = indexedDB.open(DB, 2);
+    req.onupgradeneeded = () => {
+      // v1 kept one record "self" for this origin; v2 keeps one per machine.
+      if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE, { keyPath: 'origin' });
+      if (req.result.objectStoreNames.contains('device')) {
+        const old = req.transaction!.objectStore('device').get('self');
+        old.onsuccess = () => {
+          const v = old.result as { deviceId: string; keys: CryptoKeyPair } | undefined;
+          if (v) req.transaction!.objectStore(STORE).put({ origin: here, name: location.hostname, ...v });
+          req.result.deleteObjectStore('device');
+        };
+      }
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -33,11 +51,24 @@ async function tx<T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRe
   });
 }
 
-let stored: Promise<Stored | undefined> | undefined;
-let token: { value: string; expires: number } | null = null;
-let signingIn: Promise<string> | null = null;
+let all: Promise<Machine[]> | undefined;
+const tokens = new Map<string, { value: string; expires: number }>();
+const signingIn = new Map<string, Promise<string>>();
 
-const load = () => (stored ??= tx<Stored | undefined>('readonly', (s) => s.get('self')).catch(() => undefined));
+export const machines = (): Promise<Machine[]> =>
+  (all ??= tx<Machine[]>('readonly', (s) => s.getAll()).catch(() => []));
+const find = async (origin: string) => (await machines()).find((m) => m.origin === origin);
+
+/** The machine the app shows; this page's own one unless another was picked and is still paired. */
+export async function selectedOrigin(): Promise<string> {
+  const picked = localStorage.getItem(SELECTED);
+  return picked && (await find(picked)) ? picked : here;
+}
+
+export function select(origin: string): void {
+  if (origin === here) localStorage.removeItem(SELECTED);
+  else localStorage.setItem(SELECTED, origin);
+}
 
 /** New key pair for pairing; only the public half ever leaves the phone. */
 export async function newKeys(): Promise<{ keys: CryptoKeyPair; publicKey: JsonWebKey }> {
@@ -45,20 +76,20 @@ export async function newKeys(): Promise<{ keys: CryptoKeyPair; publicKey: JsonW
   return { keys, publicKey: await crypto.subtle.exportKey('jwk', keys.publicKey) };
 }
 
-export async function rememberDevice(deviceId: string, keys: CryptoKeyPair): Promise<void> {
-  await tx('readwrite', (s) => s.put({ deviceId, keys } satisfies Stored, 'self'));
-  stored = Promise.resolve({ deviceId, keys });
-  token = null;
+export async function rememberDevice(machine: Machine): Promise<void> {
+  await tx('readwrite', (s) => s.put(machine));
+  all = undefined;
+  tokens.delete(machine.origin);
 }
 
-export async function forgetDevice(): Promise<void> {
-  await tx('readwrite', (s) => s.delete('self')).catch(() => {});
-  stored = Promise.resolve(undefined);
-  token = null;
+export async function forgetDevice(origin = here): Promise<void> {
+  await tx('readwrite', (s) => s.delete(origin)).catch(() => {});
+  all = undefined;
+  tokens.delete(origin);
 }
 
-async function post<T>(route: string, body: unknown): Promise<{ status: number; data: T }> {
-  const res = await fetch(route.split(' ')[1], {
+async function post<T>(origin: string, route: string, body: unknown): Promise<{ status: number; data: T }> {
+  const res = await fetch(origin + route.split(' ')[1], {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(body),
@@ -66,13 +97,19 @@ async function post<T>(route: string, body: unknown): Promise<{ status: number; 
   return { status: res.status, data: (await res.json().catch(() => ({}))) as T };
 }
 
-async function signIn({ deviceId, keys }: Stored): Promise<string> {
-  const challenge = await post<{ nonce?: string }>(ROUTES.authChallenge, { deviceId });
+const b64url = (buf: ArrayBuffer) =>
+  btoa(String.fromCharCode(...new Uint8Array(buf)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+async function signIn({ origin, deviceId, keys }: Machine): Promise<string> {
+  const challenge = await post<{ nonce?: string }>(origin, ROUTES.authChallenge, { deviceId });
   if (challenge.status === 409) throw new PendingError('waiting for approval on the machine');
   if (challenge.status === 404) {
-    // Unpaired on the machine: drop the key so the app shows the sign-in page again.
-    await forgetDevice();
-    throw new Error('this phone is no longer paired');
+    // Unpaired on that machine: drop the key so the app offers to pair again.
+    await forgetDevice(origin);
+    throw new Error('this phone is no longer paired with that machine');
   }
   if (!challenge.data.nonce) throw new Error(`sign-in failed (${challenge.status})`);
   const nonce = challenge.data.nonce;
@@ -81,29 +118,30 @@ async function signIn({ deviceId, keys }: Stored): Promise<string> {
     keys.privateKey,
     new TextEncoder().encode(`shub-login:${nonce}`),
   );
-  const signature = btoa(String.fromCharCode(...new Uint8Array(raw)))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-  const session = await post<{ token?: string; expiresAt?: string }>(ROUTES.authSession, {
+  const session = await post<{ token?: string; expiresAt?: string }>(origin, ROUTES.authSession, {
     deviceId,
     nonce,
-    signature,
+    signature: b64url(raw),
   });
   if (!session.data.token || !session.data.expiresAt) throw new Error(`sign-in failed (${session.status})`);
-  token = { value: session.data.token, expires: Date.parse(session.data.expiresAt) };
-  return token.value;
+  tokens.set(origin, { value: session.data.token, expires: Date.parse(session.data.expiresAt) });
+  return session.data.token;
 }
 
-/** Bearer token for this phone, renewed shortly before it runs out; null on a desktop (cookie). */
-export async function deviceToken(fresh = false): Promise<string | null> {
-  const device = await load();
-  if (!device) return null;
+/** Bearer token for this phone on a machine, renewed shortly before it runs out; null without a key (cookie). */
+export async function deviceToken(origin = here, fresh = false): Promise<string | null> {
+  const machine = await find(origin);
+  if (!machine) return null;
+  const token = tokens.get(origin);
   if (!fresh && token && token.expires - Date.now() > RENEW_BEFORE_MS) return token.value;
-  signingIn ??= signIn(device).finally(() => (signingIn = null));
-  return signingIn;
+  let pending = signingIn.get(origin);
+  if (!pending) {
+    pending = signIn(machine).finally(() => signingIn.delete(origin));
+    signingIn.set(origin, pending);
+  }
+  return pending;
 }
 
-export async function deviceId(): Promise<string | null> {
-  return (await load())?.deviceId ?? null;
+export async function deviceId(origin = here): Promise<string | null> {
+  return (await find(origin))?.deviceId ?? null;
 }

@@ -1,6 +1,8 @@
 <script lang="ts">
   // Phone layout (viewport < 700 px), same routes as the desktop: #/ is the overview, #/p/<id>/<session> a terminal.
   import CommandChip from '../components/CommandChip/CommandChip.svelte';
+  import MachineSwitcher from '../components/MachineSwitcher/MachineSwitcher.svelte';
+  import { fleet } from '../stores/machines.svelte.ts';
   import type { ServiceContainer, Session, SessionStatus } from '../../../../shared/api.ts';
   import Button from '../components/Button/Button.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
@@ -166,6 +168,13 @@
       <IconButton label="Search projects" icon="search" size="lg" onclick={() => (ui.search = true)} />
       <IconButton label="Settings" icon="gear" size="lg" href={href('settings')} />
     </header>
+    {#if fleet.list.length}<MachineSwitcher />{/if}
+    {#if app.unreachable}
+      <p class="unreachable">
+        {fleet.list.find((m) => m.origin === fleet.selected)?.name.split('.')[0] ?? 'This machine'} does not answer. It may
+        be off.
+      </p>
+    {/if}
 
     {#each SECTIONS as sec (sec.status)}
       {@const list = visible.filter((s) => s.status === sec.status)}
@@ -255,6 +264,11 @@
   .term-page .bar {
     padding: var(--space-2) var(--space-3);
     border-bottom: var(--hairline) solid var(--line);
+  }
+
+  .unreachable {
+    padding: var(--space-2) var(--space-1);
+    color: var(--muted);
   }
 
   .grow {
