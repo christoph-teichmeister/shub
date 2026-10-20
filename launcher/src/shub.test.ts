@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -20,6 +20,7 @@ test('install, start, pass through to the app CLI, check for updates', async () 
     XDG_CONFIG_HOME: join(root, 'config'),
     SHUB_CONFIG_DIR: join(root, 'config', 'shub'),
     SHUB_HOME: join(root, 'home'),
+    SHUB_STATE_DIR: join(root, 'state'),
     SHUB_TEST_RELEASES: f.url,
     SHUB_PORT: '4999',
   };
@@ -28,7 +29,12 @@ test('install, start, pass through to the app CLI, check for updates', async () 
   assert.equal((await shub('--version')).stdout, `launcher ${launcherVersion}\napp not installed (shub install)\n`);
   await assert.rejects(shub('status'), /shub is not installed yet\. Run: shub install/);
   assert.match((await shub('install')).stdout, /Installed 2026\.10\.0\.\nNext: shub service install/);
-  assert.match((await shub('install')).stdout, /shub 2026\.10\.0 is installed/);
+  assert.match((await shub('install', '--yes')).stdout, /shub 2026\.10\.0 is installed/);
+
+  await assert.rejects(shub('token'), /no access token yet/);
+  mkdirSync(env.SHUB_STATE_DIR);
+  writeFileSync(join(env.SHUB_STATE_DIR, 'token'), 'abc123\n');
+  assert.equal((await shub('token')).stdout, 'abc123\n');
 
   const started = (await shub()).stdout;
   assert.equal(

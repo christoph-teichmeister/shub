@@ -32,12 +32,15 @@ and run shub there.
 ## Install
 
 ```sh
-npm i -g @christoph-teichmeister/shub && shub install && shub service install
+npm i -g @christoph-teichmeister/shub && shub install
 ```
 
-The npm package is only the launcher (`shub`). `shub install` downloads the latest signed release from GitHub
-(`--channel beta` for pre-releases), `shub service install` runs it as a systemd user unit (Linux) or a launchd agent
-(macOS), at http://127.0.0.1:4780. `shub doctor` says what is missing. Versions live side by side in
+The npm package is only the launcher (`shub`). In a terminal, `shub install` walks you through the setup: it checks
+Node, tmux and Claude Code (and says how to install what is missing), asks for the update channel, port and an optional
+public URL, downloads the latest signed release from GitHub, runs it as a systemd user unit (Linux) or a launchd agent
+(macOS) at http://127.0.0.1:4780 and prints the access token you log in with (`shub token` prints it again). For
+scripts, `shub install --yes [--channel beta]` only installs the release, and `shub service install` adds the service.
+`shub doctor` says what is missing. Versions live side by side in
 `~/.local/share/shub/versions/` (`SHUB_HOME`); Settings > Updates shows new versions with their notes and installs
 one when you click, `shub update` and `shub rollback` do the same in a terminal. If a new version does not come up
 within 30 seconds, the launcher switches back. Sessions keep running in tmux through updates. Every other command
