@@ -468,7 +468,10 @@ test('closing the last terminal hides the bottom panel instead of showing Servic
 });
 
 test('active group keeps a project for 10 minutes after its last session closes', async ({ page }) => {
-  const mocks: Record<string, unknown> = { '/api/config': { ...config, activeGroup: true } };
+  const mocks: Record<string, unknown> = {
+    '/api/config': { ...config, activeGroup: true },
+    'PATCH /api/settings': { ...config, activeGroup: false },
+  };
   const { errors } = await mockApi(page, mocks);
   let events: { send(m: string): void } | undefined;
   await page.routeWebSocket('**/api/events', (ws) => {
@@ -480,6 +483,7 @@ test('active group keeps a project for 10 minutes after its last session closes'
   const activeGroup = page.getByRole('region', { name: 'Active' });
   await expect(activeGroup.getByRole('group', { name: 'ai-portal' })).toBeVisible();
   await expect(activeGroup.getByRole('group', { name: 'street-tours' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Work' })).toHaveCount(0); // the switch hides the normal groups
 
   events!.send(JSON.stringify({ type: 'session.closed', sessionId: 's1' }));
   mocks['/api/sessions'] = [];
@@ -493,6 +497,9 @@ test('active group keeps a project for 10 minutes after its last session closes'
   await page.clock.fastForward('10:01');
   await expect(activeGroup.getByRole('group', { name: 'ai-portal' })).toHaveCount(0);
   await expect(activeGroup.getByText('Nothing here')).toBeVisible();
+  await page.getByRole('switch', { name: 'Active only' }).click();
+  await expect(page.getByRole('region', { name: 'Work' })).toBeVisible();
+  await expect(activeGroup).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
