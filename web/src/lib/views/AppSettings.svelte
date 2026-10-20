@@ -55,6 +55,7 @@
   const UPDATE_MODES = [
     { value: 'ask', label: 'Ask me first' },
     { value: 'auto', label: 'Install automatically' },
+    { value: 'off', label: 'Don\'t check (only "Check now")' },
   ];
 
   const themes = $derived([...BUILT_IN_THEMES, ...(app.config?.themes ?? []).filter((t) => !t.builtIn)]);
@@ -407,7 +408,7 @@
             />
             <SelectField
               label="New versions"
-              hint="shub checks every hour. Automatic installs restart shub; sessions keep running."
+              hint="shub checks every hour unless off. Automatic installs restart shub; sessions keep running."
               bind:value={() => update.mode, (v) => setMode(v)}
               options={UPDATE_MODES}
             />

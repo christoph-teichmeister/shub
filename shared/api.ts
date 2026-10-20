@@ -97,7 +97,8 @@ export interface Config {
   defaultPermissionMode: LaunchPermissionMode;
   /** Release channel for updates. Absent: "beta" while a beta runs, else "stable". */
   updateChannel?: UpdateChannel;
-  /** What happens when a newer release is out: "auto" installs it, "ask" shows it in Settings. Absent: "ask". */
+  /** What happens when a newer release is out: "auto" installs it, "ask" shows it in
+   *  Settings, "off" stops the hourly check ("Check now" still works). Absent: "ask". */
   updateMode?: UpdateMode;
   /** Never stored: why config.json or local.json could not be read. shub then runs on the last good config and
    *  refuses changes until the file is fixed (it reloads on save). */
@@ -321,7 +322,7 @@ export interface SkillInfo {
 // ---------- updates ----------
 
 export type UpdateChannel = 'stable' | 'beta';
-export type UpdateMode = 'auto' | 'ask';
+export type UpdateMode = 'auto' | 'ask' | 'off';
 
 /**
  * GET /api/updates. Installing and rolling back are done by the shub launcher (launcher/), which verifies the

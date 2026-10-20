@@ -138,6 +138,16 @@ test('install and rollback start the launcher, only for the browser user', async
   assert.deepEqual(logged, ['updates.install 2026.10.1', 'updates.rollback 2026.9.0']);
 });
 
+test('mode off skips the background check', async () => {
+  const { module, call, events, services } = setup(true);
+  services.config.update((c) => (c.updateMode = 'off'), 'chris');
+  module.start!();
+  await new Promise((r) => setTimeout(r, 300));
+  module.stop!();
+  assert.equal(events.filter((e) => e.type === 'updates.changed').length, 0);
+  assert.equal((await call('POST /api/updates/check', user)).latest, '2026.10.1', 'Check now still works');
+});
+
 test('a failed check is shown, not thrown', async () => {
   const { call } = setup(true, { FAKE_FAIL: '1' });
   const status = await call('POST /api/updates/check', user);
@@ -148,7 +158,7 @@ test('a failed check is shown, not thrown', async () => {
 test('mode auto installs after the check, but not a version that was rolled back', async () => {
   const { call, calls, logged, home, services } = setup(true);
   await assert.rejects(call('PATCH /api/updates/mode', cli, { mode: 'auto' }), /only you/);
-  await assert.rejects(call('PATCH /api/updates/mode', user, { mode: 'yolo' }), /auto or ask/);
+  await assert.rejects(call('PATCH /api/updates/mode', user, { mode: 'yolo' }), /auto, ask or off/);
   assert.equal((await call('POST /api/updates/check', user)).mode, 'ask');
   assert.deepEqual(logged, [], 'ask only shows the new version');
 

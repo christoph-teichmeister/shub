@@ -171,7 +171,8 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
           requireBrowserUser(req.caller);
           managed();
           const { mode: next } = await req.json<{ mode?: string }>();
-          if (next !== 'auto' && next !== 'ask') throw new HttpError(400, 'mode must be auto or ask');
+          if (next !== 'auto' && next !== 'ask' && next !== 'off')
+            throw new HttpError(400, 'mode must be auto, ask or off');
           services.config.update((c) => (c.updateMode = next), req.caller.id);
           if (next === 'auto') void check();
           return status();
@@ -180,8 +181,8 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
       start() {
         if (!launcher) return;
         const row = cached();
-        if (!row || Date.parse(row.checked_at) < Date.now() - HOUR) void check();
-        timer = setInterval(() => void check(), HOUR);
+        if (mode() !== 'off' && (!row || Date.parse(row.checked_at) < Date.now() - HOUR)) void check();
+        timer = setInterval(() => mode() !== 'off' && void check(), HOUR);
         timer.unref();
       },
       stop() {

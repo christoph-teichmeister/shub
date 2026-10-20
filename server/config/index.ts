@@ -48,7 +48,7 @@ function normalize(raw: Partial<Config>): Config {
     defaultPermissionMode: isLaunchPermissionMode(raw.defaultPermissionMode) ? raw.defaultPermissionMode : 'default',
   };
   if (config.updateChannel !== 'stable' && config.updateChannel !== 'beta') delete config.updateChannel;
-  if (config.updateMode !== 'auto' && config.updateMode !== 'ask') delete config.updateMode;
+  if (!['auto', 'ask', 'off'].includes(config.updateMode!)) delete config.updateMode;
   delete config.problem;
   return config;
 }
