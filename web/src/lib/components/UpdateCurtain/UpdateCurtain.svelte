@@ -31,9 +31,15 @@
   const shown = $derived(version ?? arrived);
 </script>
 
-<div class="curtain" class:shown={!!shown} class:instant={!!arrived} aria-hidden={!shown}>
-  <Wordmark size="xl" needsYou />
-  <p role="status">{version ? `Updating to ${version}…` : 'Updated'}</p>
+<div
+  class="curtain"
+  class:shown={!!shown}
+  class:instant={!!arrived}
+  aria-hidden={!shown}
+  role="status"
+  aria-label={version ? `Updating to ${version}` : undefined}
+>
+  <div class="badge"><Wordmark size="xl" needsYou /></div>
 </div>
 
 <style>
@@ -45,8 +51,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: var(--space-4);
-    background: var(--bg);
+    backdrop-filter: blur(2px);
     opacity: 0;
     visibility: hidden;
     transition:
@@ -60,14 +65,14 @@
     transition: opacity var(--duration-slow) var(--ease-standard);
   }
 
-  .curtain.instant {
-    transition: none;
+  .badge {
+    padding: var(--space-6) var(--space-8);
+    border-radius: var(--radius-xl);
+    background: var(--panel);
+    box-shadow: 0 var(--space-4) var(--space-8) var(--shadow);
   }
 
-  p {
-    margin: 0;
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    color: var(--fg-2);
+  .curtain.instant {
+    transition: none;
   }
 </style>
