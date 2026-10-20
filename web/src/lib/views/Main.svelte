@@ -714,7 +714,7 @@
         </button>
         <button
           type="button"
-          class="global"
+          class="toggle"
           role="switch"
           aria-checked={!!app.config?.activeGroup}
           title="Only projects with a session (kept 10 minutes after the last one closes)"
@@ -1232,12 +1232,24 @@
     font-weight: var(--weight-medium);
   }
 
+  .toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2-5);
+    padding: var(--space-1) var(--space-3);
+    border: 0;
+    background: transparent;
+    color: var(--fg);
+    text-align: left;
+    cursor: pointer;
+  }
+
   .switch {
     position: relative;
     flex: none;
     width: var(--space-8);
     height: var(--space-4);
-    border-radius: var(--radius-round);
+    border-radius: var(--radius-pill);
     background: var(--line);
     transition: background 0.15s;
   }
