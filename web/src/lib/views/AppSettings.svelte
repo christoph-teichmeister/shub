@@ -52,6 +52,10 @@
     { value: 'stable', label: 'Stable' },
     { value: 'beta', label: 'Beta (pre-releases)' },
   ];
+  const UPDATE_MODES = [
+    { value: 'ask', label: 'Ask me first' },
+    { value: 'auto', label: 'Install automatically' },
+  ];
 
   const themes = $derived([...BUILT_IN_THEMES, ...(app.config?.themes ?? []).filter((t) => !t.builtIn)]);
   const active = $derived(app.config?.activeTheme ?? 'monokai');
@@ -171,6 +175,12 @@
 
   async function setChannel(channel: string) {
     const status = await api<UpdateStatus>('updateChannel', { body: { channel } }).catch(toastError);
+    if (status) app.update = status;
+    else void loadUpdate();
+  }
+
+  async function setMode(mode: string) {
+    const status = await api<UpdateStatus>('updateMode', { body: { mode } }).catch(toastError);
     if (status) app.update = status;
     else void loadUpdate();
   }
@@ -394,6 +404,12 @@
               hint="Beta gets new versions first, from every merge into develop."
               bind:value={() => update.channel, (v) => setChannel(v)}
               options={CHANNELS}
+            />
+            <SelectField
+              label="New versions"
+              hint="shub checks every hour. Automatic installs restart shub; sessions keep running."
+              bind:value={() => update.mode, (v) => setMode(v)}
+              options={UPDATE_MODES}
             />
             <div class="row">
               <Button onclick={checkUpdates} disabled={checking}>{checking ? 'Checking' : 'Check now'}</Button>

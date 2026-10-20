@@ -48,12 +48,13 @@ function normalize(raw: Partial<Config>): Config {
     defaultPermissionMode: isLaunchPermissionMode(raw.defaultPermissionMode) ? raw.defaultPermissionMode : 'default',
   };
   if (config.updateChannel !== 'stable' && config.updateChannel !== 'beta') delete config.updateChannel;
+  if (config.updateMode !== 'auto' && config.updateMode !== 'ask') delete config.updateMode;
   delete config.problem;
   return config;
 }
 
 /** Keys that always go to local.json; any other key the user puts there stays local too. */
-export const LOCAL_KEYS: (keyof Config)[] = ['updateChannel'];
+export const LOCAL_KEYS: (keyof Config)[] = ['updateChannel', 'updateMode'];
 
 export function contractHome(path: string, home: string): string {
   if (path === home) return '~';
