@@ -17,7 +17,7 @@
    `npm ci`, `npm run build`, `release.ts pack` writes `shub-<version>-<platform>.tar.gz` with `server/`, `shared/`,
    `cli/`, `web/dist/`, `package.json` (with the computed version), `release-keys.pem` and the production
    `node_modules` (node-pty built for that platform). The dry run (below) then installs and starts that archive once.
-4. **publish**, in the GitHub environment `release`: `release.ts sign` writes `SHA256SUMS` over the archives and
+4. **publish**, in the GitHub environment `release`: `release.ts sign` writes `SHA256SUMS` over the archives and the bundle manifests (`shub-<version>-<target>.bundle.json`, see below) and
    `SHA256SUMS.sig` (base64 ed25519 signature of it) with the secret `SHUB_RELEASE_SIGNING_KEY`; `release.ts changelog`
    groups the Conventional Commits since the previous tag of the same channel; `gh release create v<version>
 --target <sha>` creates the tag and the release (beta as pre-release).
@@ -86,3 +86,13 @@ The other steps work on their own too: `node scripts/release/release.ts version 
 
 `SHUB_TEST_RELEASES` (a `file://` or `http://127.0.0.1` URL of a folder with `releases.json` in the shape of the GitHub
 releases API and a `release-keys.pem`) points the launcher at such a local release instead of GitHub. Tests only.
+
+## Web bundle for phone apps
+
+`release.ts pack` also writes `web/dist/bundle.json` into each archive (version, API version, SHA-256 of every web
+file except the loader `sw.js`, `loader.js`, `release-keys.js`) and the same file next to the archive as
+`shub-<version>-<target>.bundle.json`, which `SHA256SUMS` lists. A running shub offers it at `GET /api/bundle` together
+with its release's `SHA256SUMS` and `.sig` (fetched once from the GitHub release, cached in `<stateDir>/release/<version>/`).
+A phone app's loader (`web/public/sw.js`) takes another machine's web app only when that signature checks out against
+`release-keys.js`, which the build generates from `launcher/release-keys.pem`. Rotating a key therefore also needs a
+build that phone apps install from their own machine first.

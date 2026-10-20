@@ -14,6 +14,7 @@ import { machineName } from '../notify/index.ts';
 import { allowList, refuse, type Allowed } from './guard.ts';
 import { HttpError, readBody, Router, sendJson, type Caller, type Request } from './router.ts';
 import { installUpgrades, onUpgrade } from './upgrade.ts';
+import { bundleOffer } from './bundle.ts';
 
 const SECURITY_HEADERS: Record<string, string> = {
   'content-security-policy':
@@ -151,7 +152,8 @@ async function handle(
   if (refusal) throw new HttpError(403, refusal);
   // A paired phone's app on another machine calls with a Bearer token, never a cookie (no credentials in CORS).
   const origin = raw.headers.origin?.toLowerCase();
-  if (origin && path.startsWith('/api/')) {
+  // Also for the static files: another machine's app loader downloads the web app from here.
+  if (origin) {
     res.setHeader('access-control-allow-origin', origin);
     res.setHeader('vary', 'origin');
     if (method === 'OPTIONS') {
@@ -190,6 +192,9 @@ function sendError(res: ServerResponse, err: unknown): void {
 export async function listen(ctx: Context, services: Services, modules: ShubModule[]): Promise<Server> {
   const router = new Router();
   eventsRoutes(ctx, router, appVersion(ctx.paths.appDir));
+  router.add(ROUTES.bundle, () => bundleOffer(join(ctx.paths.appDir, 'web', 'dist'), ctx.paths.stateDir), {
+    public: true,
+  });
   for (const m of modules) m.routes?.(router);
 
   // Per request: the phone setup can set the public URL while shub runs.

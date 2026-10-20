@@ -2,7 +2,7 @@
 import { hostname } from 'node:os';
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -315,6 +315,26 @@ test("another machine's app pairs cross-origin with a short code and may call th
   // Other routes now answer the app's origin (401 without a token, not 403), a third origin still gets 403.
   assert.equal((await foreign('GET', '/api/devices', app)).status, 401);
   assert.equal((await foreign('GET', '/api/devices', 'https://evil.example')).status, 403);
+});
+
+test('the bundle offer: 404 in a dev build, else the manifest with its release SUMS and signature', async () => {
+  assert.equal((await call('GET', '/api/bundle')).status, 404);
+  const dist = join(ctx.paths.appDir, 'web', 'dist');
+  const manifest = '{"version":"2026.10.9","apiVersion":1,"files":{"/index.html":"' + 'a'.repeat(64) + '"}}';
+  writeFileSync(join(dist, 'bundle.json'), manifest);
+  // Cached as if fetched from the GitHub release once.
+  const release = join(ctx.paths.stateDir, 'release', '2026.10.9');
+  mkdirSync(release, { recursive: true });
+  writeFileSync(join(release, 'SHA256SUMS'), 'sums');
+  writeFileSync(join(release, 'SHA256SUMS.sig'), 'sig');
+  const offer = await (await call('GET', '/api/bundle')).json();
+  assert.deepEqual(offer, {
+    name: `shub-2026.10.9-${process.platform}-${process.arch}.bundle.json`,
+    manifest,
+    sums: 'sums',
+    signature: 'sig',
+  });
+  rmSync(join(dist, 'bundle.json'));
 });
 
 test('a device can be renamed', async () => {

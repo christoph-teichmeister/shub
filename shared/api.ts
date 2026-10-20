@@ -534,6 +534,7 @@ export interface ReleaseNotes {
 
 export const ROUTES = {
   health: 'GET /api/health',
+  bundle: 'GET /api/bundle', // { name, manifest, sums?, signature? } for a phone app's loader; 404 in dev builds
   login: 'POST /api/auth/login', // { token } -> sets cookie
   logout: 'POST /api/auth/logout',
   me: 'GET /api/auth/me',
