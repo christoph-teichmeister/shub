@@ -29,6 +29,7 @@ export const SESSIONS: Session[] = [
   }),
   session('s3', 'Tailwind build fix', 'your-turn'),
   session('s4', 'Old spike', 'paused'),
+  session('s6', 'Restored after reboot', 'starting'),
   session('s5', 'Crashed run', 'exited'),
 ];
 

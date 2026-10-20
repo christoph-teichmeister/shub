@@ -115,7 +115,16 @@ export interface Config {
 
 export type SessionKind = 'claude' | 'shell' | 'global';
 /** "new": Claude is up but no prompt was sent yet. "waiting": parked until something outside happens (`waitingFor`). */
-export type SessionStatus = 'new' | 'working' | 'needs-you' | 'your-turn' | 'waiting' | 'paused' | 'exited';
+export type SessionStatus =
+  | 'new'
+  | 'working'
+  | 'needs-you'
+  | 'your-turn'
+  | 'waiting'
+  | 'paused'
+  /** Queued by a restore after a reboot; resumes shortly. */
+  | 'starting'
+  | 'exited';
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'auto' | 'bypassPermissions';
 export const PROMPT_SKIPPING_MODES: PermissionMode[] = ['auto', 'bypassPermissions'];
 export const PERMISSION_MODES: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];

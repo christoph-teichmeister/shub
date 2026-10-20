@@ -434,7 +434,8 @@
   async function restore(ids: string[]) {
     restorable = [];
     const list = await api<Session[]>('restore', { body: { ids } }).catch(toastError);
-    if (list) toast(`Resumed ${list.length} ${list.length === 1 ? 'session' : 'sessions'}`);
+    if (list?.length)
+      toast(list.length === 1 ? 'Resuming 1 session' : `Resuming ${list.length} sessions, one after another`);
   }
 
   function pluginEntry(plugin: string, action: string | undefined, entryId: string) {

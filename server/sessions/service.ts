@@ -55,6 +55,8 @@ const PASTE_TYPES: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
 };
 const RECONCILE_MS = 3000;
+/** Gap between sessions a restore brings back: all Claudes at once freeze the machine and the window. */
+const RESTORE_GAP_MS = 4000;
 /** A background shell may never end (dev server, watcher): after this long without a hook, hand the session back. */
 const BACKGROUND_FALLBACK_MS = 10 * 60_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -110,6 +112,7 @@ export interface SessionsOptions {
   launcher?: Launcher;
   titler?: Titler;
   waitChecker?: WaitChecker;
+  restoreGapMs?: number;
 }
 
 export class SessionsService implements Sessions {
@@ -126,6 +129,7 @@ export class SessionsService implements Sessions {
   #binDir: string;
   #restorable = new Set<string>();
   #timer: NodeJS.Timeout | undefined;
+  #restoreGapMs: number;
 
   constructor(ctx: Context, services: Services, options: SessionsOptions = {}) {
     this.#ctx = ctx;
@@ -133,6 +137,7 @@ export class SessionsService implements Sessions {
     this.#launcher = options.launcher ?? defaultLauncher;
     this.#titler = options.titler ?? defaultTitler;
     this.#waitChecker = options.waitChecker ?? defaultWaitChecker;
+    this.#restoreGapMs = options.restoreGapMs ?? RESTORE_GAP_MS;
     this.#binDir = join(ctx.paths.stateDir, 'bin');
   }
 
@@ -497,20 +502,40 @@ export class SessionsService implements Sessions {
     return [...this.#restorable].map((id) => this.get(id)!).filter(Boolean);
   }
 
-  /** Resumes the chosen ones; the rest of the restorable list is given up (marked exited). */
+  /**
+   * Resumes the chosen ones one after another (status `starting` until their turn); the rest of the
+   * restorable list is given up (marked exited). Returns the queued sessions.
+   */
   restore(ids: string[], actor: string): Session[] {
     const chosen = new Set(ids);
-    const restored: Session[] = [];
     for (const id of [...this.#restorable]) {
       if (!chosen.has(id)) this.#end(this.#row(id)!);
     }
     // Parents before their shells, so a shell's parent is running when it comes back.
-    for (const id of [...this.#restorable].sort(
+    const queue = [...this.#restorable].sort(
       (a, b) => Number(!!this.get(a)?.parentId) - Number(!!this.get(b)?.parentId),
-    )) {
-      restored.push(this.resume(id, actor));
+    );
+    for (const id of queue) {
+      this.#restorable.delete(id);
+      this.setStatus(id, 'starting', null);
     }
-    return restored;
+    const queued = queue.map((id) => this.get(id)!);
+    void this.#resumeQueue(queue, actor);
+    return queued;
+  }
+
+  async #resumeQueue(queue: string[], actor: string): Promise<void> {
+    for (const [i, id] of queue.entries()) {
+      if (i > 0) await new Promise((r) => setTimeout(r, this.#restoreGapMs));
+      // Closed or paused while it waited its turn.
+      if (this.get(id)?.status !== 'starting') continue;
+      try {
+        this.resume(id, actor);
+      } catch (err) {
+        console.error(`shub: resume ${id}`, err);
+        this.#end(this.#row(id)!);
+      }
+    }
   }
 
   sendKeys(id: string, keys: string[]): void {
@@ -579,7 +604,9 @@ export class SessionsService implements Sessions {
   startup(): void {
     const running = this.#tmux.sessions();
     for (const row of this.#rows()) {
-      if (LIVE.includes(row.status) && !running.has(tmuxName(row.id))) this.#restorable.add(row.id);
+      // `starting`: shub stopped before its restore queue reached it.
+      const live = LIVE.includes(row.status) || row.status === 'starting';
+      if (live && !running.has(tmuxName(row.id))) this.#restorable.add(row.id);
     }
     const global = this.get(GLOBAL_ID);
     if (global && this.#restorable.has(GLOBAL_ID)) this.resume(GLOBAL_ID, 'shub');
