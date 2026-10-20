@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ServerEvent } from '../../shared/api.ts';
 import { EventBus } from '../context.ts';
-import { DEFAULT_ACCENT, FileConfigStore, hostOfRemote, iconForHost } from './index.ts';
+import { DEFAULT_ACCENT, FileConfigStore, hostOfRemote, iconForHost, webUrlOfRemote } from './index.ts';
 
 function tmp(): string {
   return mkdtempSync(join(tmpdir(), 'shub-config-'));
@@ -59,6 +59,14 @@ test('remote hosts map to icons', () => {
   assert.equal(iconForHost('git.example.org').kind, 'none');
 });
 
+test('remotes map to browser URLs', () => {
+  assert.equal(webUrlOfRemote('git@github.com:a/b.git'), 'https://github.com/a/b');
+  assert.equal(webUrlOfRemote('ssh://git@git.example.org:22/g/sub/r.git'), 'https://git.example.org/g/sub/r');
+  assert.equal(webUrlOfRemote('https://user:token@GitLab.example.de/a/b.git/'), 'https://gitlab.example.de/a/b');
+  assert.equal(webUrlOfRemote('/srv/git/repo.git'), null);
+  assert.equal(webUrlOfRemote('file:///srv/git/repo.git'), null);
+});
+
 test('projectView resolves auto icons from git and picks the accent', () => {
   const dir = tmp();
   const repo = join(dir, 'repo');
@@ -75,6 +83,8 @@ test('projectView resolves auto icons from git and picks the accent', () => {
   const auto = store.projectView('auto')!;
   assert.equal(auto.resolvedIcon.kind, 'gitlab');
   assert.equal(auto.accent, DEFAULT_ACCENT);
+  assert.equal(auto.remoteUrl, 'https://gitlab.example.com/x/y');
+  assert.equal(store.projectView('plain')!.remoteUrl, undefined);
   assert.equal(store.projectView('sym')!.accent, '#a6e22e');
   assert.equal(store.projectView('orange')!.accent, DEFAULT_ACCENT);
   assert.equal(store.projectView('plain')!.resolvedIcon.kind, 'none');

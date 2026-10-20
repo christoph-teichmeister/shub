@@ -59,6 +59,9 @@
     </a>
     {#if badge}<span class="badge"><StatusBadge text={badge.text} tone={badge.tone} /></span>{/if}
     <span class="actions">
+      {#if project.remoteUrl}
+        <IconButton label="Open {project.name} remote" icon="link" href={project.remoteUrl} external />
+      {/if}
       {#if !project.missing}
         <IconButton label="New session in {project.name}" icon="plus" onclick={onnewsession} />
       {/if}

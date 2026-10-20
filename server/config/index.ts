@@ -104,6 +104,24 @@ export function remoteIcon(path: string): ResolvedIcon {
   return iconForHost(remote && hostOfRemote(remote));
 }
 
+/** The browser URL of a remote: `git@host:a/b.git` / `ssh://git@host:22/a/b.git` / `https://user@host/a/b.git` -> `https://host/a/b`. */
+export function webUrlOfRemote(remote: string): string | null {
+  const scp = /^[^@/]+@([^:/]+):(?!\/)(.+)$/.exec(remote);
+  let host: string, path: string;
+  if (scp) [, host, path] = scp;
+  else {
+    try {
+      const url = new URL(remote);
+      if (!['ssh:', 'git:', 'http:', 'https:'].includes(url.protocol) || !url.hostname) return null;
+      [host, path] = [url.hostname, url.pathname];
+    } catch {
+      return null;
+    }
+  }
+  path = path.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '');
+  return path ? `https://${host.toLowerCase()}/${path}` : null;
+}
+
 export class FileConfigStore implements ConfigStore {
   #dir: string;
   #file: string;
@@ -121,8 +139,8 @@ export class FileConfigStore implements ConfigStore {
   #lastGoodFile?: string;
   #watcher?: FSWatcher;
   #reloadTimer?: ReturnType<typeof setTimeout>;
-  // ponytail: remote icons cached for the process lifetime; restart shub after changing a remote.
-  #remoteIcons = new Map<string, ResolvedIcon>();
+  // ponytail: remotes cached for the process lifetime; restart shub after changing a remote.
+  #remotes = new Map<string, string | null>();
 
   constructor(configDir: string, bus: EventBus, home = homedir(), lastGoodFile?: string) {
     this.#dir = configDir;
@@ -292,19 +310,28 @@ export class FileConfigStore implements ConfigStore {
     const icon = project.icon;
     if (icon.kind === 'symbol') return { kind: 'symbol', symbol: icon.symbol, color: icon.color };
     if (icon.kind === 'image') return { kind: 'image', path: icon.path };
-    let cached = this.#remoteIcons.get(project.path);
-    if (!cached) {
-      cached = remoteIcon(project.path);
-      this.#remoteIcons.set(project.path, cached);
-    }
-    return cached;
+    const remote = this.#remote(project.path);
+    return iconForHost(remote && hostOfRemote(remote));
+  }
+
+  #remote(path: string): string | null {
+    if (!this.#remotes.has(path)) this.#remotes.set(path, gitRemote(path));
+    return this.#remotes.get(path)!;
   }
 
   #view(project: Project): ProjectView {
     const resolvedIcon = this.resolveIcon(project);
     // A shared config lists projects some machines do not have; they show greyed out, never get removed.
     const missing = !existsSync(project.path);
-    return { ...project, resolvedIcon, accent: accentFor(resolvedIcon), ...(missing && { missing }) };
+    const remote = this.#remote(project.path);
+    const remoteUrl = remote && webUrlOfRemote(remote);
+    return {
+      ...project,
+      resolvedIcon,
+      accent: accentFor(resolvedIcon),
+      ...(remoteUrl && { remoteUrl }),
+      ...(missing && { missing }),
+    };
   }
 }
 

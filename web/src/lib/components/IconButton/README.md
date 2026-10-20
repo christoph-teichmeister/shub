@@ -12,6 +12,7 @@ Square button (or link with `href`) showing only an icon. `label` is required: i
 | `pressed`  | `boolean`                                               |             |
 | `disabled` | `boolean`                                               | `false`     |
 | `href`     | `string`                                                |             |
+| `external` | `boolean` (opens `href` in a new tab)                   | `false`     |
 | `onclick`  | `(e) => void`                                           |             |
 
 States: each variant and tone, hover, pressed, disabled, focus ring.

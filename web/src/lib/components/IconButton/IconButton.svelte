@@ -13,6 +13,8 @@
     disabled?: boolean;
     /** Renders a link instead of a button. */
     href?: string;
+    /** Opens `href` in a new tab. */
+    external?: boolean;
     onclick?: (e: MouseEvent) => void;
   }
   let {
@@ -24,13 +26,21 @@
     pressed,
     disabled = false,
     href,
+    external = false,
     onclick,
   }: Props = $props();
   const iconSize = $derived(size === 'xs' ? 'sm' : size === 'lg' ? 'lg' : 'md');
 </script>
 
 {#if href}
-  <a class="icon-button {size} {variant} {tone}" {href} aria-label={label} title={label}>
+  <a
+    class="icon-button {size} {variant} {tone}"
+    {href}
+    target={external ? '_blank' : undefined}
+    rel={external ? 'noreferrer' : undefined}
+    aria-label={label}
+    title={label}
+  >
     <Icon name={icon} size={iconSize} />
   </a>
 {:else}

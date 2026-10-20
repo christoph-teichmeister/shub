@@ -63,6 +63,8 @@ export interface ProjectView extends Project {
   accent: string;
   /** The folder does not exist on this machine (config.json is shared between machines). */
   missing?: boolean;
+  /** Browser URL of the `origin` remote (GitHub, GitLab, ...), when there is one. */
+  remoteUrl?: string;
 }
 
 export interface ThemeDef {
