@@ -41,6 +41,12 @@
 
   const skipsPrompts = $derived(PROMPT_SKIPPING_MODES.includes(session.permissionMode as PermissionMode));
 
+  let el = $state<HTMLDivElement>();
+  // Keeps the active tab visible when the bar overflows; 'nearest' leaves the page itself alone.
+  $effect(() => {
+    if (selected) el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  });
+
   let draft = $state('');
   let input = $state<HTMLInputElement>();
 
@@ -61,6 +67,7 @@
 </script>
 
 <div
+  bind:this={el}
   class="tab {session.status}"
   class:selected
   class:closing
