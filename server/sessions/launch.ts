@@ -1,4 +1,5 @@
 // Pure helpers for starting sessions: prompts from buttons, permission modes, names, commands.
+import { basename } from 'node:path';
 import {
   PERMISSION_MODES,
   type ButtonDef,
@@ -60,6 +61,8 @@ export interface LaunchSpec {
   kind: SessionKind;
   claudeSessionId: string | null;
   settingsFile: string;
+  /** kind "shell", bash only: rc file that loads the login files and makes `claude` a shub session. */
+  shellRc?: string;
   permissionMode: LaunchPermissionMode;
   prompt?: string;
   /** Resume an existing Claude conversation instead of starting one. */
@@ -76,11 +79,26 @@ export const RUN_HINT =
   `\`\`\`bash ${RUN_MARKER} session=<id> or \`\`\`bash ${RUN_MARKER} cwd=<folder>; \`shub session list\` shows ` +
   `the sessions with their ids and folders.`;
 
+/**
+ * bash rc for shub terminals: what a login shell loads, then `claude` without arguments starts a tracked shub
+ * session in a new tab (`shub claude`). With arguments it is the real claude, without this terminal's id.
+ */
+export const shellRc = (shub: string): string => `# Written by shub for its terminals.
+[ -r /etc/profile ] && . /etc/profile
+for f in ~/.bash_profile ~/.bash_login ~/.profile; do [ -r "$f" ] && { . "$f"; break; }; done
+claude() {
+  if [ $# -eq 0 ]; then ${shub} claude; else env -u SHUB_SESSION_ID claude "$@"; fi
+}
+`;
+
 /** argv run inside tmux. Tests swap this for `sleep` or `bash`. */
 export type Launcher = (spec: LaunchSpec) => string[];
 
 export const defaultLauncher: Launcher = (spec) => {
-  if (spec.kind === 'shell') return [process.env.SHELL || '/bin/bash', '-l'];
+  if (spec.kind === 'shell') {
+    const shell = process.env.SHELL || '/bin/bash';
+    return basename(shell) === 'bash' && spec.shellRc ? [shell, '--rcfile', spec.shellRc, '-i'] : [shell, '-l'];
+  }
   const id = spec.resume ? ['--resume', spec.claudeSessionId!] : ['--session-id', spec.claudeSessionId!];
   // Passed unless the setting says "inherit": the user's own default may be a prompt-skipping one.
   const mode = spec.permissionMode === 'inherit' ? [] : ['--permission-mode', spec.permissionMode];

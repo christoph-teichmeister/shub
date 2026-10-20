@@ -573,6 +573,50 @@ test('the Worktrees dialog finds a worktree and opens a terminal in it as its ow
   expect(errors).toEqual([]);
 });
 
+test('a terminal tab opens with Alt T and starts Claude where it was cd-ed to, typed or clicked', async ({ page }) => {
+  const shell: Session = {
+    ...session,
+    id: 'sh1',
+    kind: 'shell',
+    name: 'Terminal 1',
+    status: 'your-turn',
+    parentId: null,
+  };
+  const here: Session = {
+    ...session,
+    id: 's9',
+    name: 'Session 9',
+    cwd: '/home/chris/PycharmProjects/work/ai-portal/web',
+  };
+  const { errors, calls } = await mockApi(page, {
+    'POST /api/sessions': { status: 200, json: shell },
+    'POST /api/sessions/sh1/claude-here': { status: 200, json: here },
+    '/api/sessions/s8/services': [],
+    '/api/sessions/s9/services': [],
+  });
+  let events: { send(m: string): void } | undefined;
+  await page.routeWebSocket('**/api/events', (ws) => {
+    events = ws;
+    ws.send(JSON.stringify({ type: 'hello', apiVersion: 1 }));
+  });
+  await page.goto('/#/p/ai-portal/s1');
+  await expect(page.getByRole('tab', { name: 'MR 2136 review' })).toBeVisible();
+  await page.keyboard.press('Alt+t');
+  await expect(page.getByRole('tab', { name: 'Terminal 1' })).toHaveAttribute('aria-selected', 'true');
+  const start = calls.find((c) => c.method === 'POST' && c.path === '/api/sessions');
+  expect(start?.body).toEqual({ projectId: 'ai-portal', kind: 'shell' });
+
+  // `claude` typed in the terminal: the server says which terminal started it, and its open tab follows.
+  const typed: Session = { ...here, id: 's8', name: 'Session 8' };
+  events!.send(JSON.stringify({ type: 'session.started', session: typed, from: 'sh1' }));
+  await expect(page.getByRole('tab', { name: 'Session 8' })).toHaveAttribute('aria-selected', 'true');
+
+  await page.getByRole('tab', { name: 'Terminal 1' }).click();
+  await page.getByRole('button', { name: 'Start Claude here' }).click();
+  await expect(page.getByRole('tab', { name: 'Session 9' })).toHaveAttribute('aria-selected', 'true');
+  expect(errors).toEqual([]);
+});
+
 test('active group keeps a project for 10 minutes after its last session closes', async ({ page }) => {
   const mocks: Record<string, unknown> = {
     '/api/config': { ...config, activeGroup: true },

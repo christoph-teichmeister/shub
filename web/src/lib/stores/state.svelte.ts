@@ -32,6 +32,8 @@ export const app = $state({
   config: null as Config | null,
   projects: [] as ProjectView[],
   sessions: [] as Session[],
+  /** A session started from a terminal (`shub claude`): Main jumps there when that terminal is the open tab. */
+  jump: null as { from: string; to: Session } | null,
   approvals: [] as Approval[],
   plugins: [] as PluginInfo[],
   /** GET /api/updates: the Settings notice and the dot on the user chip. */
@@ -94,7 +96,16 @@ export const sessionHref = (s: Session) => (s.projectId ? href('p', s.projectId,
 
 /** Starts a session; an approval answer only toasts (the approval dialog takes over). */
 export async function startSession(req: StartSessionRequest): Promise<Session | undefined> {
-  const res = await api<Session | { approval: Approval }>('sessionStart', { body: req }).catch(toastError);
+  return added(await api<Session | { approval: Approval }>('sessionStart', { body: req }).catch(toastError));
+}
+
+/** A Claude session in the folder a terminal is in right now. */
+export async function startClaudeHere(shellId: string): Promise<Session | undefined> {
+  const res = api<Session | { approval: Approval }>('sessionClaudeHere', { params: { id: shellId } });
+  return added(await res.catch(toastError));
+}
+
+function added(res: Session | { approval: Approval } | void): Session | undefined {
   if (!res) return;
   if ('approval' in res) {
     toast(`Waiting for your approval: ${res.approval.summary}`, 'needs-you');
@@ -213,6 +224,8 @@ function setStatus(sessionId: string, status: SessionStatus): void {
 export function handleEvent(e: ServerEvent): void {
   switch (e.type) {
     case 'session.started':
+      if (e.from) app.jump = { from: e.from, to: e.session };
+      return upsert(app.sessions, e.session);
     case 'session.updated':
       return upsert(app.sessions, e.session);
     case 'session.status':

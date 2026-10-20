@@ -20,7 +20,15 @@ import { hookSettings } from '../hooks/index.ts';
 import type { Services, Sessions } from '../services.ts';
 import { defaultTitler, type Titler } from './title.ts';
 import { defaultWaitChecker, type WaitChecker } from './waitcheck.ts';
-import { autoName, buttonPrompt, defaultLauncher, permissionModeFor, slugify, type Launcher } from './launch.ts';
+import {
+  autoName,
+  buttonPrompt,
+  defaultLauncher,
+  permissionModeFor,
+  shellRc,
+  slugify,
+  type Launcher,
+} from './launch.ts';
 import { claudeDir, encodeCwd, findTranscript, listOldSessions, summarizeTranscript } from './old.ts';
 import { Tmux } from './tmux.ts';
 
@@ -140,6 +148,7 @@ export class SessionsService implements Sessions {
   #background = new Map<string, number>();
   #tmux!: Tmux;
   #binDir: string;
+  #shellRc: string;
   #restorable = new Set<string>();
   #timer: NodeJS.Timeout | undefined;
   #restoreGapMs: number;
@@ -156,6 +165,7 @@ export class SessionsService implements Sessions {
     this.#restoreGapMs = options.restoreGapMs ?? RESTORE_GAP_MS;
     this.#startedGapMs = options.startedGapMs ?? STARTED_GAP_MS;
     this.#binDir = join(ctx.paths.stateDir, 'bin');
+    this.#shellRc = join(ctx.paths.stateDir, 'shell.bashrc');
   }
 
   get tmux(): Tmux {
@@ -169,6 +179,7 @@ export class SessionsService implements Sessions {
     const cli = join(this.#ctx.paths.appDir, 'cli', 'shub.ts');
     writeFileSync(wrapper, `#!/bin/sh\nexec node ${shellQuote(cli)} "$@"\n`, { mode: 0o755 });
     chmodSync(wrapper, 0o755);
+    writeFileSync(this.#shellRc, shellRc(shellQuote(wrapper)));
     this.#tmux = new Tmux(this.#ctx.tmuxSocket, join(this.#ctx.paths.stateDir, 'tmux.conf'));
   }
 
@@ -234,7 +245,7 @@ export class SessionsService implements Sessions {
       }
       this.#db.prepare('DELETE FROM sessions WHERE id = ?').run(GLOBAL_ID);
     }
-    const parent = request.kind === 'shell' ? this.require(request.parentId ?? '') : undefined;
+    const parent = request.kind === 'shell' && request.parentId ? this.require(request.parentId) : undefined;
     const projectId = request.kind === 'global' ? null : (parent?.projectId ?? request.projectId);
     const project = projectId ? this.#services.config.project(projectId) : undefined;
     if (request.kind === 'claude' && !project) throw new HttpError(404, 'no such project');
@@ -254,7 +265,11 @@ export class SessionsService implements Sessions {
       request.name?.trim() || request.kind !== 'claude' || button ? undefined : (prompt ?? resumed?.firstPrompt);
     const name =
       request.name?.trim() ||
-      (request.kind === 'global' ? 'Global Claude' : autoName({ button, input: request.input, prompt: namePrompt, n }));
+      (request.kind === 'global'
+        ? 'Global Claude'
+        : request.kind === 'shell'
+          ? `Terminal ${n}`
+          : autoName({ button, input: request.input, prompt: namePrompt, n }));
 
     const at = now();
     this.#db
@@ -295,7 +310,7 @@ export class SessionsService implements Sessions {
       throw err;
     }
     const session = this.get(id)!;
-    this.#ctx.bus.emit({ type: 'session.started', session });
+    this.#ctx.bus.emit({ type: 'session.started', session, from: request.from });
     this.#services.permissions.log({ actor: startedBy, action: 'session.start', detail: `${id}: ${session.name}` });
     if (namePrompt) this.#retitle(id, namePrompt, session.name);
     return session;
@@ -338,6 +353,8 @@ export class SessionsService implements Sessions {
   #launch(row: Row, opts: { prompt?: string; resume: boolean }): void {
     const env: Record<string, string> = {
       SHUB_URL: `http://127.0.0.1:${this.#ctx.port}`,
+      // Shells get it too (no token: the CLI there signs in as you), so `shub claude` knows its terminal.
+      SHUB_SESSION_ID: row.id,
       PATH: `${this.#binDir}:${process.env.PATH ?? '/usr/bin:/bin'}`,
     };
     const settingsFile = join(this.#ctx.paths.stateDir, 'sessions', row.id, 'settings.json');
@@ -357,12 +374,13 @@ export class SessionsService implements Sessions {
         });
         this.#db.prepare('UPDATE sessions SET token = ? WHERE id = ?').run(token, row.id);
       }
-      Object.assign(env, { SHUB_SESSION_ID: row.id, SHUB_TOKEN: token });
+      env.SHUB_TOKEN = token;
     }
     const argv = this.#launcher({
       kind: row.kind,
       claudeSessionId: row.claude_session_id,
       settingsFile,
+      shellRc: this.#shellRc,
       permissionMode: row.permission_mode,
       prompt: opts.prompt,
       resume: opts.resume,
@@ -614,6 +632,12 @@ export class SessionsService implements Sessions {
         console.error(`shub: command for ${id}`, err);
       }
     }, this.#startedGapMs).unref();
+  }
+
+  /** Where a running session's shell is now; for "Start Claude here" in a terminal. */
+  currentPath(id: string): string {
+    this.#requireRunning(id);
+    return this.#tmux.currentPath(tmuxName(id));
   }
 
   pasteText(id: string, text: string): void {

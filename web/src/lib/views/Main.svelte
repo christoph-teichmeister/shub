@@ -48,6 +48,7 @@
     sessionHref,
     sessionsOf,
     shellsOf,
+    startClaudeHere,
     startSession,
     ui,
   } from '../stores/state.svelte.ts';
@@ -391,6 +392,25 @@
     await newSession(null);
   }
 
+  $effect(() => {
+    if (!app.jump) return;
+    if (app.jump.from === active?.id) location.hash = sessionHref(app.jump.to);
+    app.jump = null;
+  });
+
+  /** A plain terminal as its own tab, in the project folder. */
+  async function newTerminal(p: ProjectView | null = project) {
+    if (!p) return;
+    const s = await startSession({ projectId: p.id, kind: 'shell' });
+    if (s) location.hash = sessionHref(s);
+  }
+
+  /** Claude in a new tab, in the folder the terminal has been cd'd to. */
+  async function claudeHere(shell: Session) {
+    const s = await startClaudeHere(shell.id);
+    if (s) location.hash = sessionHref(s);
+  }
+
   async function newShell(cwd?: string) {
     if (!active) return;
     const s = await startSession({ projectId: active.projectId, kind: 'shell', parentId: active.id, cwd });
@@ -468,7 +488,9 @@
       { id: 'rename', label: 'Rename' },
       { id: 'link', label: 'Add link…', hint: s.links[0]?.label },
       ...(s.kind === 'shell'
-        ? []
+        ? s.parentId
+          ? []
+          : [{ id: 'claude-here', label: 'Start Claude here' }]
         : [
             s.waitingFor
               ? { id: 'ready', label: 'Stop waiting', hint: s.waitingFor }
@@ -494,6 +516,7 @@
     else if (id === 'pause')
       void api(s.status === 'paused' ? 'sessionResume' : 'sessionPause', { params: { id: s.id } }).catch(toastError);
     else if (id === 'close') close(s);
+    else if (id === 'claude-here') void claudeHere(s);
     else if (id === 'hide') hideTab(s);
     else if (id.startsWith('button:')) {
       const b = project?.buttons.find((x) => x.id === id.slice(7));
@@ -510,6 +533,7 @@
   function projectMenuItems(p: ProjectView): MenuItem[] {
     return [
       { id: 'new', label: 'New session' },
+      { id: 'terminal', label: 'New terminal' },
       { id: 'settings', label: 'Project settings' },
       { id: 'visibility', label: p.visibility === 'pinned' ? 'Make dormant (search only)' : 'Pin to sidebar' },
       {
@@ -524,6 +548,7 @@
 
   async function onProjectMenu(p: ProjectView, id: string) {
     if (id === 'new') void newSession(p);
+    else if (id === 'terminal') void newTerminal(p);
     else if (id === 'settings') go('settings', 'project', p.id);
     else if (id === 'visibility') {
       const visibility = p.visibility === 'pinned' ? 'dormant' : 'pinned';
@@ -683,7 +708,7 @@
           panelOpen = !panelOpen;
           break;
         case 'KeyT':
-          void newShell();
+          void (e.shiftKey ? newShell() : newTerminal());
           break;
         case 'KeyR':
           if (active) renamingId = active.id;
@@ -993,6 +1018,16 @@
         {/each}
         {#snippet trailing()}
           <IconButton label="New session (Alt N)" icon="plus" size="md" tone="muted" onclick={() => newSession()} />
+          <IconButton
+            label="New terminal (Alt T)"
+            icon="terminal"
+            size="md"
+            tone="muted"
+            onclick={() => newTerminal()}
+          />
+          {#if active?.kind === 'shell' && !active.parentId}
+            <Button size="sm" icon="sparkle" onclick={() => claudeHere(active)}>Start Claude here</Button>
+          {/if}
           <span class="tab-hint">Double-click a tab to rename</span>
         {/snippet}
       </TabBar>

@@ -252,11 +252,13 @@ export interface StartSessionRequest {
   buttonId?: string;
   input?: string;
   prompt?: string;
-  parentId?: string; // kind "shell": its panel; a shell without one is a tab of its own and needs a cwd
+  parentId?: string; // kind "shell": its panel; a shell without one is a tab of its own (cwd defaults to the project folder)
   /** Defaults to the parent's cwd, else the project folder. Without a parent it must be one of the project's worktrees. */
   cwd?: string;
   /** kind "claude" only: reopen this old Claude conversation (from oldSessions) with `--resume`. */
   resumeClaudeSessionId?: string;
+  /** The terminal it was started from ("Start Claude here", `shub claude`): a tab showing it jumps to the new one. */
+  from?: string;
 }
 
 /** First-run suggestion from ~/.claude/projects (GET /api/projects/import adds resolvedIcon). */
@@ -570,6 +572,7 @@ export const ROUTES = {
   sessionUpdate: 'PATCH /api/sessions/:id', // { name } rename, { waitingFor: string | null, waitCheck?, waitEveryMinutes? } wait / stop
   sessionsReorder: 'POST /api/sessions/reorder', // { positions: { [id]: number | null } } -> Session[], user only
   sessionClose: 'DELETE /api/sessions/:id',
+  sessionClaudeHere: 'POST /api/sessions/:id/claude-here', // shell id -> Session | { approval }: Claude in the shell's current folder
   sessionPause: 'POST /api/sessions/:id/pause',
   sessionResume: 'POST /api/sessions/:id/resume',
   sessionCommand: 'POST /api/sessions/:id/command', // { index, action: 'run' | 'dismiss', enter? } pendingCommands
@@ -625,7 +628,7 @@ export const ROUTES = {
 
 export type ServerEvent =
   | { type: 'hello'; apiVersion: number }
-  | { type: 'session.started'; session: Session }
+  | { type: 'session.started'; session: Session; from?: string }
   | { type: 'session.updated'; session: Session }
   | { type: 'session.status'; sessionId: string; status: SessionStatus }
   | { type: 'session.closed'; sessionId: string }
