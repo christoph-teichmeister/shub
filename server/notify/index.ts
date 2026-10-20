@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import webpush from 'web-push';
 import { ROUTES, type Approval, type Session } from '../../shared/api.ts';
 import { HttpError, requireUser, type Router } from '../api/router.ts';
+import { publicUrl } from '../config/index.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Notify, Services } from '../services.ts';
@@ -70,8 +71,8 @@ export class NotifyService implements Notify {
   #keys(): Vapid {
     if (!this.#vapid) {
       this.#vapid = loadVapid(this.#ctx.paths.stateDir);
-      const publicUrl = process.env.SHUB_PUBLIC_URL;
-      const subject = publicUrl?.startsWith('https://') ? publicUrl : 'mailto:shub@localhost';
+      const url = publicUrl(this.#services.config.get());
+      const subject = url?.startsWith('https://') ? url : 'mailto:shub@localhost';
       webpush.setVapidDetails(subject, this.#vapid.publicKey, this.#vapid.privateKey);
     }
     return this.#vapid;

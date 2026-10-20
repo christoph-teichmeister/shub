@@ -1,5 +1,5 @@
 // Host and Origin allow-lists against DNS rebinding and CSRF.
-// Only loopback on our port and the host of SHUB_PUBLIC_URL (e.g. the tailscale serve name) may talk to shub.
+// Only loopback on our port and the host of the public URL (e.g. the tailscale serve name) may talk to shub.
 import type { IncomingMessage } from 'node:http';
 
 export interface Allowed {
@@ -7,7 +7,7 @@ export interface Allowed {
   origins: Set<string>;
 }
 
-export function allowList(port: number, publicUrl = process.env.SHUB_PUBLIC_URL): Allowed {
+export function allowList(port: number, publicUrl?: string): Allowed {
   const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
   const origins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
   if (publicUrl) {

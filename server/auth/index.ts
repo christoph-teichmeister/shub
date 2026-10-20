@@ -6,10 +6,12 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import QRCode from 'qrcode';
 import { ROUTES, type ClientKind, type Device, type Right } from '../../shared/api.ts';
+import { publicUrl } from '../config/index.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import { HttpError, requireUser, type Caller, type Router } from '../api/router.ts';
 import type { Auth, Services } from '../services.ts';
+import { phoneSetupRoutes } from './tailscale.ts';
 
 export const COOKIE = 'shub_session';
 const SESSION_MAX_AGE_S = 30 * 24 * 3600;
@@ -202,7 +204,7 @@ export class AuthService implements Auth {
     const code = randomBytes(16).toString('base64url');
     const expires = now + PAIRING_TTL_MS;
     this.#pairings.set(code, expires);
-    const base = (process.env.SHUB_PUBLIC_URL ?? `http://127.0.0.1:${this.#ctx.port}`).replace(/\/$/, '');
+    const base = publicUrl(this.#services.config.get()) ?? `http://127.0.0.1:${this.#ctx.port}`;
     const url = `${base}/pair/${code}`;
     const qrSvg = await QRCode.toString(url, { type: 'svg', margin: 1 });
     return { code, url, qrSvg, expiresAt: new Date(expires).toISOString() };
@@ -331,5 +333,8 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
   // main.ts creates state before auth, so the db is ready here.
   const auth = new AuthService(ctx, services);
   auth.init();
-  return { module: { name: 'auth', routes: (router) => routes(auth, router) }, service: auth };
+  return {
+    module: { name: 'auth', routes: (router) => (routes(auth, router), phoneSetupRoutes(ctx, services, router)) },
+    service: auth,
+  };
 }

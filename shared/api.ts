@@ -102,6 +102,8 @@ export interface Config {
   /** What happens when a newer release is out: "auto" installs it, "ask" shows it in
    *  Settings, "off" stops the hourly check ("Check now" still works). Absent: "ask". */
   updateMode?: UpdateMode;
+  /** https address the phone reaches shub at (the `tailscale serve` name); local.json. SHUB_PUBLIC_URL wins. */
+  publicUrl?: string;
   /** Never stored: why config.json or local.json could not be read. shub then runs on the last good config and
    *  refuses changes until the file is fixed (it reloads on save). */
   problem?: string;
@@ -322,6 +324,29 @@ export interface SkillInfo {
   path: string;
 }
 
+// ---------- phone setup ----------
+
+/** GET /api/phone-setup: what the Settings wizard checks before pairing a phone. */
+export interface PhoneSetup {
+  tailscale: {
+    /** The `tailscale` CLI exists. */
+    installed: boolean;
+    /** Logged in and connected. */
+    running: boolean;
+    /** This machine's tailnet name, e.g. "pc.tail1234.ts.net". */
+    dnsName?: string;
+    /** HTTPS certificates are on in the tailnet (needed for `tailscale serve` over https). */
+    https: boolean;
+    /** Online phones (iOS/Android) in the tailnet. */
+    phones: string[];
+    /** `tailscale serve` forwards to shub's port. */
+    served: boolean;
+  };
+  /** The address the phone uses, and where it comes from ("env" = SHUB_PUBLIC_URL, fixed). */
+  publicUrl?: string;
+  publicUrlSource?: 'env' | 'config';
+}
+
 // ---------- updates ----------
 
 export type UpdateChannel = 'stable' | 'beta';
@@ -418,6 +443,9 @@ export const ROUTES = {
   pushTest: 'POST /api/push/test',
 
   eventsStream: 'GET /api/events/stream', // Server-Sent Events twin of the /api/events WebSocket
+
+  phoneSetup: 'GET /api/phone-setup', // -> PhoneSetup, user only
+  phoneSetupServe: 'POST /api/phone-setup/serve', // runs `tailscale serve` and stores publicUrl -> PhoneSetup, user only
 
   updates: 'GET /api/updates', // -> UpdateStatus
   updateCheck: 'POST /api/updates/check', // -> UpdateStatus, user only

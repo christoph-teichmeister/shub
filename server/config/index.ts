@@ -49,12 +49,18 @@ function normalize(raw: Partial<Config>): Config {
   };
   if (config.updateChannel !== 'stable' && config.updateChannel !== 'beta') delete config.updateChannel;
   if (!['auto', 'ask', 'off'].includes(config.updateMode!)) delete config.updateMode;
+  if (!/^https:\/\/\S+$/.test(config.publicUrl ?? '')) delete config.publicUrl;
   delete config.problem;
   return config;
 }
 
 /** Keys that always go to local.json; any other key the user puts there stays local too. */
-export const LOCAL_KEYS: (keyof Config)[] = ['updateChannel', 'updateMode'];
+export const LOCAL_KEYS: (keyof Config)[] = ['updateChannel', 'updateMode', 'publicUrl'];
+
+/** The address the phone reaches shub at: SHUB_PUBLIC_URL, else the one the phone setup stored. No trailing slash. */
+export function publicUrl(config: Config): string | undefined {
+  return (process.env.SHUB_PUBLIC_URL || config.publicUrl)?.replace(/\/$/, '');
+}
 
 export function contractHome(path: string, home: string): string {
   if (path === home) return '~';

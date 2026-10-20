@@ -61,6 +61,18 @@ const API: Record<string, unknown> = {
   '/api/plugins': [],
   '/api/auth/me': { caller: { kind: 'user', id: 'user' }, device: null },
   '/api/devices': [],
+  '/api/phone-setup': {
+    tailscale: {
+      installed: true,
+      running: true,
+      dnsName: 'pc.tail.ts.net',
+      https: true,
+      phones: ['Pixel'],
+      served: true,
+    },
+    publicUrl: 'https://pc.tail.ts.net',
+    publicUrlSource: 'config',
+  },
   '/api/updates': {
     current: '2026.10.0',
     channel: 'stable',
