@@ -13,11 +13,12 @@ import type {
   TerminalSettings,
   UpdateStatus,
 } from '../../../../shared/api.ts';
-import { TERMINAL_SETTINGS_DEFAULTS, terminalSettingsError } from '../../../../shared/api.ts';
+import { API_VERSION, TERMINAL_SETTINGS_DEFAULTS, terminalSettingsError } from '../../../../shared/api.ts';
 import { applyTheme, findTheme } from '../tokens/tokens.ts';
 import { api, ApiError, wsTarget } from './api.ts';
 import { href } from './router.svelte.ts';
 import { toast, toastError } from './toasts.svelte.ts';
+import { checkAppUpdate } from './loader.ts';
 
 export const app = $state({
   ready: false,
@@ -26,6 +27,8 @@ export const app = $state({
   connected: false,
   /** The shown machine did not answer at all (network error, not an HTTP status). */
   unreachable: false,
+  /** API version of the shown machine when it differs from this app's (an older or newer shub there). */
+  apiMismatch: null as number | null,
   config: null as Config | null,
   projects: [] as ProjectView[],
   sessions: [] as Session[],
@@ -171,7 +174,8 @@ export async function loadUpdate(): Promise<void> {
     try {
       sessionStorage.setItem('shub-updated', current);
     } catch {}
-    setTimeout(() => location.reload(), 900);
+    // The app may run from the loader's cached bundle: let it fetch the new one before reloading.
+    void checkAppUpdate([]).then(() => setTimeout(() => location.reload(), 900));
   }
   const latest = app.update?.mode === 'ask' ? app.update.latest : undefined;
   if (latest && latest !== announced)
@@ -188,6 +192,9 @@ export async function loadAll(): Promise<void> {
     loadPlugins(),
     loadUpdate(),
     guard(api<{ name?: string }>('me')).then((me) => (app.me = me ?? null)),
+    guard(api<{ apiVersion: number }>('health')).then((h) => {
+      app.apiMismatch = h && h.apiVersion !== API_VERSION ? h.apiVersion : null;
+    }),
   ]);
   app.ready = true;
 }

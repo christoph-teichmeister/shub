@@ -3,7 +3,7 @@
   import CommandChip from '../components/CommandChip/CommandChip.svelte';
   import MachineSwitcher from '../components/MachineSwitcher/MachineSwitcher.svelte';
   import { fleet } from '../stores/machines.svelte.ts';
-  import type { ServiceContainer, Session, SessionStatus } from '../../../../shared/api.ts';
+  import { API_VERSION, type ServiceContainer, type Session, type SessionStatus } from '../../../../shared/api.ts';
   import Button from '../components/Button/Button.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
   import Icon from '../components/Icon/Icon.svelte';
@@ -169,6 +169,12 @@
       <IconButton label="Settings" icon="gear" size="lg" href={href('settings')} />
     </header>
     {#if fleet.list.length}<MachineSwitcher />{/if}
+    {#if app.apiMismatch !== null && !app.unreachable}
+      <p class="unreachable">
+        {fleet.list.find((m) => m.origin === fleet.selected)?.name.split('.')[0] ?? 'This machine'} runs a shub with API {app.apiMismatch},
+        this app speaks {API_VERSION}. Update the older one; until then some things may fail.
+      </p>
+    {/if}
     {#if app.unreachable}
       <p class="unreachable">
         {fleet.list.find((m) => m.origin === fleet.selected)?.name.split('.')[0] ?? 'This machine'} does not answer. It may

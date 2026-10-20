@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateKeyPairSync } from 'node:crypto';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash, generateKeyPairSync } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { signatureValid, verifyArchive } from '../../launcher/src/signing.ts';
-import { changelogFrom, isChannelTag, nextVersion, signDir } from './release.ts';
+import { bundleManifest, changelogFrom, isChannelTag, nextVersion, signDir } from './release.ts';
+// @ts-expect-error plain JS module shared with the service worker
+import { verifyOffer } from '../../web/public/loader.js';
 
 const OCT = new Date('2026-10-19T12:00:00Z');
 
@@ -73,4 +75,30 @@ test('signing writes SHA256SUMS and a signature the launcher accepts, only with 
     signature,
     keys: [publicPem],
   });
+});
+
+test('the bundle manifest lists every web file but the loader, and a phone accepts it once SHA256SUMS is signed', async () => {
+  const dist = mkdtempSync(join(tmpdir(), 'shub-dist-'));
+  mkdirSync(join(dist, 'assets'));
+  writeFileSync(join(dist, 'index.html'), '<!doctype html>');
+  writeFileSync(join(dist, 'assets', 'app.js'), 'console.log(1)');
+  writeFileSync(join(dist, 'sw.js'), 'loader');
+  writeFileSync(join(dist, 'release-keys.js'), 'keys');
+  const manifest = bundleManifest(dist, '2026.10.4');
+  const parsed = JSON.parse(manifest);
+  assert.deepEqual(Object.keys(parsed.files), ['/assets/app.js', '/index.html']);
+  assert.equal(parsed.files['/index.html'], createHash('sha256').update('<!doctype html>').digest('hex'));
+
+  const dir = mkdtempSync(join(tmpdir(), 'shub-sign-'));
+  const name = 'shub-2026.10.4-linux-x64.bundle.json';
+  writeFileSync(join(dir, 'shub-2026.10.4-linux-x64.tar.gz'), 'archive');
+  writeFileSync(join(dir, name), manifest);
+  const key = generateKeyPairSync('ed25519');
+  const publicPem = key.publicKey.export({ type: 'spki', format: 'pem' }).toString().trim();
+  const sums = await signDir(dir, key.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(), [publicPem]);
+  assert.match(sums, new RegExp(`  ${name.replace(/\./g, '\\.')}\n`));
+  const raw = Buffer.from(key.publicKey.export({ format: 'jwk' }).x!, 'base64url').toString('base64');
+  const signature = readFileSync(join(dir, 'SHA256SUMS.sig'), 'utf8');
+  const accepted = await verifyOffer({ name, manifest, sums, signature }, [raw], false);
+  assert.equal(accepted.version, '2026.10.4');
 });

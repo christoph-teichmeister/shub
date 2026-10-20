@@ -80,6 +80,10 @@ export function changelog(releases: Release[], channel: Channel, from: string | 
 export const archiveName = (version: string, platform = `${process.platform}-${process.arch}`): string =>
   `shub-${version}-${platform}.tar.gz`;
 
+/** The release's bundle manifest for a platform: SHA256SUMS lists it next to the archives. */
+export const bundleName = (version: string, platform = `${process.platform}-${process.arch}`): string =>
+  archiveName(version, platform).replace(/\.tar\.gz$/, '.bundle.json');
+
 async function get(url: string): Promise<Buffer> {
   if (url.startsWith('file:')) return readFile(fileURLToPath(url));
   const res = await fetch(url, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'shub-launcher' } });

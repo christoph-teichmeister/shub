@@ -94,6 +94,15 @@ come only from `https://github.com/christoph-teichmeister/shub/releases`. Instal
 channel from the web app are for the browser `user` only (not `cli`): the token file is readable by every process of
 your user, a device cookie is not. Key handling: [RELEASING.md](RELEASING.md).
 
+### Phone apps and the web bundle
+
+A phone app runs from the web bundle its loader (the service worker, which only ever comes from the machine the app
+was installed from) keeps on the phone. It takes a newer bundle from any paired machine, but only if that machine's
+release `SHA256SUMS` carries a valid signature from a key in the build's `release-keys.js` and lists the bundle
+manifest, and every file matches its SHA-256 there. The install machine's own bundle is trusted as is (its dev builds
+have no signature). A tampered machine can therefore at most keep the app on an older genuine version, not run code of
+its own in it.
+
 ## Docker
 
 The services panel talks to `/var/run/docker.sock`, which is root-equivalent. Reading containers, logs and inspect data needs the `read` right; start, stop and restart are user (and cli) only and are logged. Inspect masks values of keys containing PASSWORD, SECRET, TOKEN, KEY or CREDENTIAL and passwords inside URLs; logs are shown as they are, so secrets an app prints will be visible.

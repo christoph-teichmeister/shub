@@ -48,7 +48,9 @@ export async function pushEnabled(): Promise<boolean> {
 export async function subscribePush(): Promise<void> {
   if (!pushSupported()) throw new Error('This browser has no web push');
   if ((await Notification.requestPermission()) !== 'granted') throw new Error('Notifications are blocked');
-  const reg = (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.register('/sw.js'));
+  const reg =
+    (await navigator.serviceWorker.getRegistration()) ??
+    (await navigator.serviceWorker.register('/sw.js', { type: 'module' }));
   await navigator.serviceWorker.ready;
   const list = await machines();
   if (!list.length) {

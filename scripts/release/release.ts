@@ -1,18 +1,22 @@
 // Release tooling, used by .github/workflows/release.yml and runnable locally (docs/RELEASING.md):
 //   node scripts/release/release.ts version --branch main|develop [--sha <sha>]   -> version=..., channel=... lines
-//   node scripts/release/release.ts pack --version <v> --out <dir>                -> archive for this platform
+//   node scripts/release/release.ts pack --version <v> --out <dir>                -> archive + bundle manifest for this platform
 //   node scripts/release/release.ts sign <dir> [--keys <pem file>]                -> SHA256SUMS + SHA256SUMS.sig
 //   node scripts/release/release.ts changelog --channel stable|beta [--sha <sha>] -> Markdown release notes
 // sign reads the private key (PEM) from SHUB_RELEASE_SIGNING_KEY and never writes it to disk.
 import { execFileSync } from 'node:child_process';
 import { createPrivateKey, createPublicKey, sign } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { archiveName, type Channel } from '../../launcher/src/releases.ts';
+import { archiveName, bundleName, type Channel } from '../../launcher/src/releases.ts';
 import { pemKeys, sha256, signatureValid } from '../../launcher/src/signing.ts';
+import { API_VERSION } from '../../shared/api.ts';
+// @ts-expect-error plain JS module shared with the service worker
+import { LOADER_FILES } from '../../web/public/loader.js';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
 /** The one list of release public keys, shipped in the launcher and in every app archive. */
@@ -84,6 +88,24 @@ function changelog(channel: Channel, sha: string): string {
   return `${changelogFrom(commits)}\n\n${previous ? `Changes since ${previous}.` : 'First release.'}\n`;
 }
 
+/**
+ * bundle.json for the built web app: version, API version and the SHA-256 of every file a phone app may load from
+ * this release (not the loader itself). Listed in the signed SHA256SUMS, so another machine's app can trust it.
+ */
+export function bundleManifest(distDir: string, version: string): string {
+  const files: Record<string, string> = {};
+  for (const entry of readdirSync(distDir, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const path = '/' + relative(distDir, join(entry.parentPath, entry.name)).split(sep).join('/');
+    if (LOADER_FILES.includes(path)) continue;
+    files[path] = createHash('sha256')
+      .update(readFileSync(join(distDir, path)))
+      .digest('hex');
+  }
+  const sorted = Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)));
+  return JSON.stringify({ version, apiVersion: API_VERSION, files: sorted }, null, 2) + '\n';
+}
+
 /** Archive for this platform: server, shared, cli, built web app, package.json and production node_modules. */
 export function pack(version: string, outDir: string): string {
   if (!existsSync(join(ROOT, 'web', 'dist', 'index.html'))) throw new Error('web/dist is missing: run npm run build');
@@ -93,6 +115,11 @@ export function pack(version: string, outDir: string): string {
     for (const dir of ['server', 'shared', 'cli'])
       cpSync(join(ROOT, dir), join(stage, dir), { recursive: true, filter: notTest });
     cpSync(join(ROOT, 'web', 'dist'), join(stage, 'web', 'dist'), { recursive: true });
+    // The same bundle.json goes into the archive (the server offers it) and next to it (SHA256SUMS lists it).
+    const manifest = bundleManifest(join(stage, 'web', 'dist'), version);
+    writeFileSync(join(stage, 'web', 'dist', 'bundle.json'), manifest);
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(join(outDir, bundleName(version)), manifest);
     cpSync(KEYS_FILE, join(stage, 'release-keys.pem'));
     cpSync(join(ROOT, 'package-lock.json'), join(stage, 'package-lock.json'));
     const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
@@ -113,7 +140,7 @@ export function pack(version: string, outDir: string): string {
   }
 }
 
-/** Writes SHA256SUMS over the archives in dir and signs it; the key must be one of `trusted`. */
+/** Writes SHA256SUMS over the archives and bundle manifests in dir and signs it; the key must be one of `trusted`. */
 export async function signDir(dir: string, privatePem: string, trusted: string[]): Promise<string> {
   const key = createPrivateKey(privatePem);
   const publicPem = createPublicKey(key).export({ type: 'spki', format: 'pem' }).toString().trim();
@@ -121,7 +148,7 @@ export async function signDir(dir: string, privatePem: string, trusted: string[]
     throw new Error(`the signing key's public key is not in ${KEYS_FILE}; installs would refuse this release`);
   }
   const archives = readdirSync(dir)
-    .filter((f) => f.endsWith('.tar.gz'))
+    .filter((f) => f.endsWith('.tar.gz') || f.endsWith('.bundle.json'))
     .sort();
   if (!archives.length) throw new Error(`no archives in ${dir}`);
   const sums = (await Promise.all(archives.map(async (a) => `${await sha256(join(dir, a))}  ${a}\n`))).join('');

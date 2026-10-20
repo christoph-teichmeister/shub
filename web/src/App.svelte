@@ -3,7 +3,8 @@
   import Toast from './lib/components/Toast/Toast.svelte';
   import UpdateCurtain from './lib/components/UpdateCurtain/UpdateCurtain.svelte';
   import { select } from './lib/stores/device.ts';
-  import { loadMachines } from './lib/stores/machines.svelte.ts';
+  import { checkAppUpdate } from './lib/stores/loader.ts';
+  import { fleet, loadMachines } from './lib/stores/machines.svelte.ts';
   import { go, router } from './lib/stores/router.svelte.ts';
   import { app, connectEvents, loadAll, needsYouCount, ui } from './lib/stores/state.svelte.ts';
   import AppSettings from './lib/views/AppSettings.svelte';
@@ -27,12 +28,21 @@
     const session = params.get('session');
     if (machine) select(machine);
     if (machine || session) history.replaceState(null, '', location.pathname + location.hash);
-    void loadMachines();
+    // The loader looks at every machine for a newer app; a new one reloads the page behind the update curtain.
+    const checkApp = () =>
+      checkAppUpdate(fleet.list.map((m) => m.origin)).then((r) => {
+        if (!r.updated || !r.version || app.reloadingTo) return;
+        app.reloadingTo = r.version;
+        setTimeout(() => location.reload(), 900);
+      });
+    void loadMachines().then(checkApp);
+    const appTimer = setInterval(() => void checkApp(), 30 * 60_000);
     void loadAll().then(() => {
       const s = session ? app.sessions.find((x) => x.id === session) : undefined;
       if (s) go(...(s.projectId ? ['p', s.projectId, s.id] : ['g']));
     });
-    return connectEvents();
+    const stopEvents = connectEvents();
+    return () => (clearInterval(appTimer), stopEvents());
   });
 
   $effect(() => {
