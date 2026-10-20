@@ -394,7 +394,12 @@ test('settings: calls to action on top, search across all areas', async ({ page 
   await expect(page.getByRole('region', { name: 'Devices', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Appearance' })).toHaveCount(0);
   await expect(attention).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  // Search reads the rendered text: a word only in a hint finds its card, other areas hide.
+  await page.getByLabel('Search all settings').fill('sandboxes');
+  await expect(page.getByRole('region', { name: 'Permission mode for new sessions' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Notifications' })).toBeHidden();
+  await expect(page.getByRole('region', { name: 'Devices', exact: true })).toHaveCount(0);
+  await page.getByLabel('Search all settings').press('Escape');
   await expect(page.getByRole('region', { name: 'Appearance' })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Sessions', exact: true })).toBeVisible();
   expect(errors).toEqual([]);
