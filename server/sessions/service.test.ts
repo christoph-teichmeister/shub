@@ -16,6 +16,7 @@ import type { LaunchSpec } from './launch.ts';
 import { encodeCwd } from './old.ts';
 import { SessionsService, tmuxName } from './service.ts';
 import { attachTerminals } from './terminal.ts';
+import type { CheckResult } from './waitcheck.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'shub-sessions-'));
 const projectDir = join(root, 'proj');
@@ -57,10 +58,15 @@ const services = {
     revokeClientToken: (t: string) => revoked.push(t),
   },
   permissions: { log: () => ({}) },
+  notify: { needsYou: (s: { id: string }, text: string) => notified.push(`${s.id}: ${text}`) },
 } as unknown as Services;
+const notified: string[] = [];
+let checkAnswer: CheckResult | null = null;
+const checks: string[] = [];
 const svc = new SessionsService(ctx, services, {
   launcher: (spec) => (launches.push(spec), ['bash', '--norc', '--noprofile']),
   titler: async (prompt) => (prompt === 'do the thing' ? 'Thing Doing' : null),
+  waitChecker: async (check) => (checks.push(check), checkAnswer),
 });
 
 async function waitFor(check: () => boolean, what: string, ms = 5000): Promise<void> {
@@ -246,4 +252,39 @@ test('the default permission mode setting reaches user starts only; hooks update
   } finally {
     defaultPermissionMode = 'default';
   }
+});
+
+test('wait parks a session, ending the wait hands it back', async () => {
+  const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  svc.setStatus(s.id, 'your-turn');
+  const parked = svc.wait(s.id, "  Kai's answer on the MR ", 'chris');
+  assert.equal(parked.status, 'waiting');
+  assert.equal(parked.waitingFor, "Kai's answer on the MR");
+  svc.setStatus(s.id, 'working');
+  svc.wait(s.id, 'still Kai', 'chris');
+  assert.equal(svc.get(s.id)?.status, 'working', 'mid-turn the Stop hook parks it');
+  svc.setStatus(s.id, 'waiting');
+  const back = svc.wait(s.id, null, `session:${s.id}`);
+  assert.equal(back.status, 'your-turn');
+  assert.equal(back.waitingFor, null);
+  assert.throws(() => svc.wait(s.id, ' ', 'chris'), /must not be empty/);
+});
+
+test('a wait check runs at once, keeps waiting on NOT YET and hands back on DONE', async () => {
+  const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  svc.setStatus(s.id, 'your-turn');
+  const parked = svc.wait(s.id, 'Kai', 'chris', { prompt: 'Has Kai replied in MR !2213?', everyMinutes: 1 });
+  assert.equal(parked.waitCheck?.everyMinutes, 5, 'at least 5 minutes apart');
+  checkAnswer = { done: false, summary: 'no new comment' };
+  await svc.checkWait(s.id);
+  assert.deepEqual(checks, ['Has Kai replied in MR !2213?']);
+  assert.equal(svc.get(s.id)?.status, 'waiting');
+  assert.equal(svc.get(s.id)?.waitCheck?.last, 'NOT YET: no new comment');
+  await svc.checkWait(s.id);
+  assert.equal(checks.length, 1, 'not due again yet');
+  checkAnswer = { done: true, summary: 'Kai approved the MR' };
+  await svc.checkWait(s.id, true);
+  assert.equal(svc.get(s.id)?.status, 'your-turn');
+  assert.equal(svc.get(s.id)?.waitCheck, null);
+  assert.deepEqual(notified, [`${s.id}: Kai approved the MR`]);
 });

@@ -15,6 +15,7 @@ session's worktree next to it, and a phone view to answer permission questions o
 - **Sessions** are real `claude` processes in tmux (`tmux -L shub`). They survive closing the browser and restarting
   shub; after a reboot shub offers to resume them.
 - **Status** per session from Claude Code hooks: _needs you_, _your turn_, _working_. Desktop notifications and web push.
+- **Waiting**: park a session (tab menu > Wait for…, or `shub session wait`) until something outside happens; optionally Haiku checks it read-only in the background and hands the session back when it did.
 - **Buttons** for your skills: shub lists the project's and your global Claude skills; tick the ones you want as buttons.
 - **Permission mode** for new sessions in Settings (default `default`; `auto` and the like skip prompts, `inherit` uses your Claude settings); a button's own mode wins.
 - **Services panel** with the Docker Compose containers of the session's folder or worktree, PyCharm style.

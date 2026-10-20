@@ -93,11 +93,32 @@ function routes(sessions: SessionsService, services: Services, router: Router): 
     startRoute(sessions, services, req.caller, await req.json(), res),
   );
   router.add(ROUTES.sessionUpdate, async (req) => {
-    // The user, or a session renaming itself.
+    // The user, or a session changing itself.
     if (!isUser(req.caller) && req.caller.id !== `session:${req.params.id}`) throw new HttpError(403, 'not yours');
-    const { name } = await req.json<{ name?: unknown }>();
-    if (typeof name !== 'string') throw new HttpError(400, 'name: string');
-    return sessions.rename(req.params.id, name, req.caller.id);
+    const body = await req.json<{
+      name?: unknown;
+      waitingFor?: unknown;
+      waitCheck?: unknown;
+      waitEveryMinutes?: unknown;
+    }>();
+    if ('waitingFor' in body) {
+      const { waitingFor, waitCheck, waitEveryMinutes } = body;
+      if (waitingFor !== null && typeof waitingFor !== 'string') throw new HttpError(400, 'waitingFor: string | null');
+      if (waitCheck !== undefined && typeof waitCheck !== 'string') throw new HttpError(400, 'waitCheck: string');
+      if (waitEveryMinutes !== undefined && typeof waitEveryMinutes !== 'number') {
+        throw new HttpError(400, 'waitEveryMinutes: number');
+      }
+      const before = sessions.get(req.params.id);
+      const check = waitCheck ? { prompt: waitCheck, everyMinutes: waitEveryMinutes } : undefined;
+      const session = sessions.wait(req.params.id, waitingFor, req.caller.id, check);
+      // The session ending its own wait means what it waited for happened: tell the user like a question.
+      if (body.waitingFor === null && before?.status === 'waiting' && !isUser(req.caller)) {
+        services.notify.needsYou(session, `Done waiting: ${before.waitingFor}`);
+      }
+      return session;
+    }
+    if (typeof body.name !== 'string') throw new HttpError(400, 'name: string');
+    return sessions.rename(req.params.id, body.name, req.caller.id);
   });
   router.add(ROUTES.sessionClose, (req) => {
     // You close any session; a session only itself (also from inside it, e.g. `shub session close`).

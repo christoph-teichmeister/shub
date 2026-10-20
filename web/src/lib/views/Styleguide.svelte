@@ -33,7 +33,7 @@
   import { applyTheme, BUILT_IN_THEMES, PROJECT_COLORS, TOKEN_NAMES } from '../tokens/tokens.ts';
   import { CONTAINERS, LOG, PROJECTS, SESSIONS } from './fixtures.ts';
 
-  const STATUSES = ['new', 'needs-you', 'working', 'your-turn', 'paused', 'exited'] as const;
+  const STATUSES = ['new', 'needs-you', 'working', 'your-turn', 'waiting', 'paused', 'exited'] as const;
   const version = __APP_VERSION__;
 
   let themeId = $state(document.documentElement.dataset.theme ?? 'monokai');

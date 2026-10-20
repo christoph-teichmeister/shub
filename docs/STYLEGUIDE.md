@@ -43,6 +43,7 @@ UI: IBM Plex Sans (`--font-ui`); wordmark, paths, ports, terminal: JetBrains Mon
 | `needs-you` | solid dot, tinted row | `status-needs-you` (orange) |
 | `working`   | ring                  | `status-working`            |
 | `your-turn` | check                 | `status-your-turn`          |
+| `waiting`   | clock                 | `muted`                     |
 | `paused`    | pause bars            | `muted`                     |
 | `exited`    | muted ring            | `muted`                     |
 

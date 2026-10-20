@@ -7,6 +7,8 @@
 
 {#if status === 'your-turn'}
   <span class="mark your-turn" aria-hidden="true"><Icon name="check" size="xs" weight={2.4} /></span>
+{:else if status === 'waiting'}
+  <span class="mark waiting" aria-hidden="true"><Icon name="clock" size="xs" weight={2} /></span>
 {:else if status === 'paused'}
   <span class="mark paused" aria-hidden="true"><Icon name="pause" size="xs" weight={2.4} /></span>
 {:else}
@@ -46,7 +48,8 @@
     color: var(--status-your-turn);
   }
 
-  .paused {
+  .paused,
+  .waiting {
     color: var(--muted);
   }
 </style>

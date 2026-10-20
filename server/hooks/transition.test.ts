@@ -64,3 +64,11 @@ test('SessionStart: /clear, compact and startup bring a new Claude session id, r
   assert.equal(newClaudeSessionId(old, { source: 'resume', session_id: fresh }), null, 'resume');
   assert.equal(newClaudeSessionId(old, { source: 'clear', session_id: '../x' }), null, 'not a uuid');
 });
+
+test('a waiting session parks again after a turn and ignores the idle reminder', () => {
+  assert.equal(transition('waiting', 'UserPromptSubmit', { prompt: 'check the MR' }, true)?.status, 'working');
+  assert.deepEqual(transition('working', 'Stop', {}, true), { status: 'waiting', pendingPermission: null });
+  assert.equal(transition('waiting', 'Notification', { notification_type: 'idle_prompt' }, true), null);
+  const ask = transition('working', 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'ls' } }, true);
+  assert.equal(ask?.status, 'needs-you');
+});

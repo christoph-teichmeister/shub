@@ -17,6 +17,7 @@ import type { Context } from '../context.ts';
 import { hookSettings } from '../hooks/index.ts';
 import type { Services, Sessions } from '../services.ts';
 import { defaultTitler, type Titler } from './title.ts';
+import { defaultWaitChecker, type WaitChecker } from './waitcheck.ts';
 import { autoName, buttonPrompt, defaultLauncher, permissionModeFor, slugify, type Launcher } from './launch.ts';
 import { claudeDir, encodeCwd, listOldSessions, summarizeTranscript } from './old.ts';
 import { Tmux } from './tmux.ts';
@@ -27,10 +28,13 @@ const MIGRATIONS = [
      status TEXT NOT NULL, claude_session_id TEXT, permission_mode TEXT NOT NULL, started_by TEXT NOT NULL,
      parent_id TEXT, links TEXT NOT NULL, created_at TEXT NOT NULL, last_activity_at TEXT NOT NULL,
      pending_permission TEXT, token TEXT)`,
+  `ALTER TABLE sessions ADD COLUMN waiting_for TEXT`,
+  `ALTER TABLE sessions ADD COLUMN wait_check TEXT`,
 ];
+const WAIT_EVERY_MIN = 5;
 
 const GLOBAL_ID = 'global';
-const LIVE: SessionStatus[] = ['new', 'working', 'needs-you', 'your-turn'];
+const LIVE: SessionStatus[] = ['new', 'working', 'needs-you', 'your-turn', 'waiting'];
 const NAMED_KEYS = new Set(['Escape', 'C-c', 'Up', 'Down', 'Tab', 'Enter']);
 const LITERAL_MAX = 2000;
 const TEXT_PASTE_MAX = 1024 * 1024;
@@ -67,6 +71,8 @@ interface Row {
   last_activity_at: string;
   pending_permission: string | null;
   token: string | null;
+  waiting_for: string | null;
+  wait_check: string | null;
 }
 
 const toSession = (r: Row): Session => ({
@@ -84,6 +90,8 @@ const toSession = (r: Row): Session => ({
   createdAt: r.created_at,
   lastActivityAt: r.last_activity_at,
   pendingPermission: r.pending_permission ? JSON.parse(r.pending_permission) : null,
+  waitingFor: r.waiting_for,
+  waitCheck: r.wait_check ? JSON.parse(r.wait_check) : null,
 });
 
 export const tmuxName = (id: string): string => `shub-${id}`;
@@ -93,6 +101,7 @@ const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 export interface SessionsOptions {
   launcher?: Launcher;
   titler?: Titler;
+  waitChecker?: WaitChecker;
 }
 
 export class SessionsService implements Sessions {
@@ -100,6 +109,9 @@ export class SessionsService implements Sessions {
   #services: Services;
   #launcher: Launcher;
   #titler: Titler;
+  #waitChecker: WaitChecker;
+  /** Sessions whose background check is running right now. */
+  #checking = new Set<string>();
   #tmux!: Tmux;
   #binDir: string;
   #restorable = new Set<string>();
@@ -110,6 +122,7 @@ export class SessionsService implements Sessions {
     this.#services = services;
     this.#launcher = options.launcher ?? defaultLauncher;
     this.#titler = options.titler ?? defaultTitler;
+    this.#waitChecker = options.waitChecker ?? defaultWaitChecker;
     this.#binDir = join(ctx.paths.stateDir, 'bin');
   }
 
@@ -213,7 +226,11 @@ export class SessionsService implements Sessions {
 
     const at = now();
     this.#db
-      .prepare('INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .prepare(
+        `INSERT INTO sessions (id, kind, project_id, name, cwd, status, claude_session_id, permission_mode, started_by,
+         parent_id, links, created_at, last_activity_at, pending_permission, token)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
       .run(
         id,
         request.kind,
@@ -348,6 +365,37 @@ export class SessionsService implements Sessions {
     return this.#emitUpdated(id);
   }
 
+  /** Parks the session until `reason` happens, or (null) ends the wait: back to "your-turn".
+   *  With `check`, a small model looks every `everyMinutes` and ends the wait once it happened. */
+  wait(id: string, reason: string | null, actor: string, check?: { prompt: string; everyMinutes?: number }): Session {
+    const session = this.require(id);
+    if (session.kind === 'shell') throw new HttpError(400, 'shells cannot wait');
+    const clean = reason?.trim().slice(0, 200) || null;
+    if (reason !== null && !clean) throw new HttpError(400, 'waitingFor must not be empty');
+    const prompt = clean && check?.prompt.trim().slice(0, 2000);
+    const waitCheck = prompt
+      ? {
+          prompt,
+          everyMinutes: Math.max(WAIT_EVERY_MIN, Math.round(check?.everyMinutes ?? 30)),
+          // Runs at once, so the user sees right away whether the check makes sense.
+          checkedAt: null,
+          last: null,
+        }
+      : null;
+    this.#db
+      .prepare('UPDATE sessions SET waiting_for = ?, wait_check = ? WHERE id = ?')
+      .run(clean, waitCheck && JSON.stringify(waitCheck), id);
+    // Mid-turn (working, needs-you) the status follows on the turn's Stop hook.
+    if (clean && (session.status === 'your-turn' || session.status === 'new')) this.setStatus(id, 'waiting');
+    if (!clean && session.status === 'waiting') this.setStatus(id, 'your-turn');
+    this.#services.permissions.log({
+      actor,
+      action: clean ? 'session.wait' : 'session.ready',
+      detail: `${id}: ${clean ?? session.waitingFor ?? ''}`,
+    });
+    return this.#emitUpdated(id);
+  }
+
   setStatus(id: string, status: SessionStatus, pendingPermission?: Session['pendingPermission']): void {
     const session = this.get(id);
     if (!session || session.status === 'exited') return;
@@ -395,7 +443,11 @@ export class SessionsService implements Sessions {
     const hasTranscript = !!transcript && existsSync(transcript);
     this.#launch(this.#row(id)!, { resume: hasTranscript });
     this.#restorable.delete(id);
-    this.setStatus(id, hasTranscript || session.kind === 'shell' ? 'your-turn' : 'new', null);
+    this.setStatus(
+      id,
+      session.waitingFor ? 'waiting' : hasTranscript || session.kind === 'shell' ? 'your-turn' : 'new',
+      null,
+    );
     this.#services.permissions.log({ actor, action: 'session.resume', detail: `${id}: ${session.name}` });
     return this.get(id)!;
   }
@@ -482,13 +534,38 @@ export class SessionsService implements Sessions {
     this.#timer.unref();
   }
 
-  /** Claude or the shell exited on its own: the tmux session is gone. */
+  /** Claude or the shell exited on its own: the tmux session is gone. Also starts due wait checks. */
   reconcile(): void {
     const running = this.#tmux.sessions();
     for (const row of this.#rows()) {
       if (LIVE.includes(row.status) && !this.#restorable.has(row.id) && !running.has(tmuxName(row.id))) {
         this.#end(row);
-      }
+      } else if (row.status === 'waiting' && row.wait_check) void this.checkWait(row.id);
+    }
+  }
+
+  /** Runs the session's background check when it is due (or `force`); ends the wait once it happened. */
+  async checkWait(id: string, force = false): Promise<void> {
+    const before = this.get(id);
+    const check = before?.status === 'waiting' ? before.waitCheck : null;
+    if (!check || this.#checking.has(id)) return;
+    const due = !check.checkedAt || Date.now() - Date.parse(check.checkedAt) >= check.everyMinutes * 60_000;
+    if (!due && !force) return;
+    this.#checking.add(id);
+    try {
+      const result = await this.#waitChecker(check.prompt, before!.cwd).catch(() => null);
+      const current = this.get(id);
+      // The wait changed or ended meanwhile: this answer belongs to an old check.
+      if (current?.waitCheck?.prompt !== check.prompt || current.waitingFor !== before!.waitingFor) return;
+      const last = result ? `${result.done ? 'DONE' : 'NOT YET'}: ${result.summary}` : 'Check failed';
+      const updated = { ...check, checkedAt: now(), last };
+      this.#db.prepare('UPDATE sessions SET wait_check = ? WHERE id = ?').run(JSON.stringify(updated), id);
+      if (result?.done && current.status === 'waiting') {
+        const session = this.wait(id, null, 'shub:wait-check');
+        this.#services.notify.needsYou(session, result.summary);
+      } else this.#emitUpdated(id);
+    } finally {
+      this.#checking.delete(id);
     }
   }
 
