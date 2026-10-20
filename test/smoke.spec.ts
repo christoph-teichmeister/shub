@@ -403,11 +403,11 @@ test('theme editor blinks the colour you point at in the preview', async ({ page
   const bg = () => side.evaluate((el) => getComputedStyle(el).backgroundColor);
   await expect.poll(bg).toBe('rgb(30, 31, 28)');
   await page.locator('.color').filter({ hasText: 'Sidebar' }).hover();
-  // Monokai panel #1e1f1c alternates with its inverse #e1e0e3.
-  await expect.poll(bg).toBe('rgb(225, 224, 227)');
-  await expect.poll(bg).toBe('rgb(30, 31, 28)');
+  // Monokai panel #1e1f1c pulses towards its inverse, so it leaves the real colour.
+  await expect.poll(bg).not.toBe('rgb(30, 31, 28)');
   await page.mouse.move(0, 0);
   await expect(page.locator('.preview')).not.toHaveClass(/flashing/);
+  await expect.poll(bg).toBe('rgb(30, 31, 28)');
   expect(errors).toEqual([]);
 });
 
