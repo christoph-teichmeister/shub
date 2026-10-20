@@ -112,7 +112,7 @@ export class NotifyService implements Notify {
 
   needsYou(session: Session, text: string): void {
     const settings = this.#services.config.get().notifications;
-    const title = `${session.name} needs you`;
+    const title = session.name;
     if (settings.desktopNeedsYou) desktop(title, text);
     if (settings.pushNeedsYou)
       void this.push({ title, body: text, url: sessionUrl(session), tag: `session-${session.id}` });
