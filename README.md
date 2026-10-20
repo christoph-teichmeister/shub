@@ -20,7 +20,7 @@ session's worktree next to it, and a phone view to answer permission questions o
 - **Permission mode** for new sessions in Settings (default `default`; `auto` and the like skip prompts, `inherit` uses your Claude settings); a button's own mode wins.
 - **Worktrees** button on every project: search its worktrees by name, branch or state (merged, remote gone, dirty, not pushed, …), open a terminal or a Claude session in one, or close it: through the project's `/worktree-close` button when it has one, else plain git that never forces.
 - **Services panel** with the Docker Compose containers of the session's folder or worktree, PyCharm style.
-- **Plain terminals** as their own tab (`Alt T`; "Start Claude here" or `shub claude` opens Claude in the folder you cd-ed to) or below a session (`Alt Shift T`).
+- **Plain terminals** as their own tab (`Alt T`; `claude`, "Start Claude here" or `shub claude` opens a tracked Claude tab in the folder you cd-ed to) or below a session (`Alt Shift T`).
 - **Global Claude**: one session not tied to a project, for quick questions or setting up new projects.
 - **Phone**: install as a PWA over Tailscale, pair with a QR code, answer permission prompts with one tap.
 - **Themes**: Monokai, Dracula, Neutral dark, or your own.

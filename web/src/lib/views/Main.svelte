@@ -392,6 +392,12 @@
     await newSession(null);
   }
 
+  $effect(() => {
+    if (!app.jump) return;
+    if (app.jump.from === active?.id) location.hash = sessionHref(app.jump.to);
+    app.jump = null;
+  });
+
   /** A plain terminal as its own tab, in the project folder. */
   async function newTerminal(p: ProjectView | null = project) {
     if (!p) return;

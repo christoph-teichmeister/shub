@@ -1,7 +1,19 @@
 import { test } from 'node:test';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import type { ButtonDef } from '../../shared/api.ts';
-import { autoName, buttonPrompt, defaultLauncher, RUN_HINT, isSimpleInput, permissionModeFor } from './launch.ts';
+import {
+  autoName,
+  buttonPrompt,
+  defaultLauncher,
+  RUN_HINT,
+  isSimpleInput,
+  permissionModeFor,
+  shellRc,
+} from './launch.ts';
 import { encodeCwd, summarizeTranscript } from './old.ts';
 
 const button = (extra: Partial<ButtonDef>): ButtonDef => ({
@@ -113,4 +125,27 @@ test('transcript summary counts real prompts only', () => {
   ];
   const jsonl = lines.map((l) => JSON.stringify(l)).join('\n') + '\n{"broken';
   assert.deepEqual(summarizeTranscript(jsonl), { firstPrompt: 'Fix the login', turns: 2 });
+});
+
+test('in a shub terminal, bare `claude` runs `shub claude`; with arguments the real claude without the id', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'shub-rc-'));
+  try {
+    const script = (name: string, body: string) => {
+      writeFileSync(join(dir, name), `#!/bin/sh\n${body}\n`);
+      chmodSync(join(dir, name), 0o755);
+    };
+    script('shub', 'echo "shub $*"');
+    script('claude', 'echo "real $* id=${SHUB_SESSION_ID:-none}"');
+    writeFileSync(join(dir, 'rc'), shellRc(join(dir, 'shub')));
+    const run = (line: string) =>
+      execFileSync('bash', ['--rcfile', join(dir, 'rc'), '-i', '-c', line], {
+        encoding: 'utf8',
+        env: { HOME: dir, PATH: `${dir}:/usr/bin:/bin`, SHUB_SESSION_ID: 'p-sh1' },
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+    assert.equal(run('claude'), 'shub claude');
+    assert.equal(run('claude -p hi'), 'real -p hi id=none');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

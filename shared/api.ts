@@ -257,6 +257,8 @@ export interface StartSessionRequest {
   cwd?: string;
   /** kind "claude" only: reopen this old Claude conversation (from oldSessions) with `--resume`. */
   resumeClaudeSessionId?: string;
+  /** The terminal it was started from ("Start Claude here", `shub claude`): a tab showing it jumps to the new one. */
+  from?: string;
 }
 
 /** First-run suggestion from ~/.claude/projects (GET /api/projects/import adds resolvedIcon). */
@@ -626,7 +628,7 @@ export const ROUTES = {
 
 export type ServerEvent =
   | { type: 'hello'; apiVersion: number }
-  | { type: 'session.started'; session: Session }
+  | { type: 'session.started'; session: Session; from?: string }
   | { type: 'session.updated'; session: Session }
   | { type: 'session.status'; sessionId: string; status: SessionStatus }
   | { type: 'session.closed'; sessionId: string }

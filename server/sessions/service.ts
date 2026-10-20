@@ -20,7 +20,15 @@ import { hookSettings } from '../hooks/index.ts';
 import type { Services, Sessions } from '../services.ts';
 import { defaultTitler, type Titler } from './title.ts';
 import { defaultWaitChecker, type WaitChecker } from './waitcheck.ts';
-import { autoName, buttonPrompt, defaultLauncher, permissionModeFor, slugify, type Launcher } from './launch.ts';
+import {
+  autoName,
+  buttonPrompt,
+  defaultLauncher,
+  permissionModeFor,
+  shellRc,
+  slugify,
+  type Launcher,
+} from './launch.ts';
 import { claudeDir, encodeCwd, findTranscript, listOldSessions, summarizeTranscript } from './old.ts';
 import { Tmux } from './tmux.ts';
 
@@ -140,6 +148,7 @@ export class SessionsService implements Sessions {
   #background = new Map<string, number>();
   #tmux!: Tmux;
   #binDir: string;
+  #shellRc: string;
   #restorable = new Set<string>();
   #timer: NodeJS.Timeout | undefined;
   #restoreGapMs: number;
@@ -156,6 +165,7 @@ export class SessionsService implements Sessions {
     this.#restoreGapMs = options.restoreGapMs ?? RESTORE_GAP_MS;
     this.#startedGapMs = options.startedGapMs ?? STARTED_GAP_MS;
     this.#binDir = join(ctx.paths.stateDir, 'bin');
+    this.#shellRc = join(ctx.paths.stateDir, 'shell.bashrc');
   }
 
   get tmux(): Tmux {
@@ -169,6 +179,7 @@ export class SessionsService implements Sessions {
     const cli = join(this.#ctx.paths.appDir, 'cli', 'shub.ts');
     writeFileSync(wrapper, `#!/bin/sh\nexec node ${shellQuote(cli)} "$@"\n`, { mode: 0o755 });
     chmodSync(wrapper, 0o755);
+    writeFileSync(this.#shellRc, shellRc(shellQuote(wrapper)));
     this.#tmux = new Tmux(this.#ctx.tmuxSocket, join(this.#ctx.paths.stateDir, 'tmux.conf'));
   }
 
@@ -299,7 +310,7 @@ export class SessionsService implements Sessions {
       throw err;
     }
     const session = this.get(id)!;
-    this.#ctx.bus.emit({ type: 'session.started', session });
+    this.#ctx.bus.emit({ type: 'session.started', session, from: request.from });
     this.#services.permissions.log({ actor: startedBy, action: 'session.start', detail: `${id}: ${session.name}` });
     if (namePrompt) this.#retitle(id, namePrompt, session.name);
     return session;
@@ -369,6 +380,7 @@ export class SessionsService implements Sessions {
       kind: row.kind,
       claudeSessionId: row.claude_session_id,
       settingsFile,
+      shellRc: this.#shellRc,
       permissionMode: row.permission_mode,
       prompt: opts.prompt,
       resume: opts.resume,

@@ -106,7 +106,13 @@ function routes(sessions: SessionsService, services: Services, router: Router): 
     const shell = sessions.get(req.params.id);
     if (shell?.kind !== 'shell') throw new HttpError(404, 'no such terminal');
     const cwd = sessions.currentPath(shell.id);
-    return startRoute(sessions, services, req.caller, { projectId: shell.projectId, kind: 'claude', cwd }, res);
+    return startRoute(
+      sessions,
+      services,
+      req.caller,
+      { projectId: shell.projectId, kind: 'claude', cwd, from: shell.id },
+      res,
+    );
   });
   router.add(ROUTES.sessionUpdate, async (req) => {
     // The user, or a session changing itself.

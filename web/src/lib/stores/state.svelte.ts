@@ -32,6 +32,8 @@ export const app = $state({
   config: null as Config | null,
   projects: [] as ProjectView[],
   sessions: [] as Session[],
+  /** A session started from a terminal (`shub claude`): Main jumps there when that terminal is the open tab. */
+  jump: null as { from: string; to: Session } | null,
   approvals: [] as Approval[],
   plugins: [] as PluginInfo[],
   /** GET /api/updates: the Settings notice and the dot on the user chip. */
@@ -222,6 +224,8 @@ function setStatus(sessionId: string, status: SessionStatus): void {
 export function handleEvent(e: ServerEvent): void {
   switch (e.type) {
     case 'session.started':
+      if (e.from) app.jump = { from: e.from, to: e.session };
+      return upsert(app.sessions, e.session);
     case 'session.updated':
       return upsert(app.sessions, e.session);
     case 'session.status':
