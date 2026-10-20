@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { app } from '../../stores/state.svelte.ts';
   import { toast } from '../../stores/toasts.svelte.ts';
   import Wordmark from '../Wordmark/Wordmark.svelte';
 
@@ -10,21 +10,32 @@
   let { version = null }: Props = $props();
 
   /** Set by the page that reloaded for an update; this page starts covered and fades the curtain out. */
-  let arrived = $state<string | null>(null);
+  let stored: string | null = null;
   try {
-    arrived = sessionStorage.getItem('shub-updated');
+    stored = sessionStorage.getItem('shub-updated');
     sessionStorage.removeItem('shub-updated');
   } catch {}
+  let arrived = $state(stored);
 
-  onMount(() => {
-    if (!arrived) return;
+  /** Opaque while this page is still building underneath; stays through the fade-out. */
+  let landing = $state(!!stored);
+
+  /** Never trap the page behind the curtain if loading hangs or fails. */
+  let gaveUp = $state(false);
+  if (stored) setTimeout(() => (gaveUp = true), 5000);
+
+  // Stay covered until the data and fonts are in, so the UI does not visibly fill in and shift;
+  // two frames after that so the settled layout paints before the fade starts.
+  $effect(() => {
+    if (!arrived || !(app.ready || gaveUp)) return;
     const v = arrived;
-    // Two frames so the covered state paints before the fade starts.
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        arrived = null;
-        toast(`Updated to shub ${v}.`);
-      }),
+    void document.fonts.ready.then(() =>
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          arrived = null;
+          toast(`Updated to shub ${v}.`);
+        }),
+      ),
     );
   });
 
@@ -35,6 +46,8 @@
   class="curtain"
   class:shown={!!shown}
   class:instant={!!arrived}
+  class:landing
+  ontransitionend={() => (landing = !!arrived)}
   aria-hidden={!shown}
   role="status"
   aria-label={version ? `Updating to ${version}` : undefined}
@@ -70,6 +83,11 @@
     border-radius: var(--radius-xl);
     background: var(--panel);
     box-shadow: 0 var(--space-4) var(--space-8) var(--shadow);
+  }
+
+  /* The reloaded page is still building underneath: hide it fully, not just blurred. */
+  .curtain.landing {
+    background: var(--bg);
   }
 
   .curtain.instant {
