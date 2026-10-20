@@ -31,11 +31,21 @@
   let base = $state(custom?.base ?? builtIn?.id ?? 'monokai');
   let overrides = $state<Record<string, string>>({ ...(custom?.tokens ?? {}) });
   let showAll = $state(false);
+  // Token whose row is hovered (wins) or focused; it blinks in the preview.
+  let hovered = $state<TokenName | null>(null);
+  let focused = $state<TokenName | null>(null);
+  const active = $derived(hovered ?? focused);
   let saving = $state(false);
 
   const baseTheme = $derived(BUILT_IN_THEMES.find((t) => t.id === base) ?? BUILT_IN_THEMES[0]);
   const tokens = $derived(resolveTokens(baseTheme, overrides));
-  const previewVars = $derived(TOKEN_NAMES.map((n) => `--${n}: ${tokens[n]}`).join('; '));
+  const previewVars = $derived(
+    TOKEN_NAMES.map((n) =>
+      n === active
+        ? `--${n}: var(--flash); --flash-from: ${tokens[n]}; --flash: ${invert(tokens[n])}`
+        : `--${n}: ${tokens[n]}`,
+    ).join('; '),
+  );
   const rows = $derived(showAll ? TOKEN_NAMES.map((n) => ({ name: n, label: n })) : MAIN);
 
   const checks = $derived([
@@ -58,6 +68,9 @@
     return out;
   });
   const isHex = (v: string) => /^#[0-9a-f]{6}$/i.test(v);
+  /** Opposite colour so the blink stands out from the real one; magenta for non-hex values. */
+  const invert = (v: string) =>
+    isHex(v) ? `#${(0xffffff ^ parseInt(v.slice(1), 16)).toString(16).padStart(6, '0')}` : '#ff00ff';
 
   function set(token: string, value: string) {
     if (value === resolveTokens(baseTheme)[token as TokenName]) delete overrides[token];
@@ -103,9 +116,18 @@
           options={BUILT_IN_THEMES.map((t) => ({ value: t.id, label: t.name }))}
           hint="Everything you don't change comes from the base theme."
         />
+        <p class="hint">Point at a colour to make it blink in the preview.</p>
         <div class="colors">
           {#each rows as r (r.name)}
-            <div class="color">
+            <div
+              class="color"
+              class:active={active === r.name}
+              role="group"
+              onmouseenter={() => (hovered = r.name)}
+              onmouseleave={() => (hovered = null)}
+              onfocusin={() => (focused = r.name)}
+              onfocusout={() => (focused = null)}
+            >
               <input
                 type="color"
                 aria-label="Pick {r.label}"
@@ -152,7 +174,7 @@
 
       <section class="preview-wrap" aria-label="Live preview">
         <span class="label">Live preview</span>
-        <div class="preview" style={previewVars}>
+        <div class="preview" class:flashing={active} style={previewVars}>
           <div class="p-side">
             <Wordmark size="sm" />
             <span class="p-row selected">ai-portal</span>
@@ -232,6 +254,12 @@
     gap: var(--space-2-5);
   }
 
+  .hint {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--muted);
+  }
+
   .grow {
     flex: 1 1 auto;
     min-width: 0;
@@ -246,6 +274,10 @@
     border-radius: var(--radius-md);
     background: var(--panel);
     cursor: pointer;
+  }
+
+  .color.active input[type='color'] {
+    border-color: var(--primary);
   }
 
   .label {
@@ -298,6 +330,25 @@
     background: var(--bg);
     color: var(--fg);
     font-size: var(--text-sm);
+  }
+
+  /* Registered so it can animate; the active token points at it (see previewVars). */
+  @property --flash {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: transparent;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .preview.flashing {
+      animation: flash var(--duration-blink) steps(1, end) infinite;
+    }
+  }
+
+  @keyframes flash {
+    50% {
+      --flash: var(--flash-from);
+    }
   }
 
   .p-side {
