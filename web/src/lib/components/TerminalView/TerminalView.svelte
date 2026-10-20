@@ -3,6 +3,7 @@
   import { Terminal, type ITheme } from '@xterm/xterm';
   import { FitAddon } from '@xterm/addon-fit';
   import { WebLinksAddon } from '@xterm/addon-web-links';
+  import { WebglAddon } from '@xterm/addon-webgl';
   import type { TerminalControl } from '../../../../../shared/api.ts';
   import { api, wsUrl } from '../../stores/api.ts';
   import { app } from '../../stores/state.svelte.ts';
@@ -69,6 +70,14 @@
     t.loadAddon(fit);
     t.loadAddon(new WebLinksAddon());
     t.open(host!);
+    // WebGL draws box-drawing glyphs cell-exact, so Claude's tables connect; the DOM renderer leaves gaps.
+    try {
+      const gl = new WebglAddon();
+      gl.onContextLoss(() => gl.dispose());
+      t.loadAddon(gl);
+    } catch {
+      // No WebGL: stay on the DOM renderer.
+    }
     term = t;
 
     let ws: WebSocket | undefined;
