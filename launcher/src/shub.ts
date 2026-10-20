@@ -5,8 +5,10 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createInterface } from 'node:readline/promises';
 import { doctor, realDoctorDeps } from './doctor.ts';
 import { source } from './releases.ts';
+import { copyToClipboard, openUrl, readToken, setup, writeChannelTo } from './setup.ts';
 import { service } from './service.ts';
 import { channelFor, check, healthCheck, rollback, update, type Deps } from './update.ts';
 import { currentVersion, readState, shubHome, writeState } from './versions.ts';
@@ -23,8 +25,10 @@ const HELP = `shub — your session hub (launcher ${pkg.version})
 Usage: shub [command]
 
   start                         run the installed shub (the default)
-  install [--channel stable|beta]
-                                download and install the latest release
+  install [--channel stable|beta] [--yes]
+                                guided setup in a terminal: checks, settings, service, token;
+                                --yes (or no terminal) only downloads and installs the latest release
+  token                         print the access token to log in with
   update [--to <version>] [--channel stable|beta] [--check] [--json]
                                 install a newer release and restart shub
   rollback                      switch back to the previous version
@@ -55,12 +59,19 @@ function flags(args: string[], valued: string[]): Record<string, string | true> 
 
 const str = (v: string | true | undefined): string | undefined => (typeof v === 'string' ? v : undefined);
 
-/** The channel picked in the app's Settings (local.json, older apps config.json); the launcher never writes them. */
+const configDir = env.SHUB_CONFIG_DIR ?? join(env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'shub');
+// Same path as the app's stateDir (server/context.ts).
+const tokenFile = join(
+  env.SHUB_STATE_DIR ?? join(env.XDG_STATE_HOME ?? join(homedir(), '.local', 'state'), 'shub'),
+  'token',
+);
+
+/** The channel picked in the app's Settings (local.json, older apps config.json); only the guided setup writes it. */
 function configuredChannel(): string | undefined {
-  const dir = env.SHUB_CONFIG_DIR ?? join(env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'shub');
   for (const file of ['local.json', 'config.json']) {
     try {
-      const channel = (JSON.parse(readFileSync(join(dir, file), 'utf8')) as { updateChannel?: string }).updateChannel;
+      const channel = (JSON.parse(readFileSync(join(configDir, file), 'utf8')) as { updateChannel?: string })
+        .updateChannel;
       if (channel) return channel;
     } catch {
       // missing or unreadable: try the next file
@@ -94,6 +105,42 @@ function exec(home: string, args: (dir: string) => string[]): never {
   });
 }
 
+async function guided(home: string): Promise<void> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  // Ctrl+C at a prompt: leave like any other command would.
+  rl.on('SIGINT', () => {
+    rl.close();
+    process.exit(130);
+  });
+  try {
+    const done = await setup({
+      ask: (q) => rl.question(q),
+      log: (l) => console.log(l),
+      platform: process.platform,
+      doctor: async () =>
+        (await doctor(realDoctorDeps(env, Number(env.SHUB_PORT ?? 4780)))).filter((f) => f.name !== 'Port'),
+      portState: realDoctorDeps(env, 0).portState,
+      configuredChannel: configuredChannel(),
+      writeChannel: (channel) => writeChannelTo(configDir, channel),
+      installed: () => currentVersion(home),
+      install: async (channel) => {
+        const result = await update({ ...deps(home), log: (l) => console.log(`  ${l}`) }, { channel });
+        return result?.ok === false ? null : currentVersion(home);
+      },
+      installService: (extra, force) =>
+        service().install({ node: process.execPath, launcher: self, home, env: { ...env, ...extra } }, force),
+      health: (port, version) => healthCheck(port)(version, 30_000),
+      token: () => readToken(tokenFile),
+      tokenFile,
+      copy: (text) => copyToClipboard(text),
+      open: (url) => openUrl(url),
+    });
+    if (!done) process.exitCode = 1;
+  } finally {
+    rl.close();
+  }
+}
+
 async function main(argv: string[]): Promise<void> {
   if (process.platform === 'win32') {
     throw new UsageError(
@@ -109,6 +156,7 @@ async function main(argv: string[]): Promise<void> {
     }
     case 'install': {
       const f = flags(rest, ['channel']);
+      if (!f.yes && process.stdin.isTTY && process.stdout.isTTY) return guided(home);
       const current = currentVersion(home);
       if (current) return void console.log(`shub ${current} is installed. Newer versions: shub update`);
       await update(deps(home), { channel: channelFor(str(f.channel), configuredChannel(), null) });
@@ -146,6 +194,12 @@ async function main(argv: string[]): Promise<void> {
       }
       if (action === 'uninstall') return void console.log(s.uninstall());
       throw new UsageError('usage: shub service install|uninstall');
+    }
+    case 'token': {
+      flags(rest, []);
+      const token = readToken(tokenFile);
+      if (!token) throw new UsageError(`no access token yet (${tokenFile}); shub creates it on its first start`);
+      return void console.log(token);
     }
     case 'doctor': {
       flags(rest, []);

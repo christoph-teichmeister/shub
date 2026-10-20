@@ -1,6 +1,7 @@
 // tmux on shub's own socket. Every call passes `-L <socket>` and `-f <conf>`, so the user's server is never touched.
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+import { HttpError } from '../api/router.ts';
 
 // -f is only read when the server starts, which is exactly when these must apply (history-limit only
 // affects panes created after it is set).
@@ -11,6 +12,9 @@ set -s escape-time 0
 set -g status off
 set -g default-terminal tmux-256color
 `;
+
+export const TMUX_MISSING =
+  'tmux is not installed: shub needs tmux 3.3 or newer (apt install tmux, brew install tmux), then restart shub';
 
 export class Tmux {
   readonly socket: string;
@@ -23,11 +27,16 @@ export class Tmux {
   }
 
   run(args: string[], input?: string): string {
-    return execFileSync('tmux', ['-L', this.socket, '-f', this.#conf, ...args], {
-      encoding: 'utf8',
-      input,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    try {
+      return execFileSync('tmux', ['-L', this.socket, '-f', this.#conf, ...args], {
+        encoding: 'utf8',
+        input,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') throw new HttpError(503, TMUX_MISSING);
+      throw err;
+    }
   }
 
   newSession(name: string, cwd: string, env: Record<string, string>, argv: string[]): void {
