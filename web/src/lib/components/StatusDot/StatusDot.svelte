@@ -35,6 +35,23 @@
     border: var(--ring) dashed var(--muted);
   }
 
+  .starting {
+    border: var(--ring) dashed var(--status-working);
+    animation: spin 1.6s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .starting {
+      animation: none;
+    }
+  }
+
   .exited {
     border: var(--ring) solid var(--muted);
   }

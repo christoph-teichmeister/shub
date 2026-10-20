@@ -7,6 +7,7 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
   'your-turn': 'your turn',
   waiting: 'waiting',
   paused: 'paused',
+  starting: 'starting…',
   exited: 'exited',
 };
 

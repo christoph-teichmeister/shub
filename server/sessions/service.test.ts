@@ -67,6 +67,7 @@ const notified: string[] = [];
 let checkAnswer: CheckResult | null = null;
 const checks: string[] = [];
 const svc = new SessionsService(ctx, services, {
+  restoreGapMs: 300,
   launcher: (spec) => (launches.push(spec), ['bash', '--norc', '--noprofile']),
   titler: async (prompt) => (prompt === 'do the thing' ? 'Thing Doing' : null),
   waitChecker: async (check) => (checks.push(check), checkAnswer),
@@ -200,8 +201,20 @@ test('after a reboot: restorable list, global Claude comes up, restore resumes',
     svc.restorable().map((r) => r.id),
     [s.id],
   );
-  svc.restore([s.id], 'chris');
-  assert.ok(svc.tmux.has(tmuxName(s.id)));
+  const second = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  svc.tmux.kill(tmuxName(second.id));
+  svc.tmux.kill(tmuxName(s.id));
+  svc.startup();
+  const queued = svc.restore([s.id, second.id], 'chris');
+  assert.deepEqual(
+    queued.map((q) => q.status),
+    ['starting', 'starting'],
+  );
+  assert.ok(svc.tmux.has(tmuxName(s.id)), 'first one resumes at once');
+  assert.ok(!svc.tmux.has(tmuxName(second.id)), 'the next waits its turn');
+  assert.equal(svc.get(second.id)?.status, 'starting');
+  await waitFor(() => svc.tmux.has(tmuxName(second.id)), 'second resumes after the gap');
+  assert.equal(svc.get(second.id)?.status, 'new');
   assert.deepEqual(svc.restorable(), []);
   const again = await svc.start({ kind: 'global', projectId: null }, 'chris');
   assert.equal(again.id, 'global', 'exactly one global Claude');
