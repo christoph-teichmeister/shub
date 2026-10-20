@@ -20,7 +20,7 @@ import { HttpError, requireRight, requireUser, type Caller, type Request, type R
 import type { PermissionAction, Services } from '../services.ts';
 import { importCandidates } from './import.ts';
 import { updateMainCheckout } from './main-checkout.ts';
-import { listWorktrees } from './worktrees.ts';
+import { listWorktrees, pruneWorktrees, removeWorktree, worktreeOverview } from './worktrees.ts';
 import { isLaunchPermissionMode } from '../sessions/launch.ts';
 
 type Gated<T> = T | { approval: Approval };
@@ -267,6 +267,40 @@ function projectRoutes(services: Services, router: Router): void {
   router.add(ROUTES.projectWorktrees, (req) => {
     requireRight(req.caller, 'read');
     return listWorktrees(existing(req.params.id).path);
+  });
+
+  // Cleanup section: every project's worktrees with their state. Writes are user only and plain git;
+  // projects with a /worktree-close button close through a Claude session instead (web side).
+  const sessionCwds = () => services.sessions.list().map((s) => s.cwd);
+  const overview = (p: Project, fetch = false) => worktreeOverview(p.id, p.path, sessionCwds(), fetch);
+  router.add(ROUTES.worktrees, async (req) => {
+    requireRight(req.caller, 'read');
+    const fetch = req.query.get('fetch') === '1';
+    const projects = config.get().projects.filter((p) => existsSync(p.path));
+    const seen = new Set<string>();
+    return (await Promise.all(projects.map((p) => overview(p, fetch))))
+      .flat()
+      .filter((w) => !seen.has(w.path) && seen.add(w.path));
+  });
+
+  router.add(ROUTES.worktreeRemove, async (req) => {
+    requireUser(req.caller);
+    const { projectId, path } = await req.json<{ projectId?: unknown; path?: unknown }>();
+    const project = existing(String(projectId));
+    const w = (await overview(project)).find((x) => x.path === path);
+    if (!w) throw new HttpError(404, 'no such worktree');
+    try {
+      return { branchDeleted: await removeWorktree(project.path, w) };
+    } catch (err) {
+      throw new HttpError(409, err instanceof Error ? err.message : String(err));
+    }
+  });
+
+  router.add(ROUTES.worktreePrune, async (req) => {
+    requireUser(req.caller);
+    const { projectId } = await req.json<{ projectId?: unknown }>();
+    await pruneWorktrees(existing(String(projectId)).path);
+    return { ok: true };
   });
 
   // Folder browser for the project form: browsers never hand out real paths, so the server lists its own folders.

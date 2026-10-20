@@ -7,8 +7,10 @@
     ServiceContainer,
     Session,
     SessionLink,
+    SidebarSectionContent,
     StartSessionRequest,
     Worktree,
+    WorktreeInfo,
   } from '../../../../shared/api.ts';
   import AppShell from '../components/AppShell/AppShell.svelte';
   import BottomPanel from '../components/BottomPanel/BottomPanel.svelte';
@@ -189,6 +191,113 @@
   /** What a folded group still shows: who needs you, else what is working. */
   const groupBadge = (projects: ProjectView[]) => projectBadge(projects.flatMap((p) => sessionsOf(p.id)));
   const dormantCount = $derived(app.projects.filter((p) => p.visibility === 'dormant').length);
+
+  // ---------- Worktrees: cleanup section over every project's worktrees ----------
+  let worktreeList = $state<WorktreeInfo[]>([]);
+  async function loadWorktrees(fetch = false) {
+    worktreeList = await api<WorktreeInfo[]>('worktrees', fetch ? { query: { fetch: '1' } } : {}).catch(() => []);
+  }
+  onMount(() => {
+    void loadWorktrees(true);
+    const timer = setInterval(() => void loadWorktrees(true), 10 * 60_000);
+    return () => clearInterval(timer);
+  });
+  // A session ending is often a /worktree-close run; reload without fetching.
+  $effect(() => {
+    void app.sessions.length;
+    untrack(() => void loadWorktrees());
+  });
+  // Sessions come and go between loads; a session in a worktree always makes it active.
+  const worktrees = $derived(
+    worktreeList.map((w) =>
+      app.sessions.some((s) => s.cwd === w.path || s.cwd.startsWith(`${w.path}/`))
+        ? { ...w, state: 'active' as const }
+        : w,
+    ),
+  );
+  /** Closing would lose work, git would refuse, or the session must end first. */
+  const KEEP = ['active', 'locked', 'dirty', 'not-pushed'];
+  const mergedWorktrees = $derived(worktrees.filter((w) => w.state === 'merged'));
+  const age = (iso: string | null) => {
+    const days = iso ? Math.floor((Date.now() - Date.parse(iso)) / 86_400_000) : null;
+    return days === null ? '' : days < 1 ? 'today' : `${days}d`;
+  };
+  const worktreeEntries = $derived<SidebarSectionContent['entries']>([
+    ...(mergedWorktrees.length > 1
+      ? [{ id: 'close-merged', title: `Close all merged (${mergedWorktrees.length})`, action: 'close-merged' }]
+      : []),
+    ...worktrees.map((w) => ({
+      id: w.path,
+      title: `${app.projects.find((p) => p.id === w.projectId)?.name ?? '?'} / ${w.name}`,
+      subtitle: [w.state.replace('-', ' '), w.branch || 'detached', age(w.lastCommitAt)].filter(Boolean).join(' · '),
+      tone:
+        w.state === 'active' ? ('working' as const) : KEEP.includes(w.state) ? ('neutral' as const) : ('done' as const),
+      action: KEEP.includes(w.state) ? undefined : w.state === 'folder-gone' ? 'prune' : 'close',
+    })),
+  ]);
+  const closer = (p: ProjectView) => p.buttons.find((b) => b.skill === '/worktree-close');
+
+  /** A project with a /worktree-close button closes through a Claude session (containers etc.), others by plain git. */
+  async function closeWorktree(w: WorktreeInfo, open: boolean) {
+    const p = app.projects.find((x) => x.id === w.projectId);
+    if (!p) return;
+    const button = closer(p);
+    if (button) {
+      if (open) await newSession(p, { buttonId: button.id, input: w.path });
+      else await startSession({ projectId: p.id, kind: 'claude', buttonId: button.id, input: w.path });
+      return;
+    }
+    const { branchDeleted } = await api<{ branchDeleted: boolean }>('worktreeRemove', {
+      body: { projectId: p.id, path: w.path },
+    });
+    toast(`Closed ${w.name}${w.branch ? (branchDeleted ? ' and its branch' : `; branch ${w.branch} kept`) : ''}`);
+  }
+
+  function worktreeEntry(id: string, action: string | undefined) {
+    if (action === 'close-merged') {
+      const list = mergedWorktrees;
+      confirm = {
+        title: `Close ${list.length} merged worktrees?`,
+        body: `${list.map((w) => w.name).join(', ')}. Projects with a /worktree-close button get one session each.`,
+        action: 'Close all',
+        danger: true,
+        run: async () => {
+          for (const w of list) await closeWorktree(w, false).catch(toastError);
+          await loadWorktrees();
+        },
+      };
+      return;
+    }
+    const w = worktrees.find((x) => x.path === id);
+    const p = w && app.projects.find((x) => x.id === w.projectId);
+    if (!w || !p) return;
+    if (action === 'prune') {
+      confirm = {
+        title: `Prune ${p.name}?`,
+        body: `${w.path} is gone; git forgets it and every other missing worktree of ${p.name}.`,
+        action: 'Prune',
+        run: () =>
+          void api('worktreePrune', { body: { projectId: p.id } })
+            .then(() => loadWorktrees())
+            .catch(toastError),
+      };
+      return;
+    }
+    const button = closer(p);
+    confirm = {
+      title: `Close ${w.name}?`,
+      body: button
+        ? `Starts claude with "/worktree-close ${w.path}" in ${p.path}.`
+        : `Removes ${w.path}` +
+          (!w.branch ? '.' : w.state === 'merged' ? ` and its branch ${w.branch}.` : `; branch ${w.branch} stays.`),
+      action: 'Close',
+      danger: !button,
+      run: () =>
+        void closeWorktree(w, true)
+          .then(() => loadWorktrees())
+          .catch(toastError),
+    };
+  }
   const pluginSections = $derived(
     app.plugins
       .filter((p) => p.enabled)
@@ -701,6 +810,15 @@
             {/each}
           </SidebarSection>
         {/each}
+      {/if}
+
+      {#if worktrees.length}
+        <SidebarSection
+          title="Worktrees"
+          badge={mergedWorktrees.length ? { text: `${mergedWorktrees.length} merged`, tone: 'neutral' } : null}
+          entries={worktreeEntries}
+          onentry={(entry) => worktreeEntry(entry.id, entry.action)}
+        />
       {/if}
 
       {#if app.ready && !app.config?.activeGroup && groups.length === 0}

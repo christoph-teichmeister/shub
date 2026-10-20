@@ -18,6 +18,7 @@ session's worktree next to it, and a phone view to answer permission questions o
 - **Waiting**: park a session (tab menu > Wait for…, or `shub session wait`) until something outside happens; optionally Haiku checks it read-only in the background and hands the session back when it did.
 - **Buttons** for your skills: shub lists the project's and your global Claude skills; tick the ones you want as buttons.
 - **Permission mode** for new sessions in Settings (default `default`; `auto` and the like skip prompts, `inherit` uses your Claude settings); a button's own mode wins.
+- **Worktrees section** in the sidebar: every project's worktrees with their state (merged, remote gone, dirty, not pushed, …), closed with one click: through a project's `/worktree-close` button when it has one, else plain git that never forces.
 - **Services panel** with the Docker Compose containers of the session's folder or worktree, PyCharm style.
 - **Plain terminals** next to a session (`Alt T`).
 - **Global Claude**: one session not tied to a project, for quick questions or setting up new projects.
