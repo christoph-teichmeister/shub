@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { fade, fly } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import IconButton from '../IconButton/IconButton.svelte';
 
   interface Props {
@@ -19,6 +21,9 @@
   let { open, title, subtitle, closeLabel = 'Close', onclose, icon, actions, footer, children }: Props = $props();
   const id = `drawer-${Math.random().toString(36).slice(2, 8)}`;
   let aside = $state<HTMLElement>();
+  // Same timing as the sidebar fold; the token is 0ms under prefers-reduced-motion.
+  const duration = () =>
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--duration-base')) || 0;
 </script>
 
 <svelte:window
@@ -28,8 +33,13 @@
 />
 
 {#if open}
-  <div class="backdrop" aria-hidden="true" onclick={onclose}></div>
-  <aside bind:this={aside} class="drawer" aria-labelledby={id}>
+  <div class="backdrop" aria-hidden="true" onclick={onclose} transition:fade={{ duration: duration() }}></div>
+  <aside
+    bind:this={aside}
+    class="drawer"
+    aria-labelledby={id}
+    transition:fly={{ x: '100%', opacity: 1, duration: duration(), easing: cubicOut }}
+  >
     <header class="head">
       {#if icon}{@render icon()}{/if}
       <div class="title">

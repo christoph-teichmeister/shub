@@ -14,4 +14,6 @@ Panel sliding over the right side (`<aside>`), e.g. the global Claude. Not modal
 | `footer`     | snippet      |           | Muted note at the bottom      |
 | `children`   | snippet      |           | Body, fills the height        |
 
+Slides in from the right and back out (`--duration-base`, none under reduced motion).
+
 States: closed, open with actions and footer.

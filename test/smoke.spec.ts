@@ -156,6 +156,22 @@ test('sidebar groups collapse and stay collapsed after reload', async ({ page })
   expect(errors).toEqual([]);
 });
 
+test('sidebar hides, stays hidden after reload and comes back with Alt B', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  await page.goto('/#/');
+  const nav = page.getByRole('navigation', { name: 'Projects' });
+  await nav.getByRole('button', { name: 'Hide sidebar (Alt B)' }).click();
+  await expect(nav.getByRole('link', { name: 'ai-portal' })).toBeHidden();
+  await expect(nav).toHaveJSProperty('offsetWidth', 56);
+
+  await page.reload();
+  await expect(nav.getByRole('button', { name: 'Show sidebar (Alt B)' })).toBeVisible();
+  await page.keyboard.press('Alt+KeyB');
+  await expect(nav.getByRole('link', { name: 'ai-portal' })).toBeVisible();
+  await expect(nav.getByRole('button', { name: 'Hide sidebar (Alt B)' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('styleguide renders every section', async ({ page }) => {
   const { errors } = await mockApi(page);
   await page.goto('/#/styleguide');
