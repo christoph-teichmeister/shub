@@ -4,8 +4,10 @@
 // the GitHub release and cached in <stateDir>/release/<version>/.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { bundleName } from '../../launcher/src/releases.ts';
 import { HttpError } from './router.ts';
+
+// Same name as bundleName() in launcher/src/releases.ts; the archive does not ship launcher/, so no import.
+const bundleName = (version: string): string => `shub-${version}-${process.platform}-${process.arch}.bundle.json`;
 
 const DOWNLOAD = 'https://github.com/christoph-teichmeister/shub/releases/download';
 
