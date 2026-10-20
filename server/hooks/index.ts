@@ -106,6 +106,7 @@ export function create(_ctx: Context, services: Services): { module: ShubModule 
             change.pendingPermission,
             change.pendingCommands,
             change.background,
+            change.shells,
           );
           const updated = services.sessions.get(session.id) ?? session;
           if (change.notify?.kind === 'yourTurn') services.notify.yourTurn(updated);

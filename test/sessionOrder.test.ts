@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { SessionStatus } from '../shared/api.ts';
-import { dropPositions, placeSessions } from '../web/src/lib/status.ts';
+import type { Session, SessionStatus } from '../shared/api.ts';
+import { dropPositions, placeSessions, statusLabel } from '../web/src/lib/status.ts';
 
 const s = (id: string, status: SessionStatus, position: number | null = null) => ({ id, status, position });
 const ids = (list: { id: string }[]) => list.map((x) => x.id).join(' ');
@@ -24,4 +24,12 @@ test('dropping pins the moved session and every already pinned one at their new 
   assert.deepEqual(dropPositions(list, 'c', 'c'), {});
   const after = list.map((x) => ({ ...x, position: dropPositions(list, 'b', 'c')[x.id] ?? x.position }));
   assert.equal(ids(placeSessions(after, true)), 'b c a');
+});
+
+test('a finished turn names the background shells still running', () => {
+  const label = (status: SessionStatus, shells: number) => statusLabel({ status, shells } as Session);
+  assert.equal(label('your-turn', 2), 'your turn · 2 shells');
+  assert.equal(label('waiting', 1), 'waiting · 1 shell');
+  assert.equal(label('working', 2), 'working');
+  assert.equal(label('your-turn', 0), 'your turn');
 });

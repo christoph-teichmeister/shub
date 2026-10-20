@@ -32,6 +32,25 @@ test('stop with background tasks still running keeps working, and the idle remin
   assert.equal(transition('working', 'Notification', { notification_type: 'idle_prompt' }), null);
 });
 
+test('a closing question hands the turn over even with background shells running', () => {
+  const task = { id: 'b1', type: 'shell', status: 'running', description: '', command: './run-mh.sh a' };
+  const asking = (last_assistant_message: string) =>
+    transition('working', 'Stop', { background_tasks: [task, task], last_assistant_message });
+  for (const message of [
+    'Steps:\n1. Scan\n\nDo you have an iPhone at hand?',
+    'Ready?  ',
+    'Merge it **now?**',
+    'Go? (yes / no)',
+  ]) {
+    const t = asking(message);
+    assert.equal(t?.status, 'your-turn', message);
+    assert.equal(t?.shells, 2, message);
+    assert.deepEqual(t?.notify, { kind: 'yourTurn' }, message);
+  }
+  assert.equal(asking('Tests run; is it fine? Waiting for them.')?.status, 'working');
+  assert.equal(asking('See https://x.dev/?a=1')?.status, 'working');
+});
+
 test('servers and watchers in the background do not hold the turn', () => {
   const shell = (command: string) => ({ id: 'b', type: 'shell', status: 'running', description: '', command });
   for (const command of [
@@ -44,7 +63,9 @@ test('servers and watchers in the background do not hold the turn', () => {
     'tail -f /var/log/x.log',
     'docker compose up web',
   ]) {
-    assert.equal(transition('working', 'Stop', { background_tasks: [shell(command)] })?.status, 'your-turn', command);
+    const t = transition('working', 'Stop', { background_tasks: [shell(command)] });
+    assert.equal(t?.status, 'your-turn', command);
+    assert.equal(t?.shells, 1, command);
   }
   for (const command of ['npm test', 'npx vite build', 'npm ci --include=dev', 'docker compose up -d', 'pytest']) {
     assert.equal(transition('working', 'Stop', { background_tasks: [shell(command)] })?.background, true, command);
@@ -111,6 +132,7 @@ test('a waiting session parks again after a turn and ignores the idle reminder',
     status: 'waiting',
     pendingPermission: null,
     pendingCommands: null,
+    shells: 0,
   });
   assert.equal(transition('waiting', 'Notification', { notification_type: 'idle_prompt' }, true), null);
   const ask = transition('working', 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'ls' } }, true);

@@ -35,6 +35,8 @@ export interface Transition {
   notify?: { kind: 'yourTurn' } | { kind: 'needsYou'; text: string };
   /** The turn ended but background work still runs; shub falls back to your-turn if nothing follows. */
   background?: true;
+  /** Background shells still running at the end of the turn (0 or undefined: none). */
+  shells?: number;
 }
 
 const SUMMARY_MAX = 200;
@@ -99,6 +101,19 @@ function backgroundWork(tasks: unknown): 'none' | 'ending' | 'open' {
   return awaited.every((t) => ENDING_TASKS.has(String(t?.type))) ? 'ending' : 'open';
 }
 
+/** How many background shells still run, servers included. */
+function runningShells(tasks: unknown): number {
+  return Array.isArray(tasks) ? tasks.filter((t) => (t as BackgroundTask)?.type === 'shell').length : 0;
+}
+
+/** The last message ends on a question (choices in brackets may follow): Claude waits for the user,
+ *  whatever still runs in the background. */
+export function endsWithQuestion(message: unknown): boolean {
+  if (typeof message !== 'string') return false;
+  const last = message.trimEnd().split('\n').pop() ?? '';
+  return /\?(\s*\([^)]*\))?[\s*_)\]"'`]*$/.test(last);
+}
+
 const FENCE = /^```([^\n]*)\n([\s\S]*?)^```[ \t]*$/gm;
 const COMMANDS_MAX = 5;
 
@@ -138,9 +153,11 @@ export function transition(
     case 'Stop': {
       // A background shell or agent still runs and wakes Claude when it ends: the turn is not over.
       // Servers and watchers never end, so they do not count; other shells get the fallback timer.
-      const work = backgroundWork(payload.background_tasks);
+      // A closing question hands the turn over anyway: Claude waits for the answer, not for the shell.
+      const work = endsWithQuestion(payload.last_assistant_message) ? 'none' : backgroundWork(payload.background_tasks);
       if (work === 'ending') return { status: 'working', pendingPermission: null };
       if (work === 'open') return { status: 'working', pendingPermission: null, background: true };
+      const shells = runningShells(payload.background_tasks);
       const commands = handedOverCommands(payload.last_assistant_message);
       if (commands.length) {
         // Commands win over a wait: they need the user now.
@@ -149,11 +166,18 @@ export function transition(
           status: 'needs-you',
           pendingPermission: null,
           pendingCommands: commands,
+          shells,
           notify: { kind: 'needsYou', text: `Run: ${truncate(commands[0])}${more}` },
         };
       }
-      if (waiting) return { status: 'waiting', pendingPermission: null, pendingCommands: null };
-      return { status: 'your-turn', pendingPermission: null, pendingCommands: null, notify: { kind: 'yourTurn' } };
+      if (waiting) return { status: 'waiting', pendingPermission: null, pendingCommands: null, shells };
+      return {
+        status: 'your-turn',
+        pendingPermission: null,
+        pendingCommands: null,
+        shells,
+        notify: { kind: 'yourTurn' },
+      };
     }
     case 'PermissionRequest': {
       const tool = String(payload.tool_name ?? 'tool');

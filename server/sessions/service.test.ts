@@ -291,18 +291,26 @@ test('wait parks a session, ending the wait hands it back', async () => {
   assert.throws(() => svc.wait(s.id, ' ', 'chris'), /must not be empty/);
 });
 
-test('a turn paused on background work falls back to your-turn after 10 minutes', async () => {
+test('a turn paused on background work falls back to your-turn after 3 minutes', async () => {
   const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
   svc.setStatus(s.id, 'working', null, undefined, true);
-  svc.reconcile(Date.now() + 9 * 60_000);
+  svc.reconcile(Date.now() + 2 * 60_000);
   assert.equal(svc.get(s.id)?.status, 'working');
-  svc.reconcile(Date.now() + 11 * 60_000);
+  svc.reconcile(Date.now() + 4 * 60_000);
   assert.equal(svc.get(s.id)?.status, 'your-turn');
   assert.deepEqual(notified.splice(0), [`${s.id}: your turn`]);
   svc.setStatus(s.id, 'working', null, undefined, true);
   svc.setStatus(s.id, 'working');
-  svc.reconcile(Date.now() + 11 * 60_000);
+  svc.reconcile(Date.now() + 4 * 60_000);
   assert.equal(svc.get(s.id)?.status, 'working', 'a new hook clears the fallback');
+});
+
+test('a finished turn remembers its running shells until the next status', async () => {
+  const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  svc.setStatus(s.id, 'your-turn', null, null, false, 2);
+  assert.equal(svc.get(s.id)?.shells, 2);
+  svc.setStatus(s.id, 'working', null, null);
+  assert.equal(svc.get(s.id)?.shells, 0);
 });
 
 test('a wait check runs at once, keeps waiting on NOT YET and hands back on DONE', async () => {
