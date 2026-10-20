@@ -23,7 +23,31 @@ test('stop with background tasks still running keeps working, and the idle remin
     background: true,
   });
   assert.equal(transition('working', 'Stop', { background_tasks: [] })?.status, 'your-turn');
+  const agent = { id: 'a1', type: 'subagent', status: 'running', description: 'code-review' };
+  assert.deepEqual(transition('working', 'Stop', { background_tasks: [agent] }), {
+    status: 'working',
+    pendingPermission: null,
+  });
   assert.equal(transition('working', 'Notification', { notification_type: 'idle_prompt' }), null);
+});
+
+test('servers and watchers in the background do not hold the turn', () => {
+  const shell = (command: string) => ({ id: 'b', type: 'shell', status: 'running', description: '', command });
+  for (const command of [
+    'npm run dev',
+    'pnpm dev --port 5174',
+    'cd web && npx vite',
+    'uv run python manage.py runserver 0.0.0.0:8000',
+    'uvicorn app:app --reload',
+    'tsc --watch',
+    'tail -f /var/log/x.log',
+    'docker compose up web',
+  ]) {
+    assert.equal(transition('working', 'Stop', { background_tasks: [shell(command)] })?.status, 'your-turn', command);
+  }
+  for (const command of ['npm test', 'npx vite build', 'npm ci --include=dev', 'docker compose up -d', 'pytest']) {
+    assert.equal(transition('working', 'Stop', { background_tasks: [shell(command)] })?.background, true, command);
+  }
 });
 
 test('permission request carries tool and command summary', () => {
