@@ -15,6 +15,16 @@ test('stop means your turn with a notification', () => {
   assert.deepEqual(t?.notify, { kind: 'yourTurn' });
 });
 
+test('stop with background tasks still running keeps working, and the idle reminder is ignored', () => {
+  const task = { id: 'b1', type: 'shell', status: 'running', description: 'npm test' };
+  assert.deepEqual(transition('working', 'Stop', { background_tasks: [task] }), {
+    status: 'working',
+    pendingPermission: null,
+  });
+  assert.equal(transition('working', 'Stop', { background_tasks: [] })?.status, 'your-turn');
+  assert.equal(transition('working', 'Notification', { notification_type: 'idle_prompt' }), null);
+});
+
 test('permission request carries tool and command summary', () => {
   const t = transition('working', 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'rm -rf  x\n' } });
   assert.equal(t?.status, 'needs-you');

@@ -85,6 +85,10 @@ export function transition(
     case 'UserPromptSubmit':
       return { status: 'working', pendingPermission: null };
     case 'Stop':
+      // A background shell or agent still runs and wakes Claude when it ends: the turn is not over.
+      if (Array.isArray(payload.background_tasks) && payload.background_tasks.length) {
+        return { status: 'working', pendingPermission: null };
+      }
       if (waiting) return { status: 'waiting', pendingPermission: null };
       return { status: 'your-turn', pendingPermission: null, notify: { kind: 'yourTurn' } };
     case 'PermissionRequest': {
@@ -103,8 +107,10 @@ export function transition(
       const type = String(payload.notification_type ?? '');
       const message = String(payload.message ?? '');
       const needsYou = NEEDS_YOU_NOTIFICATIONS.has(type) || /permission|waiting for your input/i.test(message);
-      // Claude's idle reminder means nothing before the first prompt, nor while the session waits on purpose.
-      if (!needsYou || (type === 'idle_prompt' && (current === 'new' || waiting))) return null;
+      // Claude's idle reminder means nothing before the first prompt, while the session waits on purpose,
+      // nor while it is still working (it fires after a Stop that left background tasks running).
+      const idleIgnored = current === 'new' || current === 'working' || waiting;
+      if (!needsYou || (type === 'idle_prompt' && idleIgnored)) return null;
       // PermissionRequest usually fired just before for the same prompt; do not notify twice.
       if (current === 'needs-you') return { status: 'needs-you' };
       return { status: 'needs-you', notify: { kind: 'needsYou', text: message || 'Claude needs you' } };
