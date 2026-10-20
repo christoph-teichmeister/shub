@@ -268,7 +268,7 @@ test('app settings and project settings', async ({ page }) => {
     'PATCH /api/settings': { ...config, activeTheme: 'dracula' },
     '/api/projects/ai-portal/worktrees': [{ path: '~/PycharmProjects/work/ai-portal', branch: 'main' }],
   });
-  await page.goto('/#/settings');
+  await page.goto('/#/settings/appearance');
   await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible();
   await page
     .getByRole('group', { name: 'Theme' })
@@ -278,8 +278,10 @@ test('app settings and project settings', async ({ page }) => {
   expect(calls.find((c) => c.method === 'PATCH' && c.path === '/api/settings')?.body).toEqual({
     activeTheme: 'dracula',
   });
-  await expect(page.getByLabel('Phone push: when a session needs me')).toBeChecked();
+  await page.getByRole('link', { name: 'Sessions', exact: true }).click();
+  await expect(page.getByLabel('Phone push: a session needs me')).toBeChecked();
 
+  await page.goto('/#/settings/updates');
   const updates = page.getByRole('region', { name: 'Updates' });
   await expect(updates.getByText('shub 2026.10.1 is available')).toBeVisible();
   await expect(updates.getByRole('listitem').filter({ hasText: 'launcher: add shub doctor' })).toBeVisible();
@@ -331,7 +333,7 @@ test('terminal settings send only the changed field and update the sample', asyn
   const { errors, calls } = await mockApi(page, {
     'PATCH /api/settings': { ...config, terminal: { fontSize: 16 } },
   });
-  await page.goto('/#/settings');
+  await page.goto('/#/settings/appearance');
   const section = page.getByRole('region', { name: 'Terminal' });
   await expect(section.getByLabel('Size (px)')).toHaveValue('13');
   await section.getByLabel('Size (px)').fill('16');
@@ -347,9 +349,9 @@ test('terminal settings send only the changed field and update the sample', asyn
 
 test('own terminal settings stay in this browser and win over the shared ones', async ({ page }) => {
   const { errors, calls } = await mockApi(page, { '/api/config': { ...config, terminal: { fontSize: 15 } } });
-  await page.goto('/#/settings');
+  await page.goto('/#/settings/appearance');
   const section = page.getByRole('region', { name: 'Terminal' });
-  await section.getByLabel('Own settings for this device').check();
+  await section.getByRole('button', { name: 'This device only' }).click();
   await section.getByLabel('Size (px)').fill('11');
   await section.getByLabel('Size (px)').press('Enter');
   await expect(section.getByLabel('Font sample')).toHaveCSS('font-size', '11px');
@@ -358,7 +360,7 @@ test('own terminal settings stay in this browser and win over the shared ones', 
   await expect(section.getByLabel('Size (px)')).toHaveValue('11');
   await section.getByRole('button', { name: 'Reset to shared' }).click();
   await expect(section.getByLabel('Size (px)')).toHaveValue('15');
-  await section.getByLabel('Own settings for this device').uncheck();
+  await section.getByRole('button', { name: 'All devices' }).click();
   expect(await page.evaluate(() => localStorage.getItem('shub.terminal.device'))).toBeNull();
   expect(calls.filter((c) => c.path === '/api/settings')).toEqual([]);
   expect(errors).toEqual([]);
@@ -371,11 +373,44 @@ test('update dot on the user chip; read-only updates from a git checkout', async
 
   const git = { current: '2026.10.0', channel: 'stable', managedBy: 'git', checkedAt: null };
   await mockApi(page, { '/api/updates': git });
-  await page.goto('/#/settings');
+  await page.goto('/#/settings/updates');
   await page.reload();
   const updates = page.getByRole('region', { name: 'Updates' });
   await expect(updates.getByText('git manages its updates')).toBeVisible();
-  await expect(updates.getByRole('button')).toHaveCount(0);
+  await expect(updates.getByRole('button', { name: /Install|Check now/ })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('settings: calls to action on top, search across all areas', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  await page.goto('/#/settings');
+  const attention = page.getByRole('region', { name: 'Needs attention' });
+  await expect(attention.getByText('2026.10.1')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sessions', exact: true })).toBeVisible();
+
+  await page.keyboard.press('/');
+  await page.keyboard.type('push');
+  await expect(page.getByLabel('Phone push: a session needs me')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Devices', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Appearance' })).toHaveCount(0);
+  await expect(attention).toHaveCount(0);
+  // Search reads the rendered text: a word only in a hint finds its card, other areas hide.
+  await page.getByLabel('Search all settings').fill('sandboxes');
+  await expect(page.getByRole('region', { name: 'Permission mode for new sessions' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Notifications' })).toBeHidden();
+  await expect(page.getByRole('region', { name: 'Devices', exact: true })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => CSS.highlights.get('settings-search')?.size ?? 0)).toBeGreaterThan(0);
+
+  // A hit inside a folded part opens it; ending the search folds it again.
+  await page.getByLabel('Search all settings').fill('letter spacing');
+  await expect(page.getByLabel('Letter spacing (px)')).toBeVisible();
+  await page.getByLabel('Search all settings').press('Escape');
+  await expect.poll(() => page.evaluate(() => CSS.highlights.get('settings-search')?.size)).toBe(0);
+  await page.goto('/#/settings/appearance');
+  await expect(page.getByLabel('Letter spacing (px)')).toBeHidden();
+  await page.goto('/#/settings');
+  await expect(page.getByRole('region', { name: 'Appearance' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Sessions', exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

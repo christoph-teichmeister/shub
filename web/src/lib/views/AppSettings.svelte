@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import type {
     ActivityEntry,
     Config,
@@ -26,7 +26,7 @@
   import { api } from '../stores/api.ts';
   import { pushEnabled, pushSupported, subscribePush } from '../stores/push.ts';
   import { fleet, removeMachine } from '../stores/machines.svelte.ts';
-  import { href } from '../stores/router.svelte.ts';
+  import { href, router } from '../stores/router.svelte.ts';
   import {
     app,
     deviceTerminal,
@@ -49,20 +49,13 @@
     'buttons.write': 'change project buttons (asks)',
     'ui.contribute': 'sidebar sections and menu actions',
   };
-  const NOTIFICATIONS: { key: keyof Config['notifications']; label: string }[] = [
-    { key: 'desktopNeedsYou', label: 'Desktop: when a session needs me' },
-    { key: 'pushNeedsYou', label: 'Phone push: when a session needs me' },
-    { key: 'pushYourTurn', label: 'Also on "your turn" (every finished turn)' },
-    { key: 'noPushWhileDesktopFocused', label: 'No phone push while the desktop window is focused' },
-  ];
-
-  const MODES: { value: LaunchPermissionMode; label: string }[] = [
-    { value: 'default', label: 'Default (asks before acting)' },
-    { value: 'acceptEdits', label: 'Accept edits' },
-    { value: 'plan', label: 'Plan' },
-    { value: 'auto', label: 'Auto (skips prompts)' },
-    { value: 'bypassPermissions', label: 'Bypass permissions (skips prompts)' },
-    { value: 'inherit', label: 'My Claude settings' },
+  const MODES: { value: LaunchPermissionMode; label: string; hint: string; risky?: boolean }[] = [
+    { value: 'default', label: 'Ask first', hint: 'Asks before commands and edits.' },
+    { value: 'acceptEdits', label: 'Accept edits', hint: 'Edits files freely, asks for commands.' },
+    { value: 'plan', label: 'Plan', hint: 'Reads and plans, changes nothing.' },
+    { value: 'auto', label: 'Auto', hint: 'Skips prompts with a safety check.', risky: true },
+    { value: 'bypassPermissions', label: 'Bypass', hint: 'Skips every prompt. Only in sandboxes.', risky: true },
+    { value: 'inherit', label: 'My Claude settings', hint: 'Uses your ~/.claude settings as they are.' },
   ];
 
   const CHANNELS = [
@@ -84,6 +77,102 @@
     { value: 'normal', label: 'Normal' },
     { value: 'bold', label: 'Bold' },
   ];
+  const AREAS = [
+    { id: 'appearance', title: 'Appearance', description: 'How shub and its terminals look.' },
+    { id: 'sessions', title: 'Sessions', description: 'How new sessions start and when shub tells you about them.' },
+    {
+      id: 'devices',
+      title: 'Devices',
+      description: 'Phones that reach this shub, and the other machines this app knows.',
+    },
+    { id: 'plugins', title: 'Plugins', description: 'Each plugin can only do what it asked for and you granted.' },
+    { id: 'updates', title: 'Updates', description: 'Which shub version runs and how new ones arrive.' },
+    { id: 'account', title: 'Account & security', description: 'Who is signed in, what changed, the access token.' },
+  ] as const;
+
+  let query = $state('');
+  let search = $state<HTMLInputElement>();
+  const words = $derived(query.toLowerCase().split(/\s+/).filter(Boolean));
+  /** Matching cards per area while searching; filled from the cards' rendered text by the effect below. */
+  let hits = $state<Record<string, number>>({});
+  let main = $state<HTMLElement>();
+  /** The area in the URL (#/settings/<area>); none shows Sessions, or on a phone the area list. */
+  const picked = $derived.by(() => {
+    const r = router.route;
+    return r.name === 'settings' ? AREAS.find((a) => a.id === r.rest[0]) : undefined;
+  });
+  const area = $derived(picked?.id ?? 'sessions');
+  const panes = $derived(words.length ? AREAS : AREAS.filter((a) => a.id === area));
+
+  /**
+   * Search reads what the cards show (titles, labels, hints, options), so new settings are found without a word list.
+   * Hides cards without every query word and areas without such a card; reruns when the query or the rendered text changes.
+   */
+  const HIGHLIGHT = 'settings-search';
+  /** Folded parts that search opened to show a hit; they close again when the search ends. */
+  const opened = new Set<HTMLDetailsElement>();
+
+  function filterCards() {
+    const next: Record<string, number> = {};
+    const ranges: Range[] = [];
+    for (const pane of main?.querySelectorAll<HTMLElement>('.pane') ?? []) {
+      let n = 0;
+      for (const card of pane.querySelectorAll<HTMLElement>('.card')) {
+        const text = card.textContent?.toLowerCase() ?? '';
+        card.hidden = !words.every((w) => text.includes(w));
+        if (card.hidden) continue;
+        n++;
+        if (words.length) markWords(card, ranges);
+      }
+      next[pane.dataset.area ?? ''] = n;
+    }
+    hits = next;
+    if (!words.length) {
+      for (const d of opened) d.open = false;
+      opened.clear();
+    }
+    CSS.highlights?.set(HIGHLIGHT, new Highlight(...ranges));
+  }
+
+  /** Adds a range for every query word in the card's text and opens folded parts that hold one. */
+  function markWords(card: HTMLElement, ranges: Range[]) {
+    const walk = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+    for (let node = walk.nextNode(); node; node = walk.nextNode()) {
+      const text = node.textContent?.toLowerCase() ?? '';
+      for (const w of words)
+        for (let i = text.indexOf(w); i >= 0; i = text.indexOf(w, i + w.length)) {
+          const range = new Range();
+          range.setStart(node, i);
+          range.setEnd(node, i + w.length);
+          ranges.push(range);
+          const fold = node.parentElement?.closest('details');
+          if (fold && !fold.open && !node.parentElement?.closest('summary')) {
+            fold.open = true;
+            opened.add(fold);
+          }
+        }
+    }
+  }
+
+  $effect(() => {
+    void words;
+    void tick().then(filterCards);
+  });
+  $effect(() => {
+    if (!main) return;
+    const watch = new MutationObserver(filterCards);
+    watch.observe(main, { childList: true, subtree: true, characterData: true });
+    return () => (watch.disconnect(), CSS.highlights?.delete(HIGHLIGHT));
+  });
+
+  function onKeydown(e: KeyboardEvent) {
+    const t = e.target as HTMLElement;
+    if (e.key !== '/' || e.altKey || e.ctrlKey || e.metaKey || t.closest('input, textarea, select, [contenteditable]'))
+      return;
+    e.preventDefault();
+    search?.focus();
+  }
+
   const terminal = $derived(terminalSettings());
   /** Fields the reset button clears: this device's own, or the shared ones. */
   const terminalOwn = $derived(deviceTerminal.value ?? app.config?.terminal ?? {});
@@ -141,8 +230,10 @@
     void loadDevices();
   }
 
+  const pending = $derived(devices.filter((d) => d.state === 'pending'));
   const ts = $derived(phone?.tailscale);
   const shared = $derived(!!ts?.served && !!phone?.publicUrl);
+  const phoneReady = $derived(!!ts?.running && !!ts.https && shared);
   const loadPhone = () => api<PhoneSetup>('phoneSetup').then((p) => (phone = p), toastError);
 
   async function share() {
@@ -356,19 +447,112 @@
       >{:else}{part.text}{/if}{/each}
 {/snippet}
 
-<div class="page">
-  <div class="content">
-    <a class="back" href={href()}>← Back to sessions</a>
-    <header class="head">
-      <span class="avatar" aria-hidden="true">{(app.me?.name ?? 'You').slice(0, 1).toUpperCase()}</span>
-      <div class="grow">
-        <h1>Settings</h1>
-        <span class="muted">{app.me?.name ?? 'You'} · {location.host}</span>
-      </div>
-      <Button onclick={signOut}>Sign out</Button>
-    </header>
+<svelte:window onkeydown={onKeydown} />
 
+<div class="page">
+  <header class="topbar">
+    <a class="back" href={href()}>← Sessions</a>
+    <h1>Settings</h1>
+    <label class="search">
+      <Icon name="search" size="sm" />
+      <input
+        bind:this={search}
+        bind:value={query}
+        type="search"
+        placeholder="Search all settings: font, push, beta …"
+        aria-label="Search all settings"
+        autocomplete="off"
+        onkeydown={(e) => e.key === 'Escape' && (query = '')}
+      />
+      {#if !query}<kbd>/</kbd>{/if}
+    </label>
+  </header>
+
+  <div class="layout" class:picked={!!picked || words.length > 0}>
+    <nav class="nav" aria-label="Settings areas">
+      {#each AREAS as a (a.id)}
+        <a
+          href={href('settings', a.id)}
+          class:on={!words.length && a.id === area}
+          class:dim={words.length > 0 && !hits[a.id]}
+          aria-current={!words.length && a.id === area ? 'page' : undefined}
+          >{a.title}
+          {#if words.length}{#if hits[a.id]}<span class="count">{hits[a.id]}</span>{/if}
+          {:else if a.id === 'devices' && pending.length}<span class="badge">{pending.length}</span>
+          {:else if a.id === 'plugins' && app.plugins.length}<span class="muted small">{app.plugins.length}</span>
+          {:else if a.id === 'updates' && update?.latest && update.managedBy !== 'git'}<span class="new">new</span>
+          {/if}</a
+        >
+      {/each}
+      <div class="elsewhere">
+        <button type="button" class="link" onclick={() => (ui.shortcuts = true)}>Keyboard shortcuts</button>
+        <a class="plain" href={href('settings', 'import')}>Import projects</a>
+      </div>
+    </nav>
+
+    <main class="main" bind:this={main}>
+      <a class="up" href={href('settings')}>‹ All settings</a>
+      {#if !words.length}
+        {@render attention()}
+      {:else if !Object.values(hits).some(Boolean)}
+        <p class="muted">Nothing matches “{query}”.</p>
+      {/if}
+
+      {#each panes as a (a.id)}
+        <section class="pane" data-area={a.id} hidden={words.length > 0 && !hits[a.id]} aria-labelledby="pane-{a.id}">
+          <div class="pane-head">
+            <h2 id="pane-{a.id}">{a.title}</h2>
+            {#if words.length}<a href={href('settings', a.id)} onclick={() => (query = '')}>Open</a>
+            {:else}<p class="muted">{a.description}</p>{/if}
+          </div>
+          {#if a.id === 'appearance'}{@render appearance()}
+          {:else if a.id === 'sessions'}{@render sessions()}
+          {:else if a.id === 'devices'}{@render devicesPane()}
+          {:else if a.id === 'plugins'}{@render plugins()}
+          {:else if a.id === 'updates'}{@render updates()}
+          {:else}{@render account()}{/if}
+        </section>
+      {/each}
+    </main>
+  </div>
+</div>
+
+{#snippet attention()}
+  {@const showPending = area !== 'devices' ? pending : []}
+  {@const showUpdate = area !== 'updates' && !!update?.latest && update.managedBy !== 'git'}
+  {#if showPending.length || showUpdate}
+    <div class="attention" role="region" aria-label="Needs attention">
+      {#each showPending as d (d.id)}
+        <div class="cta warn">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="grow"><span class="strong">{d.name}</span> wants to connect</span>
+          {#if local}
+            <Button size="sm" onclick={() => (unpair = d)}>Reject</Button>
+            <Button size="sm" variant="primary" onclick={() => approve(d)}>Approve</Button>
+          {:else}<span class="small">Approve on the machine</span>{/if}
+        </div>
+      {/each}
+      {#if showUpdate && update?.latest}
+        {@const latest = update.latest}
+        <div class="cta">
+          <span class="dot ok" aria-hidden="true"></span>
+          <span class="grow"
+            >shub <span class="strong">{latest}</span> is available ·
+            <a href={href('settings', 'updates')}>What's new</a></span
+          >
+          <Button size="sm" variant="primary" disabled={!!switching} onclick={() => installUpdate(latest)}
+            >{switching ? 'Installing…' : 'Install'}</Button
+          >
+        </div>
+      {/if}
+    </div>
+  {/if}
+{/snippet}
+
+{#snippet appearance()}
+  <div class="card">
     <Section title="Theme" description="The terminal uses the same palette.">
+      {#snippet aside()}<a href={href('settings', 'theme', 'new')}>+ New theme</a>{/snippet}
       <div class="row" role="group" aria-label="Theme">
         {#each themes as t (t.id)}
           <ChoiceButton shape="card" pressed={t.id === active} onclick={() => useTheme(t.id)}>
@@ -379,7 +563,6 @@
             {#if !t.builtIn}<span class="muted small">custom</span>{/if}
           </ChoiceButton>
         {/each}
-        <a class="new" href={href('settings', 'theme', 'new')}>+ New theme</a>
       </div>
       {#if themes.some((t) => !t.builtIn)}
         <div class="row small">
@@ -389,135 +572,252 @@
         </div>
       {/if}
     </Section>
+  </div>
 
-    <Section title="Phone" description="shub stays on this machine; the phone reaches it through Tailscale.">
-      {#if phone && ts}
-        <ol class="checks">
-          <li class:ok={ts.running}>
-            <Icon name={ts.running ? 'check' : 'close'} size="sm" />
-            <span class="stack">
-              <span class="strong">Tailscale runs on this machine</span>
-              {#if !ts.installed}<span class="muted small"
-                  >Install it: <a href="https://tailscale.com/download" target="_blank" rel="noreferrer"
-                    >tailscale.com/download</a
-                  ></span
-                >{:else if !ts.running}<span class="muted small">Log in with <code>tailscale up</code>.</span>{/if}
-            </span>
-          </li>
-          <li class:ok={ts.https}>
-            <Icon name={ts.https ? 'check' : 'close'} size="sm" />
-            <span class="stack">
-              <span class="strong">HTTPS certificates are on</span>
-              {#if !ts.https}<span class="muted small"
-                  >Turn on MagicDNS and HTTPS Certificates in the <a
-                    href="https://login.tailscale.com/admin/dns"
-                    target="_blank"
-                    rel="noreferrer">Tailscale admin console</a
-                  >.</span
-                >{/if}
-            </span>
-          </li>
-          <li class:ok={ts.phones.length > 0}>
-            <Icon name={ts.phones.length ? 'check' : 'close'} size="sm" />
-            <span class="stack">
-              <span class="strong">Phone in the tailnet</span>
-              <span class="muted small"
-                >{ts.phones.length
-                  ? `Online: ${ts.phones.join(', ')}`
-                  : ts.offlinePhones.length
-                    ? `${ts.offlinePhones.join(', ')} is in the tailnet but offline: open Tailscale on the phone and connect.`
-                    : 'Install the Tailscale app on the phone and log in with the same account.'}</span
-              >
-            </span>
-          </li>
-          <li class:ok={shared}>
-            <Icon name={shared ? 'check' : 'close'} size="sm" />
-            <span class="stack">
-              <span class="strong">shub shared in the tailnet</span>
-              {#if shared}
-                <span class="muted small">{phone.publicUrl} · tailnet only, not public</span>
-              {:else}
-                <span class="muted small">Runs <code>tailscale serve</code> for shub's port. Never Funnel.</span>
-                {#if serveError}<span class="error small" role="alert">{serveError}</span>{/if}
-                <div class="row">
-                  <Button size="sm" variant="primary" disabled={!ts.running || !ts.https || serving} onclick={share}
-                    >{serving ? 'Sharing…' : 'Share shub in the tailnet'}</Button
-                  >
-                </div>
-              {/if}
-            </span>
-          </li>
-        </ol>
-        <div class="row"><Button size="sm" onclick={loadPhone}>Check again</Button></div>
-      {/if}
-
-      {#if shared}<div class="pair">
-          {#if pairing && left > 0}
-            <!-- The server renders the QR code as SVG (qrcode package), never user input. -->
-            <div class="qr" role="img" aria-label="QR code for {pairing.url}">
-              {@html pairing.qrSvg}
-            </div>
-          {:else}
-            <div class="qr empty"><Button variant="primary" onclick={newCode}>Show a code</Button></div>
-          {/if}
-          <div class="steps">
-            <ol>
-              <li>Scan the code with the phone camera; shub opens and signs the phone in. No token to type.</li>
-              <li>Add it to the home screen and allow notifications for push.</li>
-              <li>
-                Phone already has shub from another machine? There tap + above the sessions and scan or type this.
-              </li>
-            </ol>
-            {#if pairing && left > 0}
-              <span class="code"
-                ><span class="muted small">Address</span> <code>{new URL(pairing.url).host}</code>
-                <span class="muted small">Code</span>
-                <code>{pairing.code.slice(0, 4)}-{pairing.code.slice(4)}</code></span
-              >
-            {/if}
-            {#if pairing}
-              <span class="muted small" aria-live="polite">
-                {left > 0 ? `Code is single-use and runs out in ${countdown}.` : 'The code ran out.'}
-              </span>
-              <div class="row"><Button size="sm" onclick={newCode}>New code</Button></div>
-            {/if}
-          </div>
-        </div>{/if}
-
+  <div class="card">
+    <Section title="Terminal">
+      {#snippet aside()}
+        <span class="segment" role="group" aria-label="Terminal settings apply to">
+          <span>Applies to</span>
+          <ChoiceButton pressed={!deviceTerminal.value} onclick={() => setDeviceTerminal(null)}
+            >All devices</ChoiceButton
+          >
+          <ChoiceButton pressed={!!deviceTerminal.value} onclick={() => deviceTerminal.value || setDeviceTerminal({})}
+            >This device only</ChoiceButton
+          >
+        </span>
+      {/snippet}
       <p class="muted small">
-        A phone may View (read, push), answer Prompts (approvals, permission questions, Run chips) or take full Control
-        (type in terminals, start sessions). A new phone gets Prompts once approved; approving and changing levels only
-        work in shub on this machine (opened via localhost).
+        {deviceTerminal.value
+          ? 'Changes stay in this browser. Fields you have not changed follow the settings of all devices.'
+          : 'Changes apply on every device. Pick "This device only" to give this browser, e.g. the phone, its own font or size.'}
       </p>
+      <div class="split">
+        <div class="stack gap fields">
+          <TextField
+            label="Font"
+            hint="CSS font list, first installed one wins. The font must be installed on the device that shows the terminal."
+            mono
+            value={terminal.fontFamily}
+            maxlength={200}
+            autocomplete="off"
+            onchange={(e) => setTerminal({ fontFamily: e.currentTarget.value.trim() || null })}
+          />
+          <div class="row end">
+            <TextField
+              label="Size (px)"
+              type="number"
+              min="6"
+              max="40"
+              step="1"
+              value={terminal.fontSize}
+              onchange={numberInput('fontSize')}
+            />
+            <SelectField
+              label="Cursor"
+              bind:value={
+                () => terminal.cursorStyle, (v) => setTerminal({ cursorStyle: v as TerminalSettings['cursorStyle'] })
+              }
+              options={CURSORS}
+            />
+            <Checkbox
+              label="Blinking cursor"
+              checked={terminal.cursorBlink}
+              onchange={(e) => setTerminal({ cursorBlink: e.currentTarget.checked })}
+            />
+          </div>
+          <TextField
+            label="Scrollback (lines)"
+            type="number"
+            min="0"
+            max="100000"
+            step="500"
+            value={terminal.scrollback}
+            onchange={numberInput('scrollback')}
+          />
+          <details class="more">
+            <summary>Fine tuning: fallback font, line height, spacing, weight</summary>
+            <div class="stack gap">
+              <TextField
+                label="Fallback font"
+                hint="Used on devices that have none of the fonts above, e.g. the phone. Keep a generic name like monospace at the end."
+                mono
+                value={terminal.fallbackFont}
+                maxlength={200}
+                autocomplete="off"
+                onchange={(e) => setTerminal({ fallbackFont: e.currentTarget.value.trim() || null })}
+              />
+              <div class="row end">
+                <TextField
+                  label="Line height"
+                  type="number"
+                  min="1"
+                  max="2"
+                  step="0.05"
+                  value={terminal.lineHeight}
+                  onchange={numberInput('lineHeight')}
+                />
+                <TextField
+                  label="Letter spacing (px)"
+                  type="number"
+                  min="-2"
+                  max="10"
+                  step="0.5"
+                  value={terminal.letterSpacing}
+                  onchange={numberInput('letterSpacing')}
+                />
+                <SelectField
+                  label="Weight"
+                  bind:value={
+                    () => terminal.fontWeight, (v) => setTerminal({ fontWeight: v as TerminalSettings['fontWeight'] })
+                  }
+                  options={WEIGHTS}
+                />
+              </div>
+            </div>
+          </details>
+        </div>
+        <div class="stack gap preview">
+          <span class="muted small">Preview</span>
+          <pre
+            class="term-sample"
+            aria-label="Font sample"
+            style:font-family="{terminal.fontFamily}, {terminal.fallbackFont}"
+            style:font-size="{terminal.fontSize}px"
+            style:font-weight={terminal.fontWeight}
+            style:line-height={terminal.lineHeight}
+            style:letter-spacing="{terminal.letterSpacing}px">~/shub $ git status{'\n'}0O 1lI {'{}'} [] =&gt; != ─┬─│</pre>
+          {#if Object.keys(terminalOwn).length}
+            <div>
+              <Button
+                size="sm"
+                onclick={() => setTerminal(Object.fromEntries(Object.keys(terminalOwn).map((k) => [k, null])))}
+                >{deviceTerminal.value ? 'Reset to shared' : 'Reset to defaults'}</Button
+              >
+            </div>
+          {/if}
+        </div>
+      </div>
+    </Section>
+  </div>
+{/snippet}
+
+{#snippet sessions()}
+  <div class="card">
+    <Section
+      title="Permission mode for new sessions"
+      description="Used by sessions you start and the global Claude. A project button's own mode wins."
+    >
+      <div class="modes" role="group" aria-label="Permission mode for new sessions">
+        {#each MODES as m (m.value)}
+          <ChoiceButton
+            shape="card"
+            pressed={(app.config?.defaultPermissionMode ?? 'default') === m.value}
+            onclick={() => setDefaultMode(m.value)}
+          >
+            <span class="stack mode">
+              <span class="strong" class:risky={m.risky}>{m.label}{m.risky ? ' ⚠' : ''}</span>
+              <span class="muted small">{m.hint}</span>
+            </span>
+          </ChoiceButton>
+        {/each}
+      </div>
+    </Section>
+  </div>
+
+  <div class="card">
+    <Section title="Notifications">
+      <table class="matrix">
+        <thead>
+          <tr><th scope="col">When</th><th scope="col">Desktop</th><th scope="col">Phone push</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row"
+              ><span class="strong">A session needs me</span><span class="muted small"
+                >Permission question, approval, error</span
+              ></th
+            >
+            <td>{@render notify('desktopNeedsYou', 'Desktop: a session needs me')}</td>
+            <td>{@render notify('pushNeedsYou', 'Phone push: a session needs me')}</td>
+          </tr>
+          <tr>
+            <th scope="row"
+              ><span class="strong">It's my turn</span><span class="muted small">Every finished turn</span></th
+            >
+            <td><span class="muted" aria-label="Not on the desktop">–</span></td>
+            <td>{@render notify('pushYourTurn', "Phone push: it's my turn")}</td>
+          </tr>
+        </tbody>
+      </table>
+      <Checkbox
+        label="Quiet phone while I'm at the desk"
+        hint="No phone push while the desktop window is focused."
+        checked={!!app.config?.notifications.noPushWhileDesktopFocused}
+        onchange={(e) => setNotification('noPushWhileDesktopFocused', e.currentTarget.checked)}
+      />
+      <div class="row">
+        {#if push}
+          <span class="muted small grow">Push is on in this browser.</span>
+          <Button size="sm" onclick={() => api('pushTest').then(() => toast('Test push sent'), toastError)}
+            >Send test push</Button
+          >
+        {:else if pushSupported()}
+          <span class="muted small grow">Push is off in this browser.</span>
+          <Button size="sm" onclick={turnOnPush}>Turn on push here</Button>
+        {:else}<span class="muted small">This browser has no web push.</span>{/if}
+      </div>
+    </Section>
+  </div>
+{/snippet}
+
+{#snippet notify(key: keyof Config['notifications'], label: string)}
+  <Checkbox
+    {label}
+    hideLabel
+    checked={!!app.config?.notifications[key]}
+    onchange={(e) => setNotification(key, e.currentTarget.checked)}
+  />
+{/snippet}
+
+{#snippet devicesPane()}
+  <div class="card">
+    <Section title="Paired devices">
+      {#snippet aside()}
+        {#if shared}<Button size="sm" variant="primary" onclick={newCode}>+ Pair a phone</Button>{/if}
+      {/snippet}
+      <details class="more">
+        <summary>What do the levels mean?</summary>
+        <p class="muted small">
+          View reads sessions and gets push. Prompts also answers approvals, permission questions and Run chips. Control
+          also types in terminals and starts sessions. A new phone gets Prompts once approved; approving and changing
+          levels only work in shub on this machine (opened via localhost).
+        </p>
+      </details>
+      {#if !devices.length}<p class="muted small">No paired devices yet.</p>{/if}
       <ul class="list">
         {#each devices as d (d.id)}
-          <li class="item">
+          <li class="item" class:waiting={d.state === 'pending'}>
             <span class="grow stack">
               <span class="strong"
                 >{d.name}{d.id === myDevice?.id ? ' · this device' : ''}{d.state === 'pending'
                   ? ' · waiting for approval'
                   : ''}</span
               >
-              <span class="muted small"
-                >{d.kind} · paired {d.pairedAt.slice(0, 10)} · last seen {when(d.lastSeenAt)} · push {d.push
-                  ? 'on'
-                  : 'off'}</span
-              >
+              <span class="muted small">{d.kind} · seen {when(d.lastSeenAt)} · push {d.push ? 'on' : 'off'}</span>
             </span>
             {#if d.kind === 'phone'}
               {#if d.state === 'pending'}
                 {#if local}<Button size="sm" variant="primary" onclick={() => approve(d)}>Approve</Button>
                 {:else}<span class="muted small">Approve on the machine</span>{/if}
-              {/if}
-              {#if local}
-                <SelectField
-                  label="What {d.name} may do"
-                  hideLabel
-                  size="sm"
-                  value={d.level}
-                  options={LEVEL_OPTIONS}
-                  onchange={(e) => setLevel(d, e.currentTarget.value)}
-                />
+              {:else if local}
+                <span class="segment" role="group" aria-label="What {d.name} may do">
+                  {#each LEVEL_OPTIONS as o (o.value)}
+                    <ChoiceButton pressed={d.level === o.value} onclick={() => setLevel(d, o.value)}
+                      >{o.label}</ChoiceButton
+                    >
+                  {/each}
+                </span>
               {:else}<span class="muted small">{d.level}</span>{/if}
             {/if}
             {#if d.push}<Button
@@ -525,19 +825,33 @@
                 onclick={() => api('pushTest').then(() => toast('Test push sent'), toastError)}>Test push</Button
               >{/if}
             <Button size="sm" onclick={() => ((newName = d.name), (renaming = d))}>Rename</Button>
-            {#if d.id !== myDevice?.id}<Button size="sm" variant="danger" onclick={() => (unpair = d)}>Unpair</Button
+            {#if d.id !== myDevice?.id}<Button size="sm" variant="danger" onclick={() => (unpair = d)}
+                >{d.state === 'pending' ? 'Reject' : 'Unpair'}</Button
               >{/if}
           </li>
         {/each}
       </ul>
-      {#if pushSupported() && !push}
-        <div class="row"><Button onclick={turnOnPush}>Turn on push on this device</Button></div>
-      {:else if !pushSupported()}
-        <span class="muted small">This browser has no web push.</span>
-      {/if}
+      {#if pairing}{@render pairCode()}{/if}
     </Section>
+  </div>
 
-    {#if fleet.list.length > 1}
+  {#if phone && ts}
+    <div class="card">
+      <Section title="Phone access" description="shub stays on this machine; the phone reaches it through Tailscale.">
+        <details class="checks-box" open={!phoneReady}>
+          <summary>
+            {#if phoneReady}<span class="ok-text"><Icon name="check" size="sm" /> Ready</span>
+              <span class="muted small">{phone.publicUrl} · tailnet only, not public</span>
+            {:else}<span class="warn-text">Not ready yet: work through the checks</span>{/if}
+          </summary>
+          {@render checks()}
+        </details>
+      </Section>
+    </div>
+  {/if}
+
+  {#if fleet.list.length > 1}
+    <div class="card">
       <Section title="Machines" description="The machines this app knows. Removing one signs this phone out there.">
         <ul class="list">
           {#each fleet.list as m (m.origin)}
@@ -555,16 +869,114 @@
           {/each}
         </ul>
       </Section>
-    {/if}
+    </div>
+  {/if}
+{/snippet}
 
-    <Section
-      title="Plugins"
-      description="Each plugin is its own process with its own token; it can only do what its manifest asked for and you granted."
-    >
+{#snippet checks()}
+  {#if ts && phone}
+    <ol class="checks">
+      <li class:ok={ts.running}>
+        <Icon name={ts.running ? 'check' : 'close'} size="sm" />
+        <span class="stack">
+          <span class="strong">Tailscale runs on this machine</span>
+          {#if !ts.installed}<span class="muted small"
+              >Install it: <a href="https://tailscale.com/download" target="_blank" rel="noreferrer"
+                >tailscale.com/download</a
+              ></span
+            >{:else if !ts.running}<span class="muted small">Log in with <code>tailscale up</code>.</span>{/if}
+        </span>
+      </li>
+      <li class:ok={ts.https}>
+        <Icon name={ts.https ? 'check' : 'close'} size="sm" />
+        <span class="stack">
+          <span class="strong">HTTPS certificates are on</span>
+          {#if !ts.https}<span class="muted small"
+              >Turn on MagicDNS and HTTPS Certificates in the <a
+                href="https://login.tailscale.com/admin/dns"
+                target="_blank"
+                rel="noreferrer">Tailscale admin console</a
+              >.</span
+            >{/if}
+        </span>
+      </li>
+      <li class:ok={ts.phones.length > 0}>
+        <Icon name={ts.phones.length ? 'check' : 'close'} size="sm" />
+        <span class="stack">
+          <span class="strong">Phone in the tailnet</span>
+          <span class="muted small"
+            >{ts.phones.length
+              ? `Online: ${ts.phones.join(', ')}`
+              : ts.offlinePhones.length
+                ? `${ts.offlinePhones.join(', ')} is in the tailnet but offline: open Tailscale on the phone and connect.`
+                : 'Install the Tailscale app on the phone and log in with the same account.'}</span
+          >
+        </span>
+      </li>
+      <li class:ok={shared}>
+        <Icon name={shared ? 'check' : 'close'} size="sm" />
+        <span class="stack">
+          <span class="strong">shub shared in the tailnet</span>
+          {#if shared}
+            <span class="muted small">{phone.publicUrl} · tailnet only, not public</span>
+          {:else}
+            <span class="muted small">Runs <code>tailscale serve</code> for shub's port. Never Funnel.</span>
+            {#if serveError}<span class="error small" role="alert">{serveError}</span>{/if}
+            <div class="row">
+              <Button size="sm" variant="primary" disabled={!ts.running || !ts.https || serving} onclick={share}
+                >{serving ? 'Sharing…' : 'Share shub in the tailnet'}</Button
+              >
+            </div>
+          {/if}
+        </span>
+      </li>
+    </ol>
+    <div class="row"><Button size="sm" onclick={loadPhone}>Check again</Button></div>
+  {/if}
+{/snippet}
+
+{#snippet pairCode()}
+  <div class="pair">
+    {#if pairing && left > 0}
+      <!-- The server renders the QR code as SVG (qrcode package), never user input. -->
+      <div class="qr" role="img" aria-label="QR code for {pairing.url}">
+        {@html pairing.qrSvg}
+      </div>
+    {:else}
+      <div class="qr empty"><Button variant="primary" onclick={newCode}>Show a code</Button></div>
+    {/if}
+    <div class="steps">
+      <ol>
+        <li>Scan the code with the phone camera; shub opens and signs the phone in. No token to type.</li>
+        <li>Add it to the home screen and allow notifications for push.</li>
+        <li>Phone already has shub from another machine? There tap + above the sessions and scan or type this.</li>
+      </ol>
+      {#if pairing && left > 0}
+        <span class="code"
+          ><span class="muted small">Address</span> <code>{new URL(pairing.url).host}</code>
+          <span class="muted small">Code</span>
+          <code>{pairing.code.slice(0, 4)}-{pairing.code.slice(4)}</code></span
+        >
+      {/if}
+      <span class="muted small" aria-live="polite">
+        {left > 0 ? `Code is single-use and runs out in ${countdown}.` : 'The code ran out.'}
+      </span>
+      <div class="row">
+        <Button size="sm" onclick={newCode}>New code</Button>
+        <Button size="sm" variant="ghost" onclick={() => (pairing = null)}>Done</Button>
+      </div>
+    </div>
+  </div>
+{/snippet}
+
+{#snippet plugins()}
+  <div class="card">
+    <Section title="Installed plugins">
       {#snippet aside()}<code>shub plugin add &lt;git-url&gt;</code>{/snippet}
       {#if !app.plugins.length}<p class="muted">No plugins installed.</p>{/if}
       <ul class="list">
         {#each app.plugins as p (p.name)}
+          {@const actions = settingsActions.filter((a) => a.plugin === p.name)}
           <li class="item top">
             <Checkbox
               label="Enable {p.name} plugin"
@@ -572,24 +984,41 @@
               checked={p.enabled}
               onchange={(e) => updatePlugin(p, { enabled: e.currentTarget.checked })}
             />
-            <span class="grow stack">
+            <span class="grow stack gap">
               <span class="strong">{p.name} <span class="muted small">{p.version} · {p.source}</span></span>
               {#if p.description}<span class="muted small">{p.description}</span>{/if}
-              <fieldset class="rights">
-                <legend class="muted small">Rights it asks for (tick to grant)</legend>
-                {#each p.requestedRights as r (r)}
-                  <Checkbox
-                    label={RIGHTS[r] ?? r}
-                    checked={p.grantedRights.includes(r)}
-                    onchange={(e) =>
-                      updatePlugin(p, {
-                        grantedRights: e.currentTarget.checked
-                          ? [...p.grantedRights, r]
-                          : p.grantedRights.filter((x) => x !== r),
-                      })}
-                  />
-                {/each}
-              </fieldset>
+              <details class="more">
+                <summary>Rights: {p.grantedRights.length} of {p.requestedRights.length} granted</summary>
+                <fieldset class="rights">
+                  <legend class="muted small">Rights it asks for (tick to grant)</legend>
+                  {#each p.requestedRights as r (r)}
+                    <Checkbox
+                      label={RIGHTS[r] ?? r}
+                      checked={p.grantedRights.includes(r)}
+                      onchange={(e) =>
+                        updatePlugin(p, {
+                          grantedRights: e.currentTarget.checked
+                            ? [...p.grantedRights, r]
+                            : p.grantedRights.filter((x) => x !== r),
+                        })}
+                    />
+                  {/each}
+                </fieldset>
+              </details>
+              {#if actions.length}
+                <span class="row">
+                  {#each actions as a (a.id)}
+                    <Button
+                      size="sm"
+                      onclick={() =>
+                        api('pluginAction', { params: { name: a.plugin, actionId: a.id }, body: {} }).then(
+                          () => toast(`${a.label} sent to ${a.plugin}`),
+                          toastError,
+                        )}>{a.label}</Button
+                    >
+                  {/each}
+                </span>
+              {/if}
             </span>
             <StatusBadge text={p.running ? 'running' : 'stopped'} tone={p.running ? 'done' : 'neutral'} />
             {#if p.updateAvailable}
@@ -602,138 +1031,14 @@
         {/each}
       </ul>
     </Section>
+  </div>
+{/snippet}
 
-    <Section title="Sessions">
-      <SelectField
-        label="Permission mode for new sessions"
-        hint="Auto and bypass let Claude run commands and edit files without asking. Used by sessions you start and the global Claude; a button's own mode wins."
-        bind:value={() => app.config?.defaultPermissionMode ?? 'default', (v) => setDefaultMode(v)}
-        options={MODES}
-      />
-    </Section>
-
-    <Section title="Terminal">
-      {#snippet aside()}
-        {#if Object.keys(terminalOwn).length}
-          <Button
-            size="sm"
-            onclick={() => setTerminal(Object.fromEntries(Object.keys(terminalOwn).map((k) => [k, null])))}
-            >{deviceTerminal.value ? 'Reset to shared' : 'Reset to defaults'}</Button
-          >
-        {/if}
-      {/snippet}
-      <div class="stack gap">
-        <Checkbox
-          label="Own settings for this device"
-          hint={deviceTerminal.value
-            ? 'Changes below stay in this browser. Fields you have not changed follow the shared settings.'
-            : 'Changes below apply on every device. Turn this on to give this browser, e.g. the phone, its own font or size.'}
-          checked={!!deviceTerminal.value}
-          onchange={(e) => setDeviceTerminal(e.currentTarget.checked ? {} : null)}
-        />
-        <TextField
-          label="Font"
-          hint="CSS font list, first installed one wins. The font must be installed on the device that shows the terminal."
-          mono
-          value={terminal.fontFamily}
-          maxlength={200}
-          autocomplete="off"
-          onchange={(e) => setTerminal({ fontFamily: e.currentTarget.value.trim() || null })}
-        />
-        <TextField
-          label="Fallback font"
-          hint="Used on devices that have none of the fonts above, e.g. the phone. Keep a generic name like monospace at the end."
-          mono
-          value={terminal.fallbackFont}
-          maxlength={200}
-          autocomplete="off"
-          onchange={(e) => setTerminal({ fallbackFont: e.currentTarget.value.trim() || null })}
-        />
-        <div class="row end">
-          <TextField
-            label="Size (px)"
-            type="number"
-            min="6"
-            max="40"
-            step="1"
-            value={terminal.fontSize}
-            onchange={numberInput('fontSize')}
-          />
-          <TextField
-            label="Line height"
-            type="number"
-            min="1"
-            max="2"
-            step="0.05"
-            value={terminal.lineHeight}
-            onchange={numberInput('lineHeight')}
-          />
-          <TextField
-            label="Letter spacing (px)"
-            type="number"
-            min="-2"
-            max="10"
-            step="0.5"
-            value={terminal.letterSpacing}
-            onchange={numberInput('letterSpacing')}
-          />
-          <SelectField
-            label="Weight"
-            bind:value={
-              () => terminal.fontWeight, (v) => setTerminal({ fontWeight: v as TerminalSettings['fontWeight'] })
-            }
-            options={WEIGHTS}
-          />
-        </div>
-        <div class="row end">
-          <SelectField
-            label="Cursor"
-            bind:value={
-              () => terminal.cursorStyle, (v) => setTerminal({ cursorStyle: v as TerminalSettings['cursorStyle'] })
-            }
-            options={CURSORS}
-          />
-          <TextField
-            label="Scrollback (lines)"
-            type="number"
-            min="0"
-            max="100000"
-            step="500"
-            value={terminal.scrollback}
-            onchange={numberInput('scrollback')}
-          />
-          <Checkbox
-            label="Blinking cursor"
-            checked={terminal.cursorBlink}
-            onchange={(e) => setTerminal({ cursorBlink: e.currentTarget.checked })}
-          />
-        </div>
-        <pre
-          class="term-sample"
-          aria-label="Font sample"
-          style:font-family="{terminal.fontFamily}, {terminal.fallbackFont}"
-          style:font-size="{terminal.fontSize}px"
-          style:font-weight={terminal.fontWeight}
-          style:line-height={terminal.lineHeight}
-          style:letter-spacing="{terminal.letterSpacing}px">~/shub $ git status{'\n'}0O 1lI {'{}'} [] =&gt; != ─┬─│</pre>
-      </div>
-    </Section>
-
-    <Section title="Notifications">
-      <div class="stack gap">
-        {#each NOTIFICATIONS as n (n.key)}
-          <Checkbox
-            label={n.label}
-            checked={!!app.config?.notifications[n.key]}
-            onchange={(e) => setNotification(n.key, e.currentTarget.checked)}
-          />
-        {/each}
-      </div>
-    </Section>
-
-    {#if update}
-      <Section title="Updates">
-        {#snippet aside()}<span class="muted small">shub {update.current}</span>{/snippet}
+{#snippet updates()}
+  {#if update}
+    <div class="card">
+      <Section title="shub {update.current}">
+        {#snippet aside()}<Button size="sm" onclick={showChangelog}>Changelog</Button>{/snippet}
         {#if update.managedBy === 'git'}
           <p class="muted">shub runs from a git checkout, so git manages its updates: pull, then restart shub.</p>
         {:else}
@@ -800,28 +1105,32 @@
           </div>
         {/if}
       </Section>
-    {/if}
+    </div>
+  {/if}
+{/snippet}
 
-    <Section title="More">
+{#snippet account()}
+  <div class="card">
+    <Section title="Signed in">
       <div class="row">
-        <Button onclick={() => (ui.shortcuts = true)}>Shortcuts</Button>
+        <span class="avatar" aria-hidden="true">{(app.me?.name ?? 'You').slice(0, 1).toUpperCase()}</span>
+        <span class="grow stack"
+          ><span class="strong">{app.me?.name ?? 'You'}</span><span class="muted small">{location.host}</span></span
+        >
         <Button onclick={showActivity}>Activity log</Button>
-        <Button onclick={showChangelog}>Changelog</Button>
-        <Button onclick={() => (location.hash = href('settings', 'import'))}>Import projects again</Button>
-        {#each settingsActions as a (a.plugin + a.id)}
-          <Button
-            onclick={() =>
-              api('pluginAction', { params: { name: a.plugin, actionId: a.id }, body: {} }).then(
-                () => toast(`${a.label} sent to ${a.plugin}`),
-                toastError,
-              )}>{a.label} <span class="muted small">· {a.plugin}</span></Button
-          >
-        {/each}
-        <Button variant="danger" onclick={() => (rotating = true)}>Rotate access token</Button>
+        <Button onclick={signOut}>Sign out</Button>
       </div>
     </Section>
   </div>
-</div>
+  <div class="card danger-zone">
+    <Section
+      title="Access token"
+      description="Rotating writes a new token and signs out every other browser and phone. Session and plugin tokens keep working."
+    >
+      <div><Button variant="danger" onclick={() => (rotating = true)}>Rotate access token</Button></div>
+    </Section>
+  </div>
+{/snippet}
 
 <Dialog
   open={!!unpair}
@@ -923,16 +1232,18 @@
 
   .page {
     min-height: 100%;
-    padding: var(--space-8) var(--space-4) var(--space-12);
+    display: flex;
+    flex-direction: column;
     background: var(--bg);
   }
 
-  .content {
-    max-width: var(--size-page);
-    margin: 0 auto;
+  .topbar {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-8);
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3) var(--space-6);
+    padding: var(--space-3) var(--space-6);
+    border-bottom: var(--hairline) solid var(--line);
   }
 
   .back {
@@ -940,16 +1251,360 @@
     text-decoration: none;
   }
 
-  .head {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
+  h1 {
+    margin: 0;
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
   }
 
-  h1 {
+  .search {
+    flex: 1 1 var(--size-sidebar-min);
+    max-width: var(--size-dialog);
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2-5);
+    padding: var(--space-2) var(--space-3);
+    border: var(--hairline) solid var(--line-strong);
+    border-radius: var(--radius-md);
+    background: var(--panel);
+    color: var(--muted);
+  }
+
+  .search:focus-within {
+    border-color: var(--primary);
+  }
+
+  .search input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--fg);
+    font: inherit;
+  }
+
+  kbd {
+    padding: 0 var(--space-1);
+    border: var(--hairline) solid var(--line-strong);
+    border-radius: var(--radius-xs);
+    font-size: var(--text-xs);
+  }
+
+  .layout {
+    flex: 1;
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .nav {
+    flex: 1 1 var(--size-tab-label);
+    max-width: var(--size-sidebar-min);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    padding: var(--space-5) var(--space-3);
+    border-right: var(--hairline) solid var(--line);
+  }
+
+  .nav > a {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2-5);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    color: var(--fg-2);
+    text-decoration: none;
+  }
+
+  .nav > a:hover {
+    background: var(--panel);
+    color: var(--fg);
+  }
+
+  .nav > a.on {
+    background: var(--raised);
+    color: var(--fg);
+    font-weight: var(--weight-semibold);
+  }
+
+  .nav > a.dim {
+    color: var(--muted);
+  }
+
+  .nav :is(.badge, .count, .new, .muted) {
+    margin-left: auto;
+    font-weight: var(--weight-regular);
+  }
+
+  .badge,
+  .count {
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-pill);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+  }
+
+  .badge {
+    background: var(--status-needs-you-bg);
+    color: var(--status-needs-you-fg);
+  }
+
+  .count {
+    background: var(--raised);
+    color: var(--yellow);
+  }
+
+  .new {
+    font-size: var(--text-sm);
+    color: var(--status-your-turn);
+  }
+
+  .elsewhere {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+    margin-top: var(--space-6);
+    padding: var(--space-4) var(--space-3) 0;
+    border-top: var(--hairline) solid var(--line);
+    font-size: var(--text-md);
+  }
+
+  .plain {
+    text-decoration: none;
+  }
+
+  .link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--link);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .main {
+    flex: 999 1 var(--size-dialog);
+    min-width: 0;
+    max-width: var(--size-page-wide);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    padding: var(--space-6) var(--space-8) var(--space-12);
+  }
+
+  .up {
+    display: none;
+    text-decoration: none;
+  }
+
+  /* Phone width: the area list first, then one area with a way back. */
+  @media (width <= 720px) {
+    .nav {
+      max-width: none;
+      border-right: 0;
+    }
+
+    .main {
+      padding: var(--space-4);
+    }
+
+    .layout.picked .nav,
+    .layout:not(.picked) .main {
+      display: none;
+    }
+
+    .up {
+      display: block;
+    }
+
+    .nav > a {
+      min-height: var(--size-control-lg);
+    }
+
+    .layout:not(.picked) .nav > a.on {
+      background: none;
+      color: var(--fg-2);
+      font-weight: var(--weight-regular);
+    }
+  }
+
+  .pane {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .pane[hidden] {
+    display: none;
+  }
+
+  .pane-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-4);
+  }
+
+  .pane-head h2 {
     margin: 0;
     font-size: var(--text-xl);
     font-weight: var(--weight-semibold);
+  }
+
+  .pane-head p {
+    flex-basis: 100%;
+  }
+
+  .card {
+    padding: var(--space-4) var(--space-5);
+    border: var(--hairline) solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--panel);
+  }
+
+  .danger-zone {
+    border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  }
+
+  .attention {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2-5);
+  }
+
+  .cta {
+    flex: 1 1 var(--size-column);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: var(--hairline) solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--panel);
+  }
+
+  .cta.warn {
+    border-color: transparent;
+    background: var(--status-needs-you-bg);
+    color: var(--status-needs-you-fg);
+  }
+
+  .dot {
+    width: var(--size-dot);
+    height: var(--size-dot);
+    flex: none;
+    border-radius: var(--radius-round);
+    background: var(--status-needs-you);
+  }
+
+  .dot.ok {
+    background: var(--status-your-turn);
+  }
+
+  .segment {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .split {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-5) var(--space-8);
+    align-items: flex-start;
+  }
+
+  .fields {
+    flex: 1 1 var(--size-preview);
+    min-width: 0;
+  }
+
+  .preview {
+    flex: 1 1 var(--size-column);
+    min-width: 0;
+  }
+
+  .checks-box summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2-5);
+    cursor: pointer;
+  }
+
+  .more summary {
+    color: var(--link);
+    font-size: var(--text-md);
+    cursor: pointer;
+  }
+
+  .checks-box[open] summary {
+    margin-bottom: var(--space-3);
+  }
+
+  .more[open] summary {
+    margin-bottom: var(--space-2-5);
+  }
+
+  .modes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--size-preview-side), 1fr));
+    gap: var(--space-2);
+  }
+
+  .mode {
+    text-align: left;
+  }
+
+  .risky {
+    color: var(--status-needs-you);
+  }
+
+  .matrix {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .matrix th,
+  .matrix td {
+    padding: var(--space-2-5) var(--space-2);
+    border-top: var(--hairline) solid var(--line);
+    text-align: center;
+  }
+
+  .matrix thead th {
+    border-top: 0;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    color: var(--muted);
+  }
+
+  .matrix tbody th {
+    display: flex;
+    flex-direction: column;
+    font-weight: var(--weight-regular);
+  }
+
+  .matrix th:first-child {
+    padding-left: 0;
+    text-align: left;
+  }
+
+  .ok-text {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1-5);
+    color: var(--status-your-turn);
+    font-weight: var(--weight-medium);
+  }
+
+  .warn-text {
+    color: var(--status-needs-you);
   }
 
   .avatar {
@@ -1004,6 +1659,10 @@
     color: var(--fg);
   }
 
+  .cta.warn .strong {
+    color: inherit;
+  }
+
   .muted {
     margin: 0;
     color: var(--muted);
@@ -1011,13 +1670,6 @@
 
   .small {
     font-size: var(--text-sm);
-  }
-
-  .new {
-    padding: var(--space-2-5) var(--space-3-5);
-    border: var(--hairline) dashed var(--line-strong);
-    border-radius: var(--radius-lg);
-    text-decoration: none;
   }
 
   .swatches {
@@ -1049,7 +1701,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2-5);
-    margin: 0;
+    margin: 0 0 var(--space-3);
     padding: 0;
     list-style: none;
     color: var(--status-needs-you);
@@ -1113,7 +1765,12 @@
     padding: var(--space-3);
     border: var(--hairline) solid var(--line);
     border-radius: var(--radius-lg);
-    background: var(--panel);
+    background: var(--bg);
+  }
+
+  .item.waiting {
+    border-color: transparent;
+    background: var(--status-needs-you-bg);
   }
 
   .top {
@@ -1133,7 +1790,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-1-5);
-    margin: var(--space-2) 0 0;
+    margin: 0;
     padding: 0;
     border: 0;
   }
