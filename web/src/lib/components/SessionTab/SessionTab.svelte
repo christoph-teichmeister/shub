@@ -13,7 +13,8 @@
     renaming?: boolean;
     onselect?: () => void;
     onrename?: (name: string) => void;
-    onclose?: () => void;
+    /** The ✕: takes the tab out of the bar, the session keeps running. */
+    onhide?: () => void;
     /** Right-click or the tab's menu button; `at` is where the menu opens. */
     onmenu?: (at: { x: number; y: number }) => void;
   }
@@ -24,7 +25,7 @@
     renaming = $bindable(false),
     onselect,
     onrename,
-    onclose,
+    onhide,
     onmenu,
   }: Props = $props();
 
@@ -112,9 +113,15 @@
       /></span
     >
   {/if}
-  {#if onclose}
+  {#if onhide}
     <span class="reveal"
-      ><IconButton label="Close {session.name}" icon="close" size="xs" tone="muted" onclick={onclose} /></span
+      ><IconButton
+        label="Hide {session.name} tab (stays in the sidebar)"
+        icon="close"
+        size="xs"
+        tone="muted"
+        onclick={onhide}
+      /></span
     >
   {/if}
 </div>

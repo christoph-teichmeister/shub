@@ -468,6 +468,45 @@ test('active group keeps a project for 10 minutes after its last session closes'
   expect(errors).toEqual([]);
 });
 
+test('the tab ✕ hides a session from the tab bar but not the sidebar', async ({ page }) => {
+  const other: Session = { ...session, id: 's2', name: 'Docs pass', status: 'your-turn' };
+  const { errors, calls } = await mockApi(page, {
+    '/api/sessions': [session, other],
+    '/api/sessions/s2/services': [],
+  });
+  let events: { send(m: string): void } | undefined;
+  await page.routeWebSocket('**/api/events', (ws) => {
+    events = ws;
+    ws.send(JSON.stringify({ type: 'hello', apiVersion: 1 }));
+  });
+  await page.goto('/#/p/ai-portal/s2');
+  const tab = (name: string) => page.getByRole('tab', { name });
+  const row = (name: string) => page.getByRole('link', { name: new RegExp(name) });
+
+  await tab('MR 2136 review').hover(); // the ✕ shows on hover
+  await page.getByRole('button', { name: 'Hide MR 2136 review tab (stays in the sidebar)' }).click();
+  await expect(tab('MR 2136 review')).toHaveCount(0);
+  await expect(row('MR 2136 review')).toBeVisible();
+  await page.reload();
+  await expect(tab('Docs pass')).toBeVisible();
+  await expect(tab('MR 2136 review')).toHaveCount(0);
+
+  // Needing you again brings the tab back.
+  events!.send(JSON.stringify({ type: 'session.status', sessionId: 's1', status: 'working' }));
+  events!.send(JSON.stringify({ type: 'session.status', sessionId: 's1', status: 'needs-you' }));
+  await expect(tab('MR 2136 review')).toBeVisible();
+
+  // Hiding the open tab moves to its neighbour; opening the session from the sidebar shows its tab again.
+  await page.getByRole('button', { name: 'Hide Docs pass tab (stays in the sidebar)' }).click();
+  await expect(tab('MR 2136 review')).toHaveAttribute('aria-selected', 'true');
+  await expect(tab('Docs pass')).toHaveCount(0);
+  await row('Docs pass').click();
+  await expect(tab('Docs pass')).toHaveAttribute('aria-selected', 'true');
+
+  expect(calls.filter((c) => c.method === 'DELETE')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test('update curtain stays opaque until the reloaded page has its data', async ({ page }) => {
   const { errors } = await mockApi(page);
   let release!: () => void;

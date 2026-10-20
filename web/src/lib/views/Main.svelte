@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, type Snippet } from 'svelte';
+  import { onMount, untrack, type Snippet } from 'svelte';
   import type {
     ButtonDef,
     ProjectView,
@@ -59,9 +59,10 @@
   const project = $derived<ProjectView | null>(
     route.name === 'project' ? (app.projects.find((p) => p.id === route.projectId) ?? null) : null,
   );
-  const tabs = $derived(project ? sessionsOf(project.id) : []);
+  const sessions = $derived(project ? sessionsOf(project.id) : []);
+  const tabs = $derived(sessions.filter((s) => !hiddenTabs.includes(s.id)));
   const active = $derived<Session | null>(
-    (route.name === 'project' && tabs.find((s) => s.id === route.sessionId)) || tabs[0] || null,
+    (route.name === 'project' && sessions.find((s) => s.id === route.sessionId)) || tabs[0] || null,
   );
   const globalSession = $derived(app.sessions.find((s) => s.kind === 'global') ?? null);
   const needsYou = $derived(needsYouCount() > 0);
@@ -78,6 +79,51 @@
           .sort((a, b) => a.order - b.order),
       }))
       .filter((g) => g.projects.length);
+  });
+
+  // ---------- Hidden tabs: the tab's ✕ takes a session out of the tab bar, the sidebar keeps it ----------
+  // Kept per browser; storage can be missing or throw (private window).
+  // ponytail: ids of closed sessions are never pruned; a few bytes each, prune once sessions load reliably first.
+  let hiddenTabs = $state<string[]>(
+    (() => {
+      try {
+        return JSON.parse(localStorage.getItem('shub.tabs.hidden') ?? '[]') as string[];
+      } catch {
+        return [];
+      }
+    })(),
+  );
+  $effect(() => {
+    try {
+      localStorage.setItem('shub.tabs.hidden', JSON.stringify(hiddenTabs));
+    } catch {
+      // not remembered, the tab is back after a reload
+    }
+  });
+  function showTab(id: string) {
+    if (hiddenTabs.includes(id)) hiddenTabs = hiddenTabs.filter((x) => x !== id);
+  }
+  function hideTab(s: Session) {
+    if (s.id === active?.id) {
+      const i = tabs.findIndex((t) => t.id === s.id);
+      const next = tabs[i + 1] ?? tabs[i - 1];
+      location.hash = next ? sessionHref(next) : href('p', s.projectId);
+    }
+    hiddenTabs = [...hiddenTabs, s.id];
+  }
+  // Opening a session (sidebar, a link, a shortcut) brings its tab back.
+  $effect(() => {
+    const id = route.name === 'project' ? route.sessionId : null;
+    if (id) untrack(() => showTab(id));
+  });
+  // So does starting to need you, so a hidden session never waits unseen (a status seen on load is no change).
+  let lastStatus: Record<string, Session['status']> = {};
+  $effect(() => {
+    for (const s of app.sessions) {
+      const was = lastStatus[s.id];
+      if (s.status === 'needs-you' && was && was !== 'needs-you') untrack(() => showTab(s.id));
+      lastStatus[s.id] = s.status;
+    }
   });
 
   // ---------- Active group: projects with a session, kept ACTIVE_GRACE after the last one closes ----------
@@ -304,6 +350,7 @@
               ? { id: 'ready', label: 'Stop waiting', hint: s.waitingFor }
               : { id: 'wait', label: 'Wait for…' },
           ]),
+      ...(hiddenTabs.includes(s.id) ? [] : [{ id: 'hide', label: 'Hide tab' }]),
       { id: 'pause', label: s.status === 'paused' ? 'Resume session' : 'Pause session' },
       ...plugin,
       ...buttons,
@@ -323,6 +370,7 @@
     else if (id === 'pause')
       void api(s.status === 'paused' ? 'sessionResume' : 'sessionPause', { params: { id: s.id } }).catch(toastError);
     else if (id === 'close') close(s);
+    else if (id === 'hide') hideTab(s);
     else if (id.startsWith('button:')) {
       const b = project?.buttons.find((x) => x.id === id.slice(7));
       if (b) void runButton(b);
@@ -688,7 +736,7 @@
       <div class="title">
         <h1>{project.name}</h1>
         <span class="path"
-          >{split ? `${tabs.length} sessions side by side` : project.path}{project.resolvedIcon.host && !split
+          >{split ? `${sessions.length} sessions side by side` : project.path}{project.resolvedIcon.host && !split
             ? ` · ${project.resolvedIcon.host}`
             : ''}</span
         >
@@ -726,7 +774,7 @@
             bind:renaming={() => renamingId === s.id, (v) => (renamingId = v ? s.id : null)}
             onselect={() => (location.hash = sessionHref(s))}
             onrename={(name) => rename(s, name)}
-            onclose={() => close(s)}
+            onhide={() => hideTab(s)}
             onmenu={(at) => (menu = { session: s, ...at })}
           />
         {/each}
@@ -737,8 +785,8 @@
       </TabBar>
     {/if}
 
-    {#if split && tabs.length}
-      <SplitView sessions={tabs} selectedId={active?.id} onselect={(id) => go('p', project.id, id)}>
+    {#if split && sessions.length}
+      <SplitView {sessions} selectedId={active?.id} onselect={(id) => go('p', project.id, id)}>
         {#snippet pane(s)}
           <TerminalView sessionId={s.id} accent={project.accent} label={s.name} compact />
         {/snippet}
@@ -748,7 +796,12 @@
         <TerminalView sessionId={active.id} accent={project.accent} label={active.name} focused={!ui.drawer} />
       {/key}
     {:else}
-      <EmptyState title="No session yet" body="Start one here or with Alt N.">
+      <EmptyState
+        title={sessions.length ? 'All tabs hidden' : 'No session yet'}
+        body={sessions.length
+          ? 'Open a session from the sidebar or start one with Alt N.'
+          : 'Start one here or with Alt N.'}
+      >
         <Button variant="primary" onclick={() => newSession()}>New session</Button>
       </EmptyState>
     {/if}
