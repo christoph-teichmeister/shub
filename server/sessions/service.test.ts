@@ -182,9 +182,10 @@ test('a session whose process exits is marked exited', async () => {
 
 test('after a reboot: restorable list, global Claude comes up, restore resumes', async () => {
   const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  assert.equal(s.status, 'new', 'no prompt yet');
   svc.tmux.killServer(); // the test socket's server only
   svc.startup();
-  await waitFor(() => svc.get('global')?.status === 'your-turn', 'global Claude');
+  await waitFor(() => svc.get('global')?.status === 'new', 'global Claude');
   assert.equal(svc.get('global')?.cwd, process.env.HOME);
   assert.deepEqual(
     svc.restorable().map((r) => r.id),

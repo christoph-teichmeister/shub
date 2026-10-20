@@ -31,6 +31,7 @@
     { status: 'needs-you', title: 'Needs you' },
     { status: 'working', title: 'Working' },
     { status: 'your-turn', title: 'Your turn' },
+    { status: 'new', title: 'Not started' },
   ];
 
   let picking = $state(false);

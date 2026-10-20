@@ -30,7 +30,7 @@ const MIGRATIONS = [
 ];
 
 const GLOBAL_ID = 'global';
-const LIVE: SessionStatus[] = ['working', 'needs-you', 'your-turn'];
+const LIVE: SessionStatus[] = ['new', 'working', 'needs-you', 'your-turn'];
 const NAMED_KEYS = new Set(['Escape', 'C-c', 'Up', 'Down', 'Tab', 'Enter']);
 const LITERAL_MAX = 2000;
 const TEXT_PASTE_MAX = 1024 * 1024;
@@ -220,7 +220,7 @@ export class SessionsService implements Sessions {
         projectId ?? null,
         name.slice(0, 200),
         cwd,
-        prompt ? 'working' : 'your-turn',
+        prompt ? 'working' : request.kind === 'shell' || resumed ? 'your-turn' : 'new',
         request.kind === 'shell' ? null : (resumeId ?? randomUUID()),
         request.kind === 'shell'
           ? 'default'
@@ -392,9 +392,10 @@ export class SessionsService implements Sessions {
     const transcript =
       session.claudeSessionId &&
       join(claudeDir(), 'projects', encodeCwd(session.cwd), `${session.claudeSessionId}.jsonl`);
-    this.#launch(this.#row(id)!, { resume: !!transcript && existsSync(transcript) });
+    const hasTranscript = !!transcript && existsSync(transcript);
+    this.#launch(this.#row(id)!, { resume: hasTranscript });
     this.#restorable.delete(id);
-    this.setStatus(id, 'your-turn', null);
+    this.setStatus(id, hasTranscript || session.kind === 'shell' ? 'your-turn' : 'new', null);
     this.#services.permissions.log({ actor, action: 'session.resume', detail: `${id}: ${session.name}` });
     return this.get(id)!;
   }

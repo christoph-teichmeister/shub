@@ -141,7 +141,7 @@ test('health, login, project, session, terminal, hooks, close', { timeout: 60_00
   assert.deepEqual(await json('GET', `/api/projects/${project.id}/worktrees`), [], 'not a git repo');
 
   const started = await json<Session>('POST', '/api/sessions', { kind: 'claude', projectId: project.id });
-  assert.equal(started.status, 'your-turn');
+  assert.equal(started.status, 'new');
   assert.ok(tmuxHas(`shub-${started.id}`));
   const tokenFile = join(dirs.out, `${started.id}.token`);
   const sessionToken = await waitFor(() => existsSync(tokenFile) && readFileSync(tokenFile, 'utf8'), 'fake claude');

@@ -86,7 +86,8 @@ export function transition(
       const type = String(payload.notification_type ?? '');
       const message = String(payload.message ?? '');
       const needsYou = NEEDS_YOU_NOTIFICATIONS.has(type) || /permission|waiting for your input/i.test(message);
-      if (!needsYou) return null;
+      // Claude's idle reminder means nothing before the first prompt.
+      if (!needsYou || (current === 'new' && type === 'idle_prompt')) return null;
       // PermissionRequest usually fired just before for the same prompt; do not notify twice.
       if (current === 'needs-you') return { status: 'needs-you' };
       return { status: 'needs-you', notify: { kind: 'needsYou', text: message || 'Claude needs you' } };
