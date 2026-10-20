@@ -249,11 +249,11 @@
     <section id="tabs" aria-labelledby="h-tabs">
       <h2 id="h-tabs">Tabs</h2>
       <TabBar label="Sessions demo">
-        <SessionTab session={SESSIONS[0]} selected onclose={() => {}} onmenu={() => {}} />
-        <SessionTab session={SESSIONS[1]} onclose={() => {}} onmenu={() => {}} />
-        <SessionTab session={SESSIONS[2]} bind:renaming onclose={() => {}} />
-        <SessionTab session={{ ...SESSIONS[1], permissionMode: 'auto' }} onclose={() => {}} />
-        <SessionTab session={SESSIONS[1]} closing onclose={() => {}} />
+        <SessionTab session={SESSIONS[0]} selected onhide={() => {}} onmenu={() => {}} />
+        <SessionTab session={SESSIONS[1]} onhide={() => {}} onmenu={() => {}} />
+        <SessionTab session={SESSIONS[2]} bind:renaming onhide={() => {}} />
+        <SessionTab session={{ ...SESSIONS[1], permissionMode: 'auto' }} onhide={() => {}} />
+        <SessionTab session={SESSIONS[1]} closing onhide={() => {}} />
         {#snippet trailing()}<IconButton label="New session" icon="plus" size="md" tone="muted" />{/snippet}
       </TabBar>
       <div class="row"><Button size="sm" onclick={() => (renaming = true)}>Rename the third tab</Button></div>
