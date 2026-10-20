@@ -30,6 +30,7 @@ const MIGRATIONS = [
      pending_permission TEXT, token TEXT)`,
   `ALTER TABLE sessions ADD COLUMN waiting_for TEXT`,
   `ALTER TABLE sessions ADD COLUMN wait_check TEXT`,
+  'ALTER TABLE sessions ADD COLUMN position INTEGER',
 ];
 const WAIT_EVERY_MIN = 5;
 
@@ -73,6 +74,7 @@ interface Row {
   token: string | null;
   waiting_for: string | null;
   wait_check: string | null;
+  position: number | null;
 }
 
 const toSession = (r: Row): Session => ({
@@ -92,6 +94,7 @@ const toSession = (r: Row): Session => ({
   pendingPermission: r.pending_permission ? JSON.parse(r.pending_permission) : null,
   waitingFor: r.waiting_for,
   waitCheck: r.wait_check ? JSON.parse(r.wait_check) : null,
+  position: r.position,
 });
 
 export const tmuxName = (id: string): string => `shub-${id}`;
@@ -394,6 +397,15 @@ export class SessionsService implements Sessions {
       detail: `${id}: ${clean ?? session.waitingFor ?? ''}`,
     });
     return this.#emitUpdated(id);
+  }
+
+  /** Pins sessions to a place in their project's list (set by drag and drop); null hands one back to the default order. */
+  reorder(positions: Record<string, number | null>): Session[] {
+    for (const [id, position] of Object.entries(positions)) {
+      this.require(id);
+      this.#db.prepare('UPDATE sessions SET position = ? WHERE id = ?').run(position, id);
+    }
+    return Object.keys(positions).map((id) => this.#emitUpdated(id));
   }
 
   setStatus(id: string, status: SessionStatus, pendingPermission?: Session['pendingPermission']): void {

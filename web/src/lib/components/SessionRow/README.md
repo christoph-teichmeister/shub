@@ -2,12 +2,14 @@
 
 One session under its project in the sidebar: status mark, name, status text, a link to `#/p/<project>/<session>`. With `onmenu`, hover or focus swaps the status text for a menu button (`⋯`), and right-click opens the same session menu.
 
-| Prop       | Type                   | Default |
-| ---------- | ---------------------- | ------- |
-| `session`  | `Session`              |         |
-| `href`     | `string`               |         |
-| `selected` | `boolean`              | `false` |
-| `closing`  | `boolean`              | `false` |
-| `onmenu`   | `(at: {x, y}) => void` |         |
+| Prop          | Type                       | Default                            |
+| ------------- | -------------------------- | ---------------------------------- |
+| `session`     | `Session`                  |                                    |
+| `href`        | `string`                   |                                    |
+| `selected`    | `boolean`                  | `false`                            |
+| `closing`     | `boolean`                  | `false`                            |
+| `onmenu`      | `(at: {x, y}) => void`     |                                    |
+| `ondragstart` | `(e: DragEvent) => void`   | Makes the row draggable            |
+| `ondrop`      | `(after: boolean) => void` | `after`: dropped on the lower half |
 
-States: closing (fades out, status reads `Closing`, inert), needs-you (tinted orange row), working, your-turn, waiting (tooltip: what for and the last background check), paused, exited, selected.
+States: drop target (line above or below), closing (fades out, status reads `Closing`, inert), needs-you (tinted orange row), working, your-turn, waiting (tooltip: what for and the last background check), paused, exited, selected.
