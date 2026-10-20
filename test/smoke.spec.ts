@@ -488,3 +488,23 @@ test('update curtain stays opaque until the reloaded page has its data', async (
   await expect(page.getByText('Updated to shub 2026.10.1.')).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('a tab menu parks the session with a background check', async ({ page }) => {
+  const { errors, calls } = await mockApi(page);
+  await page.goto('/#/p/ai-portal/s1');
+  await page.getByRole('tablist').getByRole('button', { name: 'Menu for MR 2136 review' }).click();
+  await page.getByRole('menuitem', { name: 'Wait for…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Wait for…' });
+  await dialog.getByLabel('Waiting for').fill("Kai's answer on MR !2213");
+  await dialog.getByLabel('How can Haiku tell it happened?').fill('Has Kai commented on MR !2213 in ai/ai-portal?');
+  await dialog.getByLabel('Check every').selectOption('60');
+  if (process.env.SHUB_SHOT) await page.screenshot({ path: process.env.SHUB_SHOT });
+  await dialog.getByRole('button', { name: 'Wait and check' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(calls.find((c) => c.method === 'PATCH' && c.path === '/api/sessions/s1')?.body).toEqual({
+    waitingFor: "Kai's answer on MR !2213",
+    waitCheck: 'Has Kai commented on MR !2213 in ai/ai-portal?',
+    waitEveryMinutes: 60,
+  });
+  expect(errors).toEqual([]);
+});

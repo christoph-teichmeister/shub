@@ -1,10 +1,11 @@
-import type { SessionStatus } from '../../../shared/api.ts';
+import type { Session, SessionStatus } from '../../../shared/api.ts';
 
 export const STATUS_LABEL: Record<SessionStatus, string> = {
   new: 'not started',
   'needs-you': 'needs you',
   working: 'working',
   'your-turn': 'your turn',
+  waiting: 'waiting',
   paused: 'paused',
   exited: 'exited',
 };
@@ -15,4 +16,13 @@ export function projectBadge(statuses: SessionStatus[]): { text: string; tone: '
   if (needs) return { text: `${needs} ${needs === 1 ? 'needs' : 'need'} you`, tone: 'needs-you' };
   const working = statuses.filter((s) => s === 'working').length;
   return working ? { text: `${working} working`, tone: 'working' } : null;
+}
+
+/** Tooltip for a waiting session: what for, and the background check's last answer. */
+export function waitTitle(s: Session): string | undefined {
+  if (!s.waitingFor) return undefined;
+  const check = s.waitCheck;
+  if (!check) return `Waiting for: ${s.waitingFor}`;
+  const last = check.last ?? 'first check running…';
+  return `Waiting for: ${s.waitingFor}\nHaiku checks every ${check.everyMinutes} min. Last: ${last}`;
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Session } from '../../../../../shared/api.ts';
-  import { STATUS_LABEL } from '../../status.ts';
+  import { STATUS_LABEL, waitTitle } from '../../status.ts';
   import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
 
@@ -24,7 +24,7 @@
   role="presentation"
   oncontextmenu={onmenu ? (e) => (e.preventDefault(), onmenu({ x: e.clientX, y: e.clientY })) : undefined}
 >
-  <a class="link" {href} aria-current={selected ? 'page' : undefined}>
+  <a class="link" {href} aria-current={selected ? 'page' : undefined} title={waitTitle(session)}>
     <StatusDot status={session.status} />
     <span class="name">{session.name}</span>
     <span class="status">{closing ? 'Closing' : STATUS_LABEL[session.status]}</span>

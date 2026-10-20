@@ -114,8 +114,8 @@ export interface Config {
 // ---------- sessions ----------
 
 export type SessionKind = 'claude' | 'shell' | 'global';
-/** "new": Claude is up but no prompt was sent yet. */
-export type SessionStatus = 'new' | 'working' | 'needs-you' | 'your-turn' | 'paused' | 'exited';
+/** "new": Claude is up but no prompt was sent yet. "waiting": parked until something outside happens (`waitingFor`). */
+export type SessionStatus = 'new' | 'working' | 'needs-you' | 'your-turn' | 'waiting' | 'paused' | 'exited';
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'auto' | 'bypassPermissions';
 export const PROMPT_SKIPPING_MODES: PermissionMode[] = ['auto', 'bypassPermissions'];
 export const PERMISSION_MODES: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
@@ -149,6 +149,20 @@ export interface Session {
   lastActivityAt: string;
   /** Permission question waiting on the phone, if any. */
   pendingPermission?: { tool: string; summary: string } | null;
+  /** What the session waits for, e.g. "Kai's answer on the MR". While set, a finished turn lands on "waiting"
+   *  instead of "your-turn"; cleared by the user or by the session (`shub session ready`). */
+  waitingFor?: string | null;
+  /** Background check while waiting: a small model reads (never writes) whether it happened, every few minutes. */
+  waitCheck?: WaitCheck | null;
+}
+
+export interface WaitCheck {
+  /** What to look at and what counts as done, in the user's words. */
+  prompt: string;
+  everyMinutes: number;
+  checkedAt: string | null;
+  /** The last answer, e.g. "NOT YET: no new comment from Kai". */
+  last: string | null;
 }
 
 export interface StartSessionRequest {
@@ -411,7 +425,7 @@ export const ROUTES = {
 
   sessions: 'GET /api/sessions',
   sessionStart: 'POST /api/sessions', // StartSessionRequest -> Session | { approval: Approval }
-  sessionUpdate: 'PATCH /api/sessions/:id', // rename
+  sessionUpdate: 'PATCH /api/sessions/:id', // { name } rename, { waitingFor: string | null, waitCheck?, waitEveryMinutes? } wait / stop
   sessionClose: 'DELETE /api/sessions/:id',
   sessionPause: 'POST /api/sessions/:id/pause',
   sessionResume: 'POST /api/sessions/:id/resume',

@@ -155,6 +155,7 @@
   let confirm = $state<{ title: string; body: string; action: string; danger?: boolean; run: () => void } | null>(null);
   let ask = $state<{ button: ButtonDef; value: string; worktrees: Worktree[] | null } | null>(null);
   let linkDraft = $state<{ session: Session; label: string; url: string } | null>(null);
+  let waitDraft = $state<{ session: Session; reason: string; check: string; every: number } | null>(null);
   let restorable = $state<{ session: Session; on: boolean }[]>([]);
   let services = $state<ServiceContainer[]>([]);
   let dragId: string | null = null;
@@ -296,6 +297,13 @@
     return [
       { id: 'rename', label: 'Rename' },
       { id: 'link', label: 'Add link…', hint: s.links[0]?.label },
+      ...(s.kind === 'shell'
+        ? []
+        : [
+            s.waitingFor
+              ? { id: 'ready', label: 'Stop waiting', hint: s.waitingFor }
+              : { id: 'wait', label: 'Wait for…' },
+          ]),
       { id: 'pause', label: s.status === 'paused' ? 'Resume session' : 'Pause session' },
       ...plugin,
       ...buttons,
@@ -309,6 +317,9 @@
       if (s.id !== active?.id) location.hash = sessionHref(s);
       renamingId = s.id;
     } else if (id === 'link') linkDraft = { session: s, label: '', url: '' };
+    else if (id === 'wait') waitDraft = { session: s, reason: '', check: '', every: 30 };
+    else if (id === 'ready')
+      void api('sessionUpdate', { params: { id: s.id }, body: { waitingFor: null } }).catch(toastError);
     else if (id === 'pause')
       void api(s.status === 'paused' ? 'sessionResume' : 'sessionPause', { params: { id: s.id } }).catch(toastError);
     else if (id === 'close') close(s);
@@ -366,6 +377,14 @@
     const link: SessionLink = { source: 'user', label: linkDraft.label.trim(), url: linkDraft.url.trim() };
     void api('sessionLink', { params: { id: linkDraft.session.id }, body: link }).catch(toastError);
     linkDraft = null;
+  }
+
+  function saveWait() {
+    if (!waitDraft) return;
+    const { session, reason, check, every } = waitDraft;
+    const body = { waitingFor: reason.trim(), waitCheck: check.trim() || undefined, waitEveryMinutes: every };
+    void api('sessionUpdate', { params: { id: session.id }, body }).catch(toastError);
+    waitDraft = null;
   }
 
   async function restore(ids: string[]) {
@@ -853,6 +872,55 @@
   {/snippet}
 </Dialog>
 
+<Dialog
+  open={!!waitDraft}
+  title="Wait for…"
+  description="Parks the session as waiting, so it stops asking for your turn."
+  onclose={() => (waitDraft = null)}
+>
+  {#if waitDraft}
+    <form
+      id="wait-form"
+      class="form"
+      onsubmit={(e) => {
+        e.preventDefault();
+        saveWait();
+      }}
+    >
+      <label class="field"
+        ><span>Waiting for</span><input
+          bind:value={waitDraft.reason}
+          placeholder="Kai's answer on MR !2213"
+          required
+        /></label
+      >
+      <label class="field"
+        ><span>How can Haiku tell it happened?</span><textarea
+          bind:value={waitDraft.check}
+          rows="4"
+          placeholder="Look at merge request !2213 in ai/ai-portal on GitLab. Done once Kai has written a new comment or approved it after today 11:00."
+        ></textarea></label
+      >
+      <p class="wait-hint">
+        Be exact: where to look (link, or MR / issue number and repo), whose action, what counts as done. Haiku checks
+        it read-only, once right away and then at the interval below, and hands the session back when it happened. Leave
+        it empty to only park the session.
+      </p>
+      <label class="field"
+        ><span>Check every</span><select bind:value={waitDraft.every}>
+          {#each [15, 30, 60, 120] as m (m)}<option value={m}>{m < 60 ? `${m} minutes` : `${m / 60} h`}</option>{/each}
+        </select></label
+      >
+    </form>
+  {/if}
+  {#snippet actions()}
+    <Button variant="ghost" onclick={() => (waitDraft = null)}>Cancel</Button>
+    <Button variant="primary" type="submit" form="wait-form"
+      >{waitDraft?.check.trim() ? 'Wait and check' : 'Wait'}</Button
+    >
+  {/snippet}
+</Dialog>
+
 {#if projectMenu}
   {@const p = projectMenu.project}
   <Menu
@@ -1149,6 +1217,24 @@
     color: var(--fg-2);
   }
 
+  .field textarea {
+    padding: var(--space-2) var(--space-2-5);
+    border: var(--hairline) solid var(--line-strong);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    color: var(--fg);
+    font: inherit;
+    font-size: var(--text-base);
+    resize: vertical;
+  }
+
+  .wait-hint {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--muted);
+  }
+
+  .field select,
   .field input {
     height: var(--size-control-md);
     padding: 0 var(--space-2-5);

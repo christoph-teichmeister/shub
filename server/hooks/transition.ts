@@ -74,15 +74,18 @@ export function newClaudeSessionId(current: string | null, payload: Record<strin
   return id === current ? null : id;
 }
 
+/** `waiting`: the session has a `waitingFor`, so a finished turn parks it again instead of "your-turn". */
 export function transition(
   current: SessionStatus,
   event: HookEvent,
   payload: Record<string, unknown>,
+  waiting = false,
 ): Transition | null {
   switch (event) {
     case 'UserPromptSubmit':
       return { status: 'working', pendingPermission: null };
     case 'Stop':
+      if (waiting) return { status: 'waiting', pendingPermission: null };
       return { status: 'your-turn', pendingPermission: null, notify: { kind: 'yourTurn' } };
     case 'PermissionRequest': {
       const tool = String(payload.tool_name ?? 'tool');
@@ -100,8 +103,8 @@ export function transition(
       const type = String(payload.notification_type ?? '');
       const message = String(payload.message ?? '');
       const needsYou = NEEDS_YOU_NOTIFICATIONS.has(type) || /permission|waiting for your input/i.test(message);
-      // Claude's idle reminder means nothing before the first prompt.
-      if (!needsYou || (current === 'new' && type === 'idle_prompt')) return null;
+      // Claude's idle reminder means nothing before the first prompt, nor while the session waits on purpose.
+      if (!needsYou || (type === 'idle_prompt' && (current === 'new' || waiting))) return null;
       // PermissionRequest usually fired just before for the same prompt; do not notify twice.
       if (current === 'needs-you') return { status: 'needs-you' };
       return { status: 'needs-you', notify: { kind: 'needsYou', text: message || 'Claude needs you' } };

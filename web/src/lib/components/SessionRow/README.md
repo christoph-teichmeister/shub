@@ -10,4 +10,4 @@ One session under its project in the sidebar: status mark, name, status text, a 
 | `closing`  | `boolean`              | `false` |
 | `onmenu`   | `(at: {x, y}) => void` |         |
 
-States: closing (fades out, status reads `Closing`, inert), needs-you (tinted orange row), working, your-turn, paused, exited, selected.
+States: closing (fades out, status reads `Closing`, inert), needs-you (tinted orange row), working, your-turn, waiting (tooltip: what for and the last background check), paused, exited, selected.

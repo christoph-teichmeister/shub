@@ -1,6 +1,6 @@
 <script lang="ts">
   import { PROMPT_SKIPPING_MODES, type PermissionMode, type Session } from '../../../../../shared/api.ts';
-  import { STATUS_LABEL } from '../../status.ts';
+  import { STATUS_LABEL, waitTitle } from '../../status.ts';
   import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
 
@@ -81,6 +81,7 @@
       aria-describedby="status-{session.id}"
       onclick={onselect}
       ondblclick={() => (renaming = true)}
+      title={waitTitle(session)}
     >
       {session.name}
     </button>
