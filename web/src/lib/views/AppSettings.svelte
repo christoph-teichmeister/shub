@@ -324,7 +324,9 @@
               <span class="muted small"
                 >{ts.phones.length
                   ? `Online: ${ts.phones.join(', ')}`
-                  : 'Install the Tailscale app on the phone and log in with the same account.'}</span
+                  : ts.offlinePhones.length
+                    ? `${ts.offlinePhones.join(', ')} is in the tailnet but offline: open Tailscale on the phone and connect.`
+                    : 'Install the Tailscale app on the phone and log in with the same account.'}</span
               >
             </span>
           </li>

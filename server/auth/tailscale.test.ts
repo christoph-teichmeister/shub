@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseTailscale } from './tailscale.ts';
 
-test('parseTailscale reads name, https, online phones and whether serve points at shub', () => {
+test('parseTailscale reads name, https, online and offline phones and whether serve points at shub', () => {
   const status = {
     BackendState: 'Running',
     Self: { DNSName: 'pc.tail1.ts.net.' },
@@ -20,6 +20,7 @@ test('parseTailscale reads name, https, online phones and whether serve points a
     dnsName: 'pc.tail1.ts.net',
     https: true,
     phones: ['Pixel'],
+    offlinePhones: ['iPhone'],
     served: true,
   });
   const other = parseTailscale({ ...status, CertDomains: null }, serve, 47801);
