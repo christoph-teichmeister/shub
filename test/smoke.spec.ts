@@ -467,3 +467,24 @@ test('active group keeps a project for 10 minutes after its last session closes'
   await expect(activeGroup.getByText('Nothing here')).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('update curtain stays opaque until the reloaded page has its data', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
+  await page.route('**/api/sessions', async (r) => {
+    await held;
+    await r.fallback();
+  });
+  await page.addInitScript(() => sessionStorage.setItem('shub-updated', '2026.10.1'));
+  await page.goto('/#/');
+  const curtain = page.locator('.curtain');
+  await page.waitForTimeout(300);
+  await expect(curtain).toHaveClass(/shown/);
+  expect(await curtain.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+
+  release();
+  await expect(curtain).not.toHaveClass(/shown/);
+  await expect(page.getByText('Updated to shub 2026.10.1.')).toBeVisible();
+  expect(errors).toEqual([]);
+});
