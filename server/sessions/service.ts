@@ -71,7 +71,7 @@ const RESTORE_GAP_MS = 4000;
 /** After SessionStart, until Claude's input box takes keys. */
 const STARTED_GAP_MS = 1500;
 /** A background shell may never end (dev server, watcher): after this long without a hook, hand the session back. */
-const BACKGROUND_FALLBACK_MS = 3 * 60_000;
+const BACKGROUND_FALLBACK_MS = 90_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface Row {
