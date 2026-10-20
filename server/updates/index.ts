@@ -1,20 +1,20 @@
 // Updates for shub installed with the launcher (launcher/). The launcher does the real work: download, signature
-// check, version switch, service restart and the automatic rollback. This module asks it once a day whether a
-// newer release exists (cached in sqlite), shows the launcher's last result and starts installs only when the user
-// clicks. Started from a git checkout (no SHUB_LAUNCHER in the environment) everything here is read-only.
+// check, version switch, service restart and the automatic rollback. This module asks it every hour whether a
+// newer release exists (cached in sqlite), shows the launcher's last result and starts an install when the user
+// clicks, or right after the check in mode "auto". Started from a git checkout (no SHUB_LAUNCHER in the environment) everything here is read-only.
 import { execFile, spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { ROUTES, type UpdateChannel, type UpdateStatus } from '../../shared/api.ts';
+import { ROUTES, type UpdateChannel, type UpdateMode, type UpdateStatus } from '../../shared/api.ts';
 import { appVersion } from '../api/index.ts';
 import { HttpError, requireUser, type Caller } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 
-const DAY = 24 * 60 * 60 * 1000;
+const HOUR = 60 * 60 * 1000;
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const run = promisify(execFile);
 
@@ -50,6 +50,8 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
   const channel = (): UpdateChannel =>
     services.config.get().updateChannel ?? (current.includes('-') ? 'beta' : 'stable');
 
+  const mode = (): UpdateMode => services.config.get().updateMode ?? 'ask';
+
   /** The check result for the running version and the current channel; older ones are stale. */
   const cached = (): CheckRow | undefined =>
     db().prepare('SELECT * FROM update_check WHERE id = 1 AND current = ? AND channel = ?').get(current, channel()) as
@@ -66,11 +68,12 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
   };
 
   function status(): UpdateStatus {
-    if (!launcher) return { current, channel: channel(), managedBy: 'git', checkedAt: null };
+    if (!launcher) return { current, channel: channel(), mode: mode(), managedBy: 'git', checkedAt: null };
     const row = cached();
     return {
       current,
       channel: channel(),
+      mode: mode(),
       managedBy: 'launcher',
       checkedAt: row?.checked_at ?? null,
       ...(row?.latest && { latest: row.latest, changelog: row.changelog ?? '' }),
@@ -103,6 +106,12 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
       .prepare('INSERT OR REPLACE INTO update_check VALUES (1, ?, ?, ?, ?, ?, ?)')
       .run(new Date().toISOString(), current, ch, result.latest ?? null, result.changelog ?? null, error);
     ctx.bus.emit({ type: 'updates.changed' });
+    const { latest, last } = status();
+    // A version the launcher already rolled back is not tried again by itself; the user can still click.
+    if (mode() === 'auto' && latest && !(last && !last.ok && last.to === latest)) {
+      launch(['update', '--to', latest]);
+      services.permissions.log({ actor: 'shub', action: 'updates.install', detail: `${latest} (auto)` });
+    }
     return status();
   }
   const check = (): Promise<UpdateStatus> => (checking ??= runCheck(managed()).finally(() => (checking = null)));
@@ -158,12 +167,22 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
           void check();
           return status();
         });
+        router.add(ROUTES.updateMode, async (req) => {
+          requireBrowserUser(req.caller);
+          managed();
+          const { mode: next } = await req.json<{ mode?: string }>();
+          if (next !== 'auto' && next !== 'ask' && next !== 'off')
+            throw new HttpError(400, 'mode must be auto, ask or off');
+          services.config.update((c) => (c.updateMode = next), req.caller.id);
+          if (next === 'auto') void check();
+          return status();
+        });
       },
       start() {
         if (!launcher) return;
         const row = cached();
-        if (!row || Date.parse(row.checked_at) < Date.now() - DAY) void check();
-        timer = setInterval(() => void check(), DAY);
+        if (mode() !== 'off' && (!row || Date.parse(row.checked_at) < Date.now() - HOUR)) void check();
+        timer = setInterval(() => mode() !== 'off' && void check(), HOUR);
         timer.unref();
       },
       stop() {

@@ -97,6 +97,9 @@ export interface Config {
   defaultPermissionMode: LaunchPermissionMode;
   /** Release channel for updates. Absent: "beta" while a beta runs, else "stable". */
   updateChannel?: UpdateChannel;
+  /** What happens when a newer release is out: "auto" installs it, "ask" shows it in
+   *  Settings, "off" stops the hourly check ("Check now" still works). Absent: "ask". */
+  updateMode?: UpdateMode;
   /** Never stored: why config.json or local.json could not be read. shub then runs on the last good config and
    *  refuses changes until the file is fixed (it reloads on save). */
   problem?: string;
@@ -319,6 +322,7 @@ export interface SkillInfo {
 // ---------- updates ----------
 
 export type UpdateChannel = 'stable' | 'beta';
+export type UpdateMode = 'auto' | 'ask' | 'off';
 
 /**
  * GET /api/updates. Installing and rolling back are done by the shub launcher (launcher/), which verifies the
@@ -328,6 +332,7 @@ export interface UpdateStatus {
   /** The version that is running. */
   current: string;
   channel: UpdateChannel;
+  mode: UpdateMode;
   /** "git": shub runs from a checkout without the launcher, so git manages updates and the update routes refuse. */
   managedBy: 'launcher' | 'git';
   /** Newest release on the channel, only when it is newer than `current`. */
@@ -415,6 +420,7 @@ export const ROUTES = {
   updateInstall: 'POST /api/updates/install', // { version? } -> { ok, version }; the launcher restarts shub. User only
   updateRollback: 'POST /api/updates/rollback', // -> { ok, version }, user only
   updateChannel: 'PATCH /api/updates/channel', // { channel } -> UpdateStatus, user only
+  updateMode: 'PATCH /api/updates/mode', // { mode } -> UpdateStatus, user only
 } as const;
 
 // ---------- WebSockets ----------

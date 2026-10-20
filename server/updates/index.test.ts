@@ -87,16 +87,18 @@ test('from a git checkout the updates are read-only', async () => {
   assert.deepEqual(await call('GET /api/updates', user), {
     current: '2026.10.0',
     channel: 'stable',
+    mode: 'ask',
     managedBy: 'git',
     checkedAt: null,
   });
   await assert.rejects(call('POST /api/updates/check', user), /managed by git/);
   await assert.rejects(call('POST /api/updates/install', user, { version: '2026.10.1' }), /managed by git/);
   await assert.rejects(call('PATCH /api/updates/channel', user, { channel: 'beta' }), /managed by git/);
+  await assert.rejects(call('PATCH /api/updates/mode', user, { mode: 'auto' }), /managed by git/);
   await assert.rejects(call('GET /api/updates', session), HttpError);
 });
 
-test('daily check through the launcher, cached per version and channel', async () => {
+test('hourly check through the launcher, cached per version and channel', async () => {
   const { module, call, events, services } = setup(true);
   module.start!();
   await changed(events);
@@ -136,9 +138,40 @@ test('install and rollback start the launcher, only for the browser user', async
   assert.deepEqual(logged, ['updates.install 2026.10.1', 'updates.rollback 2026.9.0']);
 });
 
+test('mode off skips the background check', async () => {
+  const { module, call, events, services } = setup(true);
+  services.config.update((c) => (c.updateMode = 'off'), 'chris');
+  module.start!();
+  await new Promise((r) => setTimeout(r, 300));
+  module.stop!();
+  assert.equal(events.filter((e) => e.type === 'updates.changed').length, 0);
+  assert.equal((await call('POST /api/updates/check', user)).latest, '2026.10.1', 'Check now still works');
+});
+
 test('a failed check is shown, not thrown', async () => {
   const { call } = setup(true, { FAKE_FAIL: '1' });
   const status = await call('POST /api/updates/check', user);
   assert.equal(status.checkError, 'GET https://api.github.com/repos/x/releases failed: 403 rate limit exceeded');
   assert.equal(status.latest, undefined);
+});
+
+test('mode auto installs after the check, but not a version that was rolled back', async () => {
+  const { call, calls, logged, home, services } = setup(true);
+  await assert.rejects(call('PATCH /api/updates/mode', cli, { mode: 'auto' }), /only you/);
+  await assert.rejects(call('PATCH /api/updates/mode', user, { mode: 'yolo' }), /auto, ask or off/);
+  assert.equal((await call('POST /api/updates/check', user)).mode, 'ask');
+  assert.deepEqual(logged, [], 'ask only shows the new version');
+
+  mkdirSync(home, { recursive: true });
+  const last = { at: '2026-10-19T20:00:00Z', from: '2026.10.0', to: '2026.10.1', ok: false, message: 'rolled back' };
+  writeFileSync(join(home, 'launcher.json'), JSON.stringify({ last }));
+  services.config.update((c) => (c.updateMode = 'auto'), 'chris');
+  await call('POST /api/updates/check', user);
+  assert.deepEqual(logged, [], 'the rolled-back version is not retried');
+
+  writeFileSync(join(home, 'launcher.json'), '{}');
+  assert.equal((await call('PATCH /api/updates/mode', user, { mode: 'auto' })).mode, 'auto');
+  await call('POST /api/updates/check', user);
+  assert.deepEqual(await calls(1), [['update', '--to', '2026.10.1']]);
+  assert.equal(logged[0], 'updates.install 2026.10.1 (auto)');
 });

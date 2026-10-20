@@ -41,8 +41,8 @@ public URL, downloads the latest signed release from GitHub, runs it as a system
 (macOS) at http://127.0.0.1:4780 and prints the access token you log in with (`shub token` prints it again). For
 scripts, `shub install --yes [--channel beta]` only installs the release, and `shub service install` adds the service.
 `shub doctor` says what is missing. Versions live side by side in
-`~/.local/share/shub/versions/` (`SHUB_HOME`); Settings > Updates shows new versions with their notes and installs
-one when you click, `shub update` and `shub rollback` do the same in a terminal. If a new version does not come up
+`~/.local/share/shub/versions/` (`SHUB_HOME`); Settings > Updates checks hourly, shows new versions with their notes
+and installs one when you click (or by itself with "Install automatically"; "off" skips the check), `shub update` and `shub rollback` do the same in a terminal. If a new version does not come up
 within 30 seconds, the launcher switches back. Sessions keep running in tmux through updates. Every other command
 (`shub status`, `shub session start`, ...) goes to the installed version. Releases: [docs/RELEASING.md](docs/RELEASING.md).
 

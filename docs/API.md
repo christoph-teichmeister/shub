@@ -70,10 +70,11 @@ All routes are in `ROUTES` in `shared/api.ts`. Notes on the ones that are not ob
 | `POST /api/sessions`              | `StartSessionRequest`; `resumeClaudeSessionId` (kind `claude`, an id from `old-sessions`, no prompt or button) reopens that conversation with `--resume`                                                                 |
 | `GET /api/plugins/:name/logs`     | `{lines: string[]}`, user only                                                                                                                                                                                           |
 | `DELETE /api/plugins/:name`       | user only: stops the plugin, drops its config entry and deletes its folder                                                                                                                                               |
-| `GET /api/updates`                | `UpdateStatus`: running version, channel, newer release and its notes, last check, the launcher's last result; `managedBy: 'git'` from a checkout                                                                        |
+| `GET /api/updates`                | `UpdateStatus`: running version, channel, mode, newer release and its notes, last check, the launcher's last result; `managedBy: 'git'` from a checkout                                                                  |
 | `POST /api/updates/install`       | `{version?}` (default: `latest`) -> `{ok, version}`; browser user only; runs `shub update --to <version>` of the launcher, which restarts shub                                                                           |
 | `POST /api/updates/rollback`      | -> `{ok, version}`; browser user only; runs `shub rollback`                                                                                                                                                              |
 | `PATCH /api/updates/channel`      | `{channel: 'stable'\|'beta'}` -> `UpdateStatus`; browser user only; stored as `updateChannel` in config and checked again                                                                                                |
+| `PATCH /api/updates/mode`         | `{mode: 'auto'\|'ask'\|'off'}` -> `UpdateStatus`; browser user only; stored as `updateMode` in config; `auto` installs a newer release after each hourly check, `off` skips the hourly check                             |
 
 ## Events
 
