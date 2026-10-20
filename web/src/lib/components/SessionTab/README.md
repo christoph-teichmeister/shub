@@ -6,10 +6,11 @@ One session in the tab bar: status mark, name (`role="tab"`, only the selected o
 | ---------- | ------------------------- | ------------------------ |
 | `session`  | `Session`                 |                          |
 | `selected` | `boolean`                 |                          |
+| `closing`  | `boolean`                 | Fades, "Closing" badge   |
 | `renaming` | `boolean` (bindable)      |                          |
 | `onselect` | `() => void`              |                          |
 | `onrename` | `(name: string) => void`  | Only called on a change  |
 | `onclose`  | `() => void`              | The view asks if working |
 | `onmenu`   | `(e: MouseEvent) => void` | Context menu             |
 
-States: selected (open like a folder tab, no line under it), unselected, hover, needs-you, working, your-turn, renaming, with link chip, prompt-skipping mode (`auto` / `bypass` badge in the danger colour, from `PROMPT_SKIPPING_MODES`).
+States: closing (fades out, `Closing` badge, inert), selected (open like a folder tab, no line under it), unselected, hover, needs-you, working, your-turn, renaming, with link chip, prompt-skipping mode (`auto` / `bypass` badge in the danger colour, from `PROMPT_SKIPPING_MODES`).
