@@ -451,13 +451,17 @@ test('phone overview answers a permission', async ({ page }) => {
 
 test('phone runs a command Claude handed over after a second tap', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  const handing = { ...session, status: 'needs-you', pendingCommands: ['cd ~ && git pull'] };
-  const { errors, calls } = await mockApi(page, { '/api/sessions': [handing] });
+  const other = { ...session, id: 's2', name: 'Other one' };
+  const pendingCommands = [{ command: 'cd ~ && git pull' }, { command: 'make', session: 's2' }];
+  const handing = { ...session, status: 'needs-you', pendingCommands };
+  const { errors, calls } = await mockApi(page, { '/api/sessions': [handing, other] });
   await page.goto('/#/');
-  await expect(page.getByText('▶ 1 command').first()).toBeVisible();
-  await page.getByRole('link', { name: 'Open', exact: true }).click();
+  await expect(page.getByText('▶ 2 commands').first()).toBeVisible();
+  await page.getByRole('link', { name: 'Open', exact: true }).first().click();
   const chip = page.getByRole('region', { name: 'Commands from Claude' });
-  await expect(chip.locator('code')).toHaveText('cd ~ && git pull');
+  await expect(chip.locator('code')).toHaveText(['cd ~ && git pull', 'make']);
+  await expect(chip.getByText('Runs in Other one')).toBeVisible();
+  await expect(chip.getByRole('button', { name: 'Run in Other one' })).toBeVisible();
   await chip.getByRole('button', { name: 'Run in session' }).click();
   expect(calls.some((c) => c.path === '/api/sessions/s1/command')).toBe(false);
   await chip.getByRole('button', { name: 'Tap again to run' }).click();

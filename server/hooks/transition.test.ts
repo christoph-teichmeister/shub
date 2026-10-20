@@ -156,13 +156,21 @@ const HANDOVER = [
 test('stop with commands to run means needs you, with the commands', () => {
   const t = transition('working', 'Stop', { last_assistant_message: HANDOVER });
   assert.equal(t?.status, 'needs-you');
-  assert.deepEqual(t?.pendingCommands, ['cd ~ && git pull', 'sudo systemctl restart x']);
+  assert.deepEqual(t?.pendingCommands, [{ command: 'cd ~ && git pull' }, { command: 'sudo systemctl restart x' }]);
   assert.deepEqual(t?.notify, { kind: 'needsYou', text: 'Run: cd ~ && git pull (+1 more)' });
 });
 
 test('only blocks marked shub-run count', () => {
   assert.deepEqual(handedOverCommands('Please run this yourself:\n\n```bash\nnpm test\n```\n'), []);
   const mixed = '```python\nprint(1)\n```\ntext\n```bash\nls\n```\n```bash shub-run\nmake\n```\n';
-  assert.deepEqual(handedOverCommands(mixed), ['make']);
+  assert.deepEqual(handedOverCommands(mixed), [{ command: 'make' }]);
   assert.deepEqual(handedOverCommands(undefined), []);
+});
+
+test('a block can name the session or folder it belongs to', () => {
+  const msg = '```bash shub-run session=ai-portal-2\nclaude --resume x\n```\n```bash shub-run cwd=~/w/2213/\nls\n```\n';
+  assert.deepEqual(handedOverCommands(msg, '/home/u'), [
+    { command: 'claude --resume x', session: 'ai-portal-2' },
+    { command: 'ls', cwd: '/home/u/w/2213' },
+  ]);
 });

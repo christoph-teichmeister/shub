@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
   ClientKind,
+  HandedCommand,
   OldSession,
   PermissionMode,
   Session,
@@ -12,6 +13,7 @@ import type {
   SessionStatus,
   StartSessionRequest,
 } from '../../shared/api.ts';
+import { commandTarget } from '../../shared/commands.ts';
 import { HttpError } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import { hookSettings } from '../hooks/index.ts';
@@ -58,6 +60,8 @@ const PASTE_TYPES: Record<string, string> = {
 const RECONCILE_MS = 3000;
 /** Gap between sessions a restore brings back: all Claudes at once freeze the machine and the window. */
 const RESTORE_GAP_MS = 4000;
+/** After SessionStart, until Claude's input box takes keys. */
+const STARTED_GAP_MS = 1500;
 /** A background shell may never end (dev server, watcher): after this long without a hook, hand the session back. */
 const BACKGROUND_FALLBACK_MS = 3 * 60_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -103,7 +107,12 @@ const toSession = (r: Row): Session => ({
   waitingFor: r.waiting_for,
   waitCheck: r.wait_check ? JSON.parse(r.wait_check) : null,
   position: r.position,
-  pendingCommands: r.pending_commands ? JSON.parse(r.pending_commands) : null,
+  // Rows from before targets stored plain strings.
+  pendingCommands: r.pending_commands
+    ? (JSON.parse(r.pending_commands) as (string | HandedCommand)[]).map((c) =>
+        typeof c === 'string' ? { command: c } : c,
+      )
+    : null,
   shells: r.shells,
 });
 
@@ -116,6 +125,7 @@ export interface SessionsOptions {
   titler?: Titler;
   waitChecker?: WaitChecker;
   restoreGapMs?: number;
+  startedGapMs?: number;
 }
 
 export class SessionsService implements Sessions {
@@ -133,6 +143,9 @@ export class SessionsService implements Sessions {
   #restorable = new Set<string>();
   #timer: NodeJS.Timeout | undefined;
   #restoreGapMs: number;
+  #startedGapMs: number;
+  /** Commands to type once their resumed session's Claude is up (SessionStart). */
+  #afterStart = new Map<string, () => void>();
 
   constructor(ctx: Context, services: Services, options: SessionsOptions = {}) {
     this.#ctx = ctx;
@@ -141,6 +154,7 @@ export class SessionsService implements Sessions {
     this.#titler = options.titler ?? defaultTitler;
     this.#waitChecker = options.waitChecker ?? defaultWaitChecker;
     this.#restoreGapMs = options.restoreGapMs ?? RESTORE_GAP_MS;
+    this.#startedGapMs = options.startedGapMs ?? STARTED_GAP_MS;
     this.#binDir = join(ctx.paths.stateDir, 'bin');
   }
 
@@ -559,18 +573,47 @@ export class SessionsService implements Sessions {
   }
 
   /**
-   * A command Claude handed over: "run" types `!` (Claude's bash mode) and pastes it, Enter only when asked;
-   * both actions clear the list and hand the turn back.
+   * A command Claude handed over: "run" types `!` (Claude's bash mode) and pastes it, Enter only when asked, into
+   * the session it names (resumed first when it is down) or else this one; both actions clear the list and hand
+   * the turn back.
    */
   answerCommand(id: string, index: number, action: 'run' | 'dismiss', enter = false): void {
-    const command = this.get(id)?.pendingCommands?.[index];
-    if (command === undefined) throw new HttpError(404, 'no such command waiting');
+    const handed = this.get(id)?.pendingCommands?.[index];
+    if (handed === undefined) throw new HttpError(404, 'no such command waiting');
     if (action === 'run') {
-      this.sendKeys(id, ['!']);
-      this.pasteText(id, command);
-      if (enter) this.sendKeys(id, ['Enter']);
+      const target = commandTarget(handed, this.list(), id);
+      if (target.kind === 'folder' || target.kind === 'unknown') {
+        throw new HttpError(409, 'no session to run it in: use Open in terminal');
+      }
+      const into = target.kind === 'session' ? target.session.id : id;
+      const type = () => {
+        this.sendKeys(into, ['!']);
+        this.pasteText(into, handed.command);
+        if (enter) this.sendKeys(into, ['Enter']);
+      };
+      if (this.#tmux.has(tmuxName(into))) type();
+      else if (this.get(into)?.status === 'starting') throw new HttpError(409, 'that session is still starting');
+      else {
+        this.resume(into, 'shub:command');
+        this.#afterStart.set(into, type);
+      }
     }
     this.setStatus(id, 'your-turn', null, null);
+  }
+
+  /** Claude's SessionStart hook: it is up, so a command waiting for this session goes in now. */
+  started(id: string): void {
+    const type = this.#afterStart.get(id);
+    if (!type) return;
+    this.#afterStart.delete(id);
+    // ponytail: fixed pause for the input box after SessionStart; wait for the prompt if keys get lost
+    setTimeout(() => {
+      try {
+        type();
+      } catch (err) {
+        console.error(`shub: command for ${id}`, err);
+      }
+    }, this.#startedGapMs).unref();
   }
 
   pasteText(id: string, text: string): void {

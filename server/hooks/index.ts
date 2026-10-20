@@ -90,6 +90,7 @@ export function create(_ctx: Context, services: Services): { module: ShubModule 
           if (req.params.event === 'SessionStart') {
             const claudeSessionId = newClaudeSessionId(session.claudeSessionId, payload);
             if (claudeSessionId) services.sessions.setClaudeSessionId(session.id, claudeSessionId);
+            services.sessions.started(session.id);
             return { ok: true };
           }
           // A session started without a prompt is "Session N" until its first prompt names it.

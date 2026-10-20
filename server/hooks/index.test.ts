@@ -41,6 +41,7 @@ test('a hook reports the permission mode Claude runs in (for "inherit")', async 
       get: () => ({ id: 's1', status: 'working', claudeSessionId: null }),
       setPermissionMode: (_id: string, mode: string) => modes.push(mode),
       setStatus: () => {},
+      started: () => {},
     },
     notify: { yourTurn: () => {}, needsYou: () => {} },
   } as unknown as Services;

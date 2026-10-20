@@ -13,7 +13,8 @@
 //                     Its permission_mode also lets a shift+tab switch show during a turn.
 //   SessionStart:     { source: 'startup'|'resume'|'clear'|'compact' }  no status meaning, but /clear (and
 //                     compact, or a fresh start) can bring a new session_id: see newClaudeSessionId.
-import type { Session, SessionStatus } from '../../shared/api.ts';
+import { homedir } from 'node:os';
+import type { HandedCommand, Session, SessionStatus } from '../../shared/api.ts';
 import { RUN_MARKER } from '../sessions/launch.ts';
 
 export const HOOK_EVENTS = [
@@ -120,13 +121,22 @@ const COMMANDS_MAX = 5;
 /**
  * Shell commands Claude hands over in its last message: only fenced blocks whose info string carries RUN_MARKER
  * (shub's sessions are told so at launch), so examples and commands Claude ran stay quiet. A leading "$ " goes.
+ * `session=<id>` or `cwd=<folder>` in the info string names where it belongs (```bash shub-run session=p1-2).
  */
-export function handedOverCommands(message: unknown): string[] {
+export function handedOverCommands(message: unknown, home = homedir()): HandedCommand[] {
   if (typeof message !== 'string') return [];
   return [...message.matchAll(FENCE)]
-    .filter((m) => m[1].trim().split(/\s+/).includes(RUN_MARKER))
-    .map((m) => m[2].replace(/^\$ /gm, '').trim())
-    .filter(Boolean)
+    .flatMap((m) => {
+      const words = m[1].trim().split(/\s+/);
+      const command = m[2].replace(/^\$ /gm, '').trim();
+      if (!words.includes(RUN_MARKER) || !command) return [];
+      const handed: HandedCommand = { command };
+      for (const [, key, value] of words.map((w) => /^(session|cwd)=(.+)$/.exec(w)).filter((w) => w !== null)) {
+        if (key === 'session') handed.session = value;
+        else handed.cwd = value.replace(/^~(?=\/|$)/, home).replace(/(.)\/+$/, '$1');
+      }
+      return [handed];
+    })
     .slice(0, COMMANDS_MAX);
 }
 
@@ -167,7 +177,7 @@ export function transition(
           pendingPermission: null,
           pendingCommands: commands,
           shells,
-          notify: { kind: 'needsYou', text: `Run: ${truncate(commands[0])}${more}` },
+          notify: { kind: 'needsYou', text: `Run: ${truncate(commands[0].command)}${more}` },
         };
       }
       if (waiting) return { status: 'waiting', pendingPermission: null, pendingCommands: null, shells };

@@ -93,6 +93,8 @@ export interface Sessions {
   /** Name a session after its first prompt: its first words now, a model-written title a moment later. */
   nameFromPrompt(id: string, prompt: string): void;
   sendKeys(id: string, keys: string[]): void;
+  /** Claude's SessionStart hook fired: types a command that waited for this session to come up. */
+  started(id: string): void;
   oldSessions(projectId: string): OldSession[];
 }
 

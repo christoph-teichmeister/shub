@@ -221,9 +221,16 @@ export interface Session {
   /** Place in its project's list the user dragged it to; null follows the default order. */
   position?: number | null;
   /** Shell commands Claude asked you to run at the end of its turn (status needs-you until run or dismissed). */
-  pendingCommands?: string[] | null;
+  pendingCommands?: HandedCommand[] | null;
   /** Background shells (servers, tests) still running after Claude's turn ended. */
   shells?: number;
+}
+
+/** A command Claude handed over; `session` or `cwd` (absolute) name where it belongs, none = the writing session. */
+export interface HandedCommand {
+  command: string;
+  session?: string;
+  cwd?: string;
 }
 
 export interface WaitCheck {

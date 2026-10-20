@@ -383,9 +383,9 @@
     await newSession(null);
   }
 
-  async function newShell() {
+  async function newShell(cwd?: string) {
     if (!active) return;
-    const s = await startSession({ projectId: active.projectId, kind: 'shell', parentId: active.id });
+    const s = await startSession({ projectId: active.projectId, kind: 'shell', parentId: active.id, cwd });
     if (s) {
       panelOpen = true;
       panelTab = s.id;
@@ -1034,7 +1034,7 @@
         tabs={panelTabs}
         active={panelTabs.some((t) => t.id === panelTab) ? panelTab : 'services'}
         onselect={(id) => (panelTab = id)}
-        onnew={newShell}
+        onnew={() => newShell()}
         onclose={(id) => {
           const s = shells.find((x) => x.id === id);
           if (s) close(s);

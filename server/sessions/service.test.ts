@@ -68,6 +68,7 @@ let checkAnswer: CheckResult | null = null;
 const checks: string[] = [];
 const svc = new SessionsService(ctx, services, {
   restoreGapMs: 300,
+  startedGapMs: 50,
   launcher: (spec) => (launches.push(spec), ['bash', '--norc', '--noprofile']),
   titler: async (prompt) => (prompt === 'do the thing' ? 'Thing Doing' : null),
   waitChecker: async (check) => (checks.push(check), checkAnswer),
@@ -343,4 +344,25 @@ test('a wait check runs at once, keeps waiting on NOT YET and hands back on DONE
   assert.equal(svc.get(s.id)?.status, 'your-turn');
   assert.equal(svc.get(s.id)?.waitCheck, null);
   assert.deepEqual(notified, [`${s.id}: Kai approved the MR`]);
+});
+
+test('a handed-over command runs in the session it names, resuming it first', async () => {
+  const writer = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  const target = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  svc.setStatus(writer.id, 'needs-you', null, [
+    { command: 'echo routed-1', session: target.id },
+    { command: 'echo nowhere', session: 'nope' },
+  ]);
+  assert.throws(() => svc.answerCommand(writer.id, 1, 'run'), /Open in terminal/);
+  svc.answerCommand(writer.id, 0, 'run');
+  await waitFor(() => pane(target.id).includes('echo routed-1'), 'command in the target');
+  assert.ok(!pane(writer.id).includes('echo routed-1'), 'not in the writing session');
+  assert.equal(svc.get(writer.id)?.pendingCommands, null);
+
+  svc.pause(target.id, 'chris');
+  svc.setStatus(writer.id, 'needs-you', null, [{ command: 'echo routed-2', session: target.id }]);
+  svc.answerCommand(writer.id, 0, 'run');
+  assert.ok(svc.tmux.has(tmuxName(target.id)), 'the closed target is resumed');
+  svc.started(target.id);
+  await waitFor(() => pane(target.id).includes('echo routed-2'), 'command once the target is up');
 });
