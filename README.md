@@ -64,8 +64,9 @@ your dotfiles and share it between machines:
 
 - Project paths under your home are stored as `~/...`. A project whose folder is missing on a machine shows dimmed
   there and is never removed.
-- shub reloads the file when it changes on disk (git pull, Syncthing, an editor); a broken file keeps the last good
-  config.
+- shub reloads the file when it changes on disk (git pull, Syncthing, an editor). If it cannot be read (e.g. git
+  conflict markers), shub keeps running on the last good config (a copy in `~/.local/state/shub/`, also used at
+  startup), warns in the app and refuses changes until you fix the file, so the conflict is never overwritten.
 - `~/.config/shub/local.json` (keep it out of your dotfiles) holds what stays on one machine; its keys win over
   `config.json`. The update channel always goes there; put any other key there (e.g. `"defaultPermissionMode"`) to make
   it machine-only.

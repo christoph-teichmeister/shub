@@ -4,9 +4,10 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, watch, writeFileSync, type FSWatcher } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, sep } from 'node:path';
+import { dirname, join, sep } from 'node:path';
 import type { Config, Project, ProjectView, ResolvedIcon, ThemeDef } from '../../shared/api.ts';
 import type { Context, EventBus } from '../context.ts';
+import { HttpError } from '../api/router.ts';
 import type { ShubModule } from '../module.ts';
 import type { ConfigStore, Services } from '../services.ts';
 import { isLaunchPermissionMode } from '../sessions/launch.ts';
@@ -47,6 +48,7 @@ function normalize(raw: Partial<Config>): Config {
     defaultPermissionMode: isLaunchPermissionMode(raw.defaultPermissionMode) ? raw.defaultPermissionMode : 'default',
   };
   if (config.updateChannel !== 'stable' && config.updateChannel !== 'beta') delete config.updateChannel;
+  delete config.problem;
   return config;
 }
 
@@ -112,20 +114,56 @@ export class FileConfigStore implements ConfigStore {
   #local: Partial<Config> = {};
   #lastText = { shared: '', local: '' };
   #config: Config;
+  /** Set while a file is broken (e.g. git conflict markers); cleared by the next good reload. */
+  #problem?: string;
+  /** A copy of the last config that loaded, in the state dir, to start from when a file is broken. */
+  #lastGoodFile?: string;
   #watcher?: FSWatcher;
   #reloadTimer?: ReturnType<typeof setTimeout>;
   // ponytail: remote icons cached for the process lifetime; restart shub after changing a remote.
   #remoteIcons = new Map<string, ResolvedIcon>();
 
-  constructor(configDir: string, bus: EventBus, home = homedir()) {
+  constructor(configDir: string, bus: EventBus, home = homedir(), lastGoodFile?: string) {
     this.#dir = configDir;
+    this.#lastGoodFile = lastGoodFile;
     this.#file = join(configDir, 'config.json');
     this.#localFile = join(configDir, 'local.json');
     this.#home = home;
     this.#bus = bus;
     mkdirSync(configDir, { recursive: true });
     if (!existsSync(this.#file)) this.#writeFile(this.#file, 'shared', defaultConfig());
-    this.#config = this.#load();
+    try {
+      this.#config = this.#load();
+      this.#saveLastGood();
+    } catch (err) {
+      this.#problem = this.#describe(err);
+      console.error(`shub: ${this.#problem}`);
+      this.#config = this.#lastGood();
+    }
+  }
+
+  #describe(err: unknown): string {
+    return `config not readable (${(err as Error).message}); running on the last good config, changes are refused until config.json and local.json are fixed`;
+  }
+
+  #lastGood(): Config {
+    try {
+      return normalize(JSON.parse(readFileSync(this.#lastGoodFile!, 'utf8')));
+    } catch {
+      return defaultConfig();
+    }
+  }
+
+  #saveLastGood(): void {
+    if (!this.#lastGoodFile) return;
+    try {
+      mkdirSync(dirname(this.#lastGoodFile), { recursive: true, mode: 0o700 });
+      const tmp = `${this.#lastGoodFile}.${process.pid}.tmp`;
+      writeFileSync(tmp, JSON.stringify(this.#config, null, 2) + '\n', { mode: 0o600 });
+      renameSync(tmp, this.#lastGoodFile);
+    } catch (err) {
+      console.error('shub: could not save the last good config:', (err as Error).message);
+    }
   }
 
   #read(file: string, which: 'shared' | 'local'): Partial<Config> {
@@ -141,8 +179,10 @@ export class FileConfigStore implements ConfigStore {
   }
 
   #load(): Config {
-    this.#shared = this.#read(this.#file, 'shared');
-    this.#local = this.#read(this.#localFile, 'local');
+    const shared = this.#read(this.#file, 'shared');
+    const local = this.#read(this.#localFile, 'local');
+    this.#shared = shared;
+    this.#local = local;
     return this.#merge();
   }
 
@@ -178,14 +218,16 @@ export class FileConfigStore implements ConfigStore {
 
   /** Re-read both files; emits events only when the result differs. A broken file keeps the last good config. */
   reload(): void {
-    const before = this.#config;
+    const before = this.get();
     try {
       this.#config = this.#load();
+      this.#problem = undefined;
+      this.#saveLastGood();
     } catch (err) {
-      console.error('shub: config not reloaded:', (err as Error).message);
-      return;
+      this.#problem = this.#describe(err);
+      console.error(`shub: ${this.#problem}`);
     }
-    this.#emitChanges(before, this.#config);
+    this.#emitChanges(before, this.get());
   }
 
   #emitChanges(before: Config, after: Config): void {
@@ -196,10 +238,14 @@ export class FileConfigStore implements ConfigStore {
   }
 
   get(): Config {
-    return structuredClone(this.#config);
+    const config = structuredClone(this.#config);
+    if (this.#problem) config.problem = this.#problem;
+    return config;
   }
 
   update(mutate: (config: Config) => void, _actor: string): Config {
+    // Writing now would overwrite what is in the broken file (e.g. both sides of a git conflict).
+    if (this.#problem) throw new HttpError(409, this.#problem);
     const next = structuredClone(this.#config);
     mutate(next);
     const normalized = normalize(next);
@@ -219,6 +265,7 @@ export class FileConfigStore implements ConfigStore {
     this.#local = local;
     const before = this.#config;
     this.#config = normalized;
+    this.#saveLastGood();
     this.#bus.emit({ type: 'config.changed' });
     if (JSON.stringify([before.projects, before.groups]) !== JSON.stringify([normalized.projects, normalized.groups]))
       this.#bus.emit({ type: 'projects.changed' });
@@ -268,6 +315,11 @@ export function accentFor(icon: ResolvedIcon): string {
 }
 
 export function create(ctx: Context, _services: Services): { module: ShubModule; service: FileConfigStore } {
-  const service = new FileConfigStore(ctx.paths.configDir, ctx.bus);
+  const service = new FileConfigStore(
+    ctx.paths.configDir,
+    ctx.bus,
+    homedir(),
+    join(ctx.paths.stateDir, 'config.last-good.json'),
+  );
   return { module: { name: 'config', start: () => service.watch(), stop: () => service.unwatch() }, service };
 }

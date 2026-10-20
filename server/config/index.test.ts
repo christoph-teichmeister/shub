@@ -141,4 +141,25 @@ test('reload picks up outside edits, emits once, and ignores broken files', () =
   writeFileSync(file, '{ half a git merge');
   store.reload();
   assert.deepEqual(store.get().groups, ['Work']);
+  assert.match(store.get().problem!, /not readable/);
+  assert.throws(() => store.update((c) => (c.activeTheme = 'dracula'), 'test'), /not readable/);
+  assert.equal(readFileSync(file, 'utf8'), '{ half a git merge'); // the conflict is left for the user
+  writeFileSync(file, JSON.stringify({ ...onDisk, groups: ['Fixed'] }));
+  store.reload();
+  assert.equal(store.get().problem, undefined);
+  assert.deepEqual(store.get().groups, ['Fixed']);
+});
+
+test('a broken file at startup runs on the last good config instead of failing', () => {
+  const dir = tmp();
+  const lastGood = join(dir, 'state', 'config.last-good.json');
+  const store = new FileConfigStore(join(dir, 'cfg'), new EventBus(), dir, lastGood);
+  store.update((c) => (c.groups = ['Work']), 'test');
+  writeFileSync(join(dir, 'cfg', 'config.json'), '<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> theirs\n');
+  const restarted = new FileConfigStore(join(dir, 'cfg'), new EventBus(), dir, lastGood);
+  assert.deepEqual(restarted.get().groups, ['Work']);
+  assert.match(restarted.get().problem!, /not readable/);
+  // Without a last good copy it still starts, on defaults.
+  const fresh = new FileConfigStore(join(dir, 'cfg'), new EventBus(), dir);
+  assert.deepEqual(fresh.get().groups, []);
 });

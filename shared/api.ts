@@ -97,6 +97,9 @@ export interface Config {
   defaultPermissionMode: LaunchPermissionMode;
   /** Release channel for updates. Absent: "beta" while a beta runs, else "stable". */
   updateChannel?: UpdateChannel;
+  /** Never stored: why config.json or local.json could not be read. shub then runs on the last good config and
+   *  refuses changes until the file is fixed (it reloads on save). */
+  problem?: string;
 }
 
 // ---------- sessions ----------
