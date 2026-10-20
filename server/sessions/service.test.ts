@@ -58,7 +58,10 @@ const services = {
     revokeClientToken: (t: string) => revoked.push(t),
   },
   permissions: { log: () => ({}) },
-  notify: { needsYou: (s: { id: string }, text: string) => notified.push(`${s.id}: ${text}`) },
+  notify: {
+    needsYou: (s: { id: string }, text: string) => notified.push(`${s.id}: ${text}`),
+    yourTurn: (s: { id: string }) => notified.push(`${s.id}: your turn`),
+  },
 } as unknown as Services;
 const notified: string[] = [];
 let checkAnswer: CheckResult | null = null;
@@ -268,6 +271,20 @@ test('wait parks a session, ending the wait hands it back', async () => {
   assert.equal(back.status, 'your-turn');
   assert.equal(back.waitingFor, null);
   assert.throws(() => svc.wait(s.id, ' ', 'chris'), /must not be empty/);
+});
+
+test('a turn paused on background work falls back to your-turn after 10 minutes', async () => {
+  const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  svc.setStatus(s.id, 'working', null, true);
+  svc.reconcile(Date.now() + 9 * 60_000);
+  assert.equal(svc.get(s.id)?.status, 'working');
+  svc.reconcile(Date.now() + 11 * 60_000);
+  assert.equal(svc.get(s.id)?.status, 'your-turn');
+  assert.deepEqual(notified.splice(0), [`${s.id}: your turn`]);
+  svc.setStatus(s.id, 'working', null, true);
+  svc.setStatus(s.id, 'working');
+  svc.reconcile(Date.now() + 11 * 60_000);
+  assert.equal(svc.get(s.id)?.status, 'working', 'a new hook clears the fallback');
 });
 
 test('a wait check runs at once, keeps waiting on NOT YET and hands back on DONE', async () => {

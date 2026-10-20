@@ -29,6 +29,8 @@ export interface Transition {
   /** undefined = leave as is. */
   pendingPermission?: Session['pendingPermission'];
   notify?: { kind: 'yourTurn' } | { kind: 'needsYou'; text: string };
+  /** The turn ended but background work still runs; shub falls back to your-turn if nothing follows. */
+  background?: true;
 }
 
 const SUMMARY_MAX = 200;
@@ -64,6 +66,35 @@ function summarizeQuestions(questions: unknown): string {
   return truncate(`${first.question}${labels.length ? ` (${labels.join(' / ')})` : ''}${more}`);
 }
 
+/** Shell commands that run until stopped (servers, watchers, log tails): Claude does not wait for them. */
+const ENDLESS_COMMANDS = [
+  /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(dev|start|serve|preview|watch)\b/,
+  /\bvite\b(?!\s+build)/,
+  /\b(nodemon|uvicorn|gunicorn|http-server|live-server)\b/,
+  /\bmanage\.py\s+runserver\b/,
+  /\bpython3?\s+-m\s+http\.server\b/,
+  /--watch\b/,
+  /\b(tail|journalctl|logs)\b.*\s(-f|--follow)\b/,
+  /\bdocker[\s-]compose\s+up\b(?!.*\s(-d|--detach)\b)/,
+];
+/** Task types that always end on their own; anything else (shells, monitors) may not. */
+const ENDING_TASKS = new Set(['subagent', 'workflow']);
+
+interface BackgroundTask {
+  type?: unknown;
+  command?: unknown;
+}
+
+/** What a Stop's background tasks mean: nothing to wait for, work that ends, or work that may never end. */
+function backgroundWork(tasks: unknown): 'none' | 'ending' | 'open' {
+  if (!Array.isArray(tasks)) return 'none';
+  const awaited = (tasks as BackgroundTask[]).filter(
+    (t) => !(t?.type === 'shell' && ENDLESS_COMMANDS.some((re) => re.test(String(t.command ?? '')))),
+  );
+  if (!awaited.length) return 'none';
+  return awaited.every((t) => ENDING_TASKS.has(String(t?.type))) ? 'ending' : 'open';
+}
+
 const NEW_ID_SOURCES = new Set(['clear', 'compact', 'startup']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -84,9 +115,15 @@ export function transition(
   switch (event) {
     case 'UserPromptSubmit':
       return { status: 'working', pendingPermission: null };
-    case 'Stop':
+    case 'Stop': {
+      // A background shell or agent still runs and wakes Claude when it ends: the turn is not over.
+      // Servers and watchers never end, so they do not count; other shells get the fallback timer.
+      const work = backgroundWork(payload.background_tasks);
+      if (work === 'ending') return { status: 'working', pendingPermission: null };
+      if (work === 'open') return { status: 'working', pendingPermission: null, background: true };
       if (waiting) return { status: 'waiting', pendingPermission: null };
       return { status: 'your-turn', pendingPermission: null, notify: { kind: 'yourTurn' } };
+    }
     case 'PermissionRequest': {
       const tool = String(payload.tool_name ?? 'tool');
       const summary = summarizeTool(payload.tool_input);
@@ -103,8 +140,10 @@ export function transition(
       const type = String(payload.notification_type ?? '');
       const message = String(payload.message ?? '');
       const needsYou = NEEDS_YOU_NOTIFICATIONS.has(type) || /permission|waiting for your input/i.test(message);
-      // Claude's idle reminder means nothing before the first prompt, nor while the session waits on purpose.
-      if (!needsYou || (type === 'idle_prompt' && (current === 'new' || waiting))) return null;
+      // Claude's idle reminder means nothing before the first prompt, while the session waits on purpose,
+      // nor while it is still working (it fires after a Stop that left background tasks running).
+      const idleIgnored = current === 'new' || current === 'working' || waiting;
+      if (!needsYou || (type === 'idle_prompt' && idleIgnored)) return null;
       // PermissionRequest usually fired just before for the same prompt; do not notify twice.
       if (current === 'needs-you') return { status: 'needs-you' };
       return { status: 'needs-you', notify: { kind: 'needsYou', text: message || 'Claude needs you' } };
