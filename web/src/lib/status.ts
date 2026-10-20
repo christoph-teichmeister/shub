@@ -13,11 +13,13 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
 
 const commandCount = (n: number) => `${n} ${n === 1 ? 'command' : 'commands'}`;
 
-/** Status text of one session: a needs-you that waits for commands Claude handed over says so. */
-export const statusLabel = (s: Session): string =>
-  s.status === 'needs-you' && s.pendingCommands?.length
-    ? `▶ ${commandCount(s.pendingCommands.length)}`
-    : STATUS_LABEL[s.status];
+/** Status text of one session: a needs-you that waits for commands Claude handed over says so,
+ *  a finished turn names the background shells still running. */
+export function statusLabel(s: Session): string {
+  if (s.status === 'needs-you' && s.pendingCommands?.length) return `▶ ${commandCount(s.pendingCommands.length)}`;
+  const shells = s.status !== 'working' && s.shells ? ` · ${s.shells} ${s.shells === 1 ? 'shell' : 'shells'}` : '';
+  return STATUS_LABEL[s.status] + shells;
+}
 
 /** Sidebar badge for projects and groups: needs-you wins (commands only, if that is all it is), then working. */
 export function projectBadge(sessions: Session[]): { text: string; tone: 'needs-you' | 'working' } | null {

@@ -167,6 +167,8 @@ export interface Session {
   position?: number | null;
   /** Shell commands Claude asked you to run at the end of its turn (status needs-you until run or dismissed). */
   pendingCommands?: string[] | null;
+  /** Background shells (servers, tests) still running after Claude's turn ended. */
+  shells?: number;
 }
 
 export interface WaitCheck {

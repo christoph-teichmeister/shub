@@ -32,6 +32,7 @@ const MIGRATIONS = [
   `ALTER TABLE sessions ADD COLUMN wait_check TEXT`,
   'ALTER TABLE sessions ADD COLUMN position INTEGER',
   `ALTER TABLE sessions ADD COLUMN pending_commands TEXT`,
+  'ALTER TABLE sessions ADD COLUMN shells INTEGER NOT NULL DEFAULT 0',
 ];
 const WAIT_EVERY_MIN = 5;
 
@@ -58,7 +59,7 @@ const RECONCILE_MS = 3000;
 /** Gap between sessions a restore brings back: all Claudes at once freeze the machine and the window. */
 const RESTORE_GAP_MS = 4000;
 /** A background shell may never end (dev server, watcher): after this long without a hook, hand the session back. */
-const BACKGROUND_FALLBACK_MS = 10 * 60_000;
+const BACKGROUND_FALLBACK_MS = 3 * 60_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface Row {
@@ -77,6 +78,7 @@ interface Row {
   last_activity_at: string;
   pending_permission: string | null;
   pending_commands: string | null;
+  shells: number;
   token: string | null;
   waiting_for: string | null;
   wait_check: string | null;
@@ -102,6 +104,7 @@ const toSession = (r: Row): Session => ({
   waitCheck: r.wait_check ? JSON.parse(r.wait_check) : null,
   position: r.position,
   pendingCommands: r.pending_commands ? JSON.parse(r.pending_commands) : null,
+  shells: r.shells,
 });
 
 export const tmuxName = (id: string): string => `shub-${id}`;
@@ -431,6 +434,7 @@ export class SessionsService implements Sessions {
     pendingPermission?: Session['pendingPermission'],
     pendingCommands?: Session['pendingCommands'],
     background = false,
+    shells = 0,
   ): void {
     const session = this.get(id);
     if (!session || session.status === 'exited') return;
@@ -441,12 +445,13 @@ export class SessionsService implements Sessions {
     const commands = pendingCommands !== undefined ? pendingCommands : keep ? session.pendingCommands : null;
     this.#db
       .prepare(
-        'UPDATE sessions SET status = ?, pending_permission = ?, pending_commands = ?, last_activity_at = ? WHERE id = ?',
+        'UPDATE sessions SET status = ?, pending_permission = ?, pending_commands = ?, shells = ?, last_activity_at = ? WHERE id = ?',
       )
       .run(
         status,
         pending ? JSON.stringify(pending) : null,
         commands?.length ? JSON.stringify(commands) : null,
+        shells,
         now(),
         id,
       );

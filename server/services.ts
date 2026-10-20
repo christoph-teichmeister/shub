@@ -74,13 +74,15 @@ export interface Sessions {
   /** Permission checks happen before; this just starts. */
   /** byUser: the user (web or CLI) asked, so the app's default permission mode applies. */
   start(request: StartSessionRequest, startedBy: string, byUser?: boolean): Promise<Session>;
-  /** `background`: the turn ended with background work still running (see BACKGROUND_FALLBACK_MS). */
+  /** `background`: the turn ended with background work still running (see BACKGROUND_FALLBACK_MS).
+   *  `shells`: background shells still running after the turn (shown next to the status). */
   setStatus(
     id: string,
     status: SessionStatus,
     pendingPermission?: Session['pendingPermission'],
     pendingCommands?: Session['pendingCommands'],
     background?: boolean,
+    shells?: number,
   ): void;
   /** Claude switched conversations (/clear, compact): remember the new id for resume. */
   setClaudeSessionId(id: string, claudeSessionId: string): void;
