@@ -112,6 +112,20 @@
     ...shells.map((s, i) => ({ id: s.id, label: `Terminal ${i + 1}`, closable: true })),
   ]);
 
+  // When the shown terminal goes away (closed or exited), show another terminal or hide the panel, never Services.
+  let seen: { active?: string; ids: string[] } = { ids: [] };
+  $effect(() => {
+    const ids = shells.map((s) => s.id);
+    if (active?.id === seen.active && seen.ids.includes(panelTab) && !ids.includes(panelTab)) {
+      if (ids.length) panelTab = ids.at(-1)!;
+      else {
+        panelOpen = false;
+        panelTab = 'services';
+      }
+    }
+    seen = { active: active?.id, ids };
+  });
+
   $effect(() => {
     const id = active?.kind === 'claude' ? active.id : null;
     void (id && app.servicesVersion[id]);

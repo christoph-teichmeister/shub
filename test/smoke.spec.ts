@@ -387,3 +387,24 @@ test('contrast ratio follows WCAG', () => {
   expect(contrastRatio('#777777', '#ffffff')!).toBeCloseTo(4.48, 1);
   expect(contrastRatio('var(--x)', '#fff')).toBeNull();
 });
+
+test('closing the last terminal hides the bottom panel instead of showing Services', async ({ page }) => {
+  const shell: Session = { ...session, id: 'sh1', kind: 'shell', name: 'shell', status: 'your-turn', parentId: 's1' };
+  // Session has its own `status`, so wrap it to keep mockApi from reading it as the HTTP status.
+  const { errors } = await mockApi(page, { 'POST /api/sessions': { status: 200, json: shell } });
+  let events: { send(m: string): void } | undefined;
+  await page.routeWebSocket('**/api/events', (ws) => {
+    events = ws;
+    ws.send(JSON.stringify({ type: 'hello', apiVersion: 1 }));
+  });
+  await page.goto('/#/p/ai-portal/s1');
+  await page.getByRole('button', { name: /^Services/ }).click();
+  const panel = page.getByRole('region', { name: 'Bottom panel' });
+  await panel.getByRole('button', { name: /New plain terminal/ }).click();
+  await expect(panel.getByRole('tab', { name: 'Terminal 1' })).toHaveAttribute('aria-selected', 'true');
+
+  await panel.getByRole('button', { name: 'Close Terminal 1' }).click();
+  events!.send(JSON.stringify({ type: 'session.closed', sessionId: 'sh1' }));
+  await expect(panel).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
