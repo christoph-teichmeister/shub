@@ -60,6 +60,7 @@ const services = {
 } as unknown as Services;
 const svc = new SessionsService(ctx, services, {
   launcher: (spec) => (launches.push(spec), ['bash', '--norc', '--noprofile']),
+  titler: async (prompt) => (prompt === 'do the thing' ? 'Thing Doing' : null),
 });
 
 async function waitFor(check: () => boolean, what: string, ms = 5000): Promise<void> {
@@ -147,6 +148,9 @@ test('pause and resume', async () => {
   const s = await svc.start({ kind: 'claude', projectId: 'p1', prompt: 'do the thing' }, 'session:x');
   assert.equal(s.id, 'p1-2');
   assert.equal(s.permissionMode, 'default');
+  assert.equal(s.name, 'do the thing', 'first words until the title arrives');
+  await new Promise((r) => setImmediate(r));
+  assert.equal(svc.get(s.id)?.name, 'Thing Doing');
   svc.pause(s.id, 'chris');
   assert.equal(svc.get(s.id)?.status, 'paused');
   assert.ok(!svc.tmux.has(tmuxName(s.id)));

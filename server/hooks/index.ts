@@ -8,7 +8,7 @@ import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { guard, type GuardInput } from '../projects/main-checkout.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
-import { autoName, isPermissionMode } from '../sessions/launch.ts';
+import { isPermissionMode } from '../sessions/launch.ts';
 import { HOOK_EVENTS, isHookEvent, newClaudeSessionId, transition } from './transition.ts';
 
 const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
@@ -96,7 +96,7 @@ export function create(_ctx: Context, services: Services): { module: ShubModule 
           const prompt = typeof payload.prompt === 'string' ? payload.prompt.trim() : '';
           const fromUser = payload.source === undefined || payload.source === 'user';
           if (req.params.event === 'UserPromptSubmit' && fromUser && prompt && /^Session \d+$/.test(session.name)) {
-            services.sessions.rename(session.id, autoName({ prompt, n: 0 }), 'shub');
+            services.sessions.nameFromPrompt(session.id, prompt);
           }
           const change = transition(session.status, req.params.event, payload);
           if (!change) return { ok: true };
