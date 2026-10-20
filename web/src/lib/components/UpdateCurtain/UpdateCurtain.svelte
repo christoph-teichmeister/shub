@@ -31,9 +31,15 @@
   const shown = $derived(version ?? arrived);
 </script>
 
-<div class="curtain" class:shown={!!shown} class:instant={!!arrived} aria-hidden={!shown}>
+<div
+  class="curtain"
+  class:shown={!!shown}
+  class:instant={!!arrived}
+  aria-hidden={!shown}
+  role="status"
+  aria-label={version ? `Updating to ${version}` : undefined}
+>
   <Wordmark size="xl" needsYou />
-  <p role="status">{version ? `Updating to ${version}…` : 'Updated'}</p>
 </div>
 
 <style>
@@ -45,8 +51,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: var(--space-4);
-    background: var(--bg);
+    background: color-mix(in srgb, var(--bg) 40%, transparent);
+    backdrop-filter: blur(8px);
     opacity: 0;
     visibility: hidden;
     transition:
@@ -62,12 +68,5 @@
 
   .curtain.instant {
     transition: none;
-  }
-
-  p {
-    margin: 0;
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    color: var(--fg-2);
   }
 </style>
