@@ -139,6 +139,8 @@ test('health, login, project, session, terminal, hooks, close', { timeout: 60_00
   const project = await json<ProjectView>('POST', '/api/projects', { name: 'E2E', path: dirs.project });
   assert.equal(project.path, dirs.project);
   assert.deepEqual(await json('GET', `/api/projects/${project.id}/worktrees`), [], 'not a git repo');
+  const outside = { kind: 'claude', projectId: project.id, cwd: dirs.state };
+  assert.equal((await api('POST', '/api/sessions', outside)).status, 400, 'cwd must be a worktree of the project');
 
   const started = await json<Session>('POST', '/api/sessions', { kind: 'claude', projectId: project.id });
   assert.equal(started.status, 'new');

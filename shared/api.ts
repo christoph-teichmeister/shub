@@ -243,8 +243,9 @@ export interface StartSessionRequest {
   buttonId?: string;
   input?: string;
   prompt?: string;
-  parentId?: string; // for kind "shell"
-  cwd?: string; // shell only: defaults to the parent's cwd
+  parentId?: string; // kind "shell": its panel; a shell without one is a tab of its own and needs a cwd
+  /** Defaults to the parent's cwd, else the project folder. Without a parent it must be one of the project's worktrees. */
+  cwd?: string;
   /** kind "claude" only: reopen this old Claude conversation (from oldSessions) with `--resume`. */
   resumeClaudeSessionId?: string;
 }
@@ -522,7 +523,7 @@ export const ROUTES = {
 
   skills: 'GET /api/projects/:id/skills',
   projectWorktrees: 'GET /api/projects/:id/worktrees', // -> Worktree[]
-  worktrees: 'GET /api/worktrees', // ?fetch=1 fetches first -> WorktreeInfo[] of every project
+  worktrees: 'GET /api/worktrees', // ?projectId= one project, ?fetch=1 fetches first -> WorktreeInfo[] (every project without projectId)
   worktreeRemove: 'POST /api/worktrees/remove', // { projectId, path } -> { branchDeleted } (user only, plain git)
   worktreePrune: 'POST /api/worktrees/prune', // { projectId } -> { ok } (user only)
 

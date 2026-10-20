@@ -5,6 +5,7 @@ import { HttpError, requireRight, requireUser, sendJson, type Caller, type Route
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
+import { listWorktrees } from '../projects/worktrees.ts';
 import { buttonPrompt, isSimpleInput } from './launch.ts';
 import { SessionsService, type SessionsOptions } from './service.ts';
 import { attachTerminals } from './terminal.ts';
@@ -26,8 +27,8 @@ function parseStart(body: Partial<StartSessionRequest>): StartSessionRequest {
     throw new HttpError(400, 'invalid session request');
   }
   if (body.buttonId && body.prompt) throw new HttpError(400, 'give either buttonId or prompt');
-  if (body.kind === 'shell' && !body.parentId) throw new HttpError(400, 'shells need a parentId');
-  if (body.cwd && body.kind !== 'shell') throw new HttpError(400, 'cwd is only for shells');
+  if (body.kind === 'shell' && !body.parentId && !body.cwd) throw new HttpError(400, 'shells need a parentId or a cwd');
+  if (body.cwd && body.kind === 'global') throw new HttpError(400, 'the global Claude takes no cwd');
   if (body.resumeClaudeSessionId !== undefined) {
     if (body.kind !== 'claude') throw new HttpError(400, 'only claude sessions can resume a conversation');
     if (body.buttonId || body.prompt || body.input) throw new HttpError(400, 'a resumed session takes no prompt');
@@ -47,6 +48,12 @@ async function startRoute(
   const request = parseStart(body as Partial<StartSessionRequest>);
   const project = request.projectId ? services.config.project(request.projectId) : undefined;
   const button = request.buttonId ? project?.buttons.find((b) => b.id === request.buttonId) : undefined;
+  // Without a parent, a cwd must be one of the project's worktrees (the main checkout included).
+  if (request.cwd && !request.parentId) {
+    if (!project) throw new HttpError(400, 'a cwd needs a project');
+    if (!(await listWorktrees(project.path)).some((w) => w.path === request.cwd))
+      throw new HttpError(400, `not a worktree of ${project.name}: ${request.cwd}`);
+  }
   const decision = services.permissions.decide(caller, {
     kind: 'session.start',
     request,

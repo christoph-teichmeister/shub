@@ -110,7 +110,8 @@ export const needsYouCount = (sessions: Session[] = app.sessions): number =>
   sessions.filter((s) => s.status === 'needs-you').length;
 
 export function sessionsOf(projectId: string | null): Session[] {
-  return app.sessions.filter((s) => s.projectId === projectId && s.kind !== 'shell');
+  // A shell without a parent (started for a worktree) is a tab of its own.
+  return app.sessions.filter((s) => s.projectId === projectId && (s.kind !== 'shell' || !s.parentId));
 }
 
 export function shellsOf(sessionId: string): Session[] {
