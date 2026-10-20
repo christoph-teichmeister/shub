@@ -18,6 +18,8 @@
     ondrop?: (e: DragEvent) => void;
     /** Right-click (or the context-menu key) on the row: the view opens the project menu. */
     onmenu?: (e: MouseEvent) => void;
+    /** Time left in the Active group after the last session closed, e.g. "9:41"; shown instead of the badge. */
+    countdown?: string;
     /** Session rows under the project. */
     children?: Snippet;
   }
@@ -31,6 +33,7 @@
     ondragstart,
     ondrop,
     onmenu,
+    countdown,
     children,
   }: Props = $props();
   const badge = $derived(projectBadge(sessions.map((s) => s.status)));
@@ -57,7 +60,11 @@
       <ProjectIcon icon={project.resolvedIcon} name={project.name} />
       <span class="name">{project.name}</span>
     </a>
-    {#if badge}<span class="badge"><StatusBadge text={badge.text} tone={badge.tone} /></span>{/if}
+    {#if countdown}
+      <span class="badge" title="Leaves the Active group in {countdown}"
+        ><StatusBadge text={countdown} tone="neutral" /></span
+      >
+    {:else if badge}<span class="badge"><StatusBadge text={badge.text} tone={badge.tone} /></span>{/if}
     <span class="actions">
       {#if project.remoteUrl}
         <IconButton label="Open {project.name} remote" icon="link" href={project.remoteUrl} external />

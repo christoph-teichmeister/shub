@@ -408,3 +408,25 @@ test('closing the last terminal hides the bottom panel instead of showing Servic
   await expect(panel).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test('active group keeps a project for 10 minutes after its last session closes', async ({ page }) => {
+  const { errors } = await mockApi(page, { '/api/config': { ...config, activeGroup: true } });
+  let events: { send(m: string): void } | undefined;
+  await page.routeWebSocket('**/api/events', (ws) => {
+    events = ws;
+    ws.send(JSON.stringify({ type: 'hello', apiVersion: 1 }));
+  });
+  await page.clock.install();
+  await page.goto('/#/p/ai-portal/s1');
+  const activeGroup = page.getByRole('region', { name: 'Active' });
+  await expect(activeGroup.getByRole('group', { name: 'ai-portal' })).toBeVisible();
+  await expect(activeGroup.getByRole('group', { name: 'street-tours' })).toHaveCount(0);
+
+  events!.send(JSON.stringify({ type: 'session.closed', sessionId: 's1' }));
+  await page.clock.fastForward('09:00');
+  await expect(activeGroup.getByTitle('Leaves the Active group in 0:59')).toBeVisible();
+  await page.clock.fastForward('01:01');
+  await expect(activeGroup.getByRole('group', { name: 'ai-portal' })).toHaveCount(0);
+  await expect(activeGroup.getByText('Nothing here')).toBeVisible();
+  expect(errors).toEqual([]);
+});

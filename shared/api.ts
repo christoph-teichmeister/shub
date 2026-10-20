@@ -95,6 +95,8 @@ export interface Config {
     /** Extra environment for the plugin process, e.g. KB_CARD_URL. shub's own environment wins. */
     env?: Record<string, string>;
   }[];
+  /** Sidebar shows an "Active" group on top: every project with a session, kept 10 minutes after its last one. */
+  activeGroup?: boolean;
   /** Mode for sessions the user starts and the global Claude; a button's own mode wins. Default: "default". */
   defaultPermissionMode: LaunchPermissionMode;
   /** Release channel for updates. Absent: "beta" while a beta runs, else "stable". */
