@@ -2,6 +2,7 @@
   import { onMount, untrack, type Snippet } from 'svelte';
   import type {
     ButtonDef,
+    Config,
     ProjectView,
     ServiceContainer,
     Session,
@@ -169,6 +170,14 @@
           .sort((a, b) => a.name.localeCompare(b.name))
       : [],
   );
+  async function toggleActiveGroup() {
+    if (!app.config) return;
+    const activeGroup = !app.config.activeGroup;
+    app.config.activeGroup = activeGroup;
+    const config = await api<Config>('settings', { body: { activeGroup } }).catch(toastError);
+    if (config) app.config = config;
+    else app.config.activeGroup = !activeGroup;
+  }
   /** Time left and opacity (1 -> 0.4) for a project in its grace; null while it has sessions. */
   function grace(id: string) {
     if (!(id in leftAt)) return null;
@@ -593,6 +602,17 @@
           {#if globalSession}<StatusDot status={globalSession.status} />{/if}
           <Kbd keys="Alt G" />
         </button>
+        <button
+          type="button"
+          class="global"
+          role="switch"
+          aria-checked={!!app.config?.activeGroup}
+          title="Only projects with a session (kept 10 minutes after the last one closes)"
+          onclick={toggleActiveGroup}
+        >
+          <span class="grow">Active only</span>
+          <span class="switch" aria-hidden="true"></span>
+        </button>
         {#if pendingApprovals > 1}
           <span class="approvals"><StatusBadge text="{pendingApprovals} approvals waiting" tone="needs-you" /></span>
         {/if}
@@ -642,47 +662,47 @@
             </div>
           {/each}
         </SidebarSection>
+      {:else}
+        {#each groups as group (group.name)}
+          <SidebarSection
+            title={group.name}
+            collapsedBadge={groupBadge(group.projects)}
+            ondrop={() => dropProject(group.name, null)}
+          >
+            {#each group.projects as p (p.id)}
+              {@const list = placeSessions(sessionsOf(p.id), true)}
+              <ProjectRow
+                project={p}
+                sessions={list}
+                href={href('p', p.id)}
+                settingsHref={href('settings', 'project', p.id)}
+                selected={p.id === project?.id}
+                onnewsession={() => newSession(p)}
+                ondragstart={(e) => {
+                  dragId = p.id;
+                  e.dataTransfer?.setData('text/plain', p.name);
+                }}
+                ondrop={() => dropProject(group.name, p.id)}
+                onmenu={(e) => (projectMenu = { project: p, x: e.clientX, y: e.clientY })}
+              >
+                {#each list as s (s.id)}
+                  <SessionRow
+                    session={s}
+                    href={sessionHref(s)}
+                    selected={s.id === active?.id}
+                    closing={app.closing[s.id]}
+                    onmenu={(at) => (menu = { session: s, ...at })}
+                    ondragstart={dragSessionStart(s)}
+                    ondrop={(after) => dropSession(list, s, after)}
+                  />
+                {/each}
+              </ProjectRow>
+            {/each}
+          </SidebarSection>
+        {/each}
       {/if}
 
-      {#each groups as group (group.name)}
-        <SidebarSection
-          title={group.name}
-          collapsedBadge={groupBadge(group.projects)}
-          ondrop={() => dropProject(group.name, null)}
-        >
-          {#each group.projects as p (p.id)}
-            {@const list = placeSessions(sessionsOf(p.id), true)}
-            <ProjectRow
-              project={p}
-              sessions={list}
-              href={href('p', p.id)}
-              settingsHref={href('settings', 'project', p.id)}
-              selected={p.id === project?.id}
-              onnewsession={() => newSession(p)}
-              ondragstart={(e) => {
-                dragId = p.id;
-                e.dataTransfer?.setData('text/plain', p.name);
-              }}
-              ondrop={() => dropProject(group.name, p.id)}
-              onmenu={(e) => (projectMenu = { project: p, x: e.clientX, y: e.clientY })}
-            >
-              {#each list as s (s.id)}
-                <SessionRow
-                  session={s}
-                  href={sessionHref(s)}
-                  selected={s.id === active?.id}
-                  closing={app.closing[s.id]}
-                  onmenu={(at) => (menu = { session: s, ...at })}
-                  ondragstart={dragSessionStart(s)}
-                  ondrop={(after) => dropSession(list, s, after)}
-                />
-              {/each}
-            </ProjectRow>
-          {/each}
-        </SidebarSection>
-      {/each}
-
-      {#if app.ready && groups.length === 0}
+      {#if app.ready && !app.config?.activeGroup && groups.length === 0}
         <p class="hint">No projects yet. Add one with the + button.</p>
       {/if}
 
@@ -700,7 +720,7 @@
           <span class="global-icon" aria-hidden="true"><Icon name="sparkle" size="sm" weight={2} /></span>
           {#if globalSession}<span class="rail-dot"><StatusDot status={globalSession.status} /></span>{/if}
         </button>
-        {#each groups as group (group.name)}
+        {#each app.config?.activeGroup ? [{ name: 'Active', projects: activeProjects }] : groups as group (group.name)}
           <hr class="rail-group" title={group.name} />
           {#each group.projects as p (p.id)}
             {@const badge = projectBadge(sessionsOf(p.id))}
@@ -1091,6 +1111,36 @@
     background: transparent;
     color: var(--fg);
     font-weight: var(--weight-medium);
+  }
+
+  .switch {
+    position: relative;
+    flex: none;
+    width: var(--space-8);
+    height: var(--space-4);
+    border-radius: var(--radius-round);
+    background: var(--line);
+    transition: background 0.15s;
+  }
+
+  .switch::after {
+    content: '';
+    position: absolute;
+    top: var(--space-0-5);
+    left: var(--space-0-5);
+    width: calc(var(--space-4) - 2 * var(--space-0-5));
+    height: calc(var(--space-4) - 2 * var(--space-0-5));
+    border-radius: var(--radius-round);
+    background: var(--bg);
+    transition: transform 0.15s;
+  }
+
+  [aria-checked='true'] > .switch {
+    background: var(--primary);
+  }
+
+  [aria-checked='true'] > .switch::after {
+    transform: translateX(calc(var(--space-8) - var(--space-4)));
   }
 
   .global[aria-expanded='true'] {

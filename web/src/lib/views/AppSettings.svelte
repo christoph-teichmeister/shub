@@ -130,12 +130,6 @@
     else void loadConfig();
   }
 
-  async function setActiveGroup(activeGroup: boolean) {
-    const config = await api<Config>('settings', { body: { activeGroup } }).catch(toastError);
-    if (config) app.config = config;
-    else void loadConfig();
-  }
-
   async function setDefaultMode(defaultPermissionMode: string) {
     const config = await api<Config>('settings', { body: { defaultPermissionMode } }).catch(toastError);
     if (config) app.config = config;
@@ -480,14 +474,6 @@
         hint="Auto and bypass let Claude run commands and edit files without asking. Used by sessions you start and the global Claude; a button's own mode wins."
         bind:value={() => app.config?.defaultPermissionMode ?? 'default', (v) => setDefaultMode(v)}
         options={MODES}
-      />
-    </Section>
-
-    <Section title="Sidebar">
-      <Checkbox
-        label="Active group: projects with a session, on top (kept 10 minutes after the last one closes)"
-        checked={!!app.config?.activeGroup}
-        onchange={(e) => setActiveGroup(e.currentTarget.checked)}
       />
     </Section>
 
