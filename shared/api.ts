@@ -362,6 +362,7 @@ export const ROUTES = {
   pairingStart: 'POST /api/auth/pairing', // -> { code, url, qrSvg, expiresAt }
   pairingRedeem: 'POST /api/auth/pairing/redeem', // { code, deviceName } -> sets cookie
   devices: 'GET /api/devices',
+  deviceUpdate: 'PATCH /api/devices/:id', // { name } -> Device, rename
   deviceDelete: 'DELETE /api/devices/:id',
   rotateToken: 'POST /api/auth/rotate',
 

@@ -221,6 +221,12 @@ export class AuthService implements Auth {
     return rows.map(toDevice);
   }
 
+  renameDevice(id: string, name: string): Device | undefined {
+    this.#db.prepare('UPDATE devices SET name = ? WHERE id = ?').run(name, id);
+    const row = this.#db.prepare('SELECT * FROM devices WHERE id = ?').get(id) as DeviceRow | undefined;
+    return row && toDevice(row);
+  }
+
   deleteDevice(id: string): boolean {
     const deleted = Number(this.#db.prepare('DELETE FROM devices WHERE id = ?').run(id).changes) > 0;
     this.#services.notify?.forgetDevice(id);
@@ -299,6 +305,14 @@ function routes(auth: AuthService, router: Router): void {
   router.add(ROUTES.devices, (req) => {
     requireUser(req.caller);
     return auth.devices();
+  });
+  router.add(ROUTES.deviceUpdate, async (req) => {
+    requireUser(req.caller);
+    const { name } = await req.json<{ name?: unknown }>();
+    if (typeof name !== 'string' || !name.trim()) throw new HttpError(400, 'name is required');
+    const device = auth.renameDevice(req.params.id, name.trim().slice(0, 60));
+    if (!device) throw new HttpError(404, 'no such device');
+    return device;
   });
   router.add(ROUTES.deviceDelete, (req) => {
     requireUser(req.caller);
