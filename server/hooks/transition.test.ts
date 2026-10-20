@@ -22,6 +22,15 @@ test('permission request carries tool and command summary', () => {
   assert.deepEqual(t?.notify, { kind: 'needsYou', text: 'Bash: rm -rf x' });
 });
 
+test('a question shows its text and choices, not JSON', () => {
+  const questions = [
+    { question: 'How should I open it?', options: [{ label: 'Worktree' }, { label: 'Checkout' }] },
+    { question: 'Run tests?', options: [] },
+  ];
+  const t = transition('working', 'PermissionRequest', { tool_name: 'AskUserQuestion', tool_input: { questions } });
+  assert.deepEqual(t?.notify, { kind: 'needsYou', text: 'How should I open it? (Worktree / Checkout) +1 more' });
+});
+
 test('notification: permission prompt needs you, but no second push after a permission request', () => {
   const p = { notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' };
   assert.equal(transition('working', 'Notification', p)?.notify?.kind, 'needsYou');

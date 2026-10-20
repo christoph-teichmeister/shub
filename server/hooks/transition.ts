@@ -47,10 +47,21 @@ function truncate(text: string): string {
 export function summarizeTool(input: unknown): string {
   if (!input || typeof input !== 'object') return '';
   const fields = input as Record<string, unknown>;
+  const question = summarizeQuestions(fields.questions);
+  if (question) return question;
   for (const key of ['command', 'file_path', 'url', 'pattern', 'path', 'query', 'description']) {
     if (typeof fields[key] === 'string') return truncate(fields[key]);
   }
   return truncate(JSON.stringify(input));
+}
+
+/** AskUserQuestion: "Question? (A / B)", plus how many more follow. */
+function summarizeQuestions(questions: unknown): string {
+  if (!Array.isArray(questions) || typeof questions[0]?.question !== 'string') return '';
+  const [first, ...rest] = questions as { question: string; options?: { label?: unknown }[] }[];
+  const labels = (first.options ?? []).map((o) => o?.label).filter((l) => typeof l === 'string');
+  const more = rest.length ? ` +${rest.length} more` : '';
+  return truncate(`${first.question}${labels.length ? ` (${labels.join(' / ')})` : ''}${more}`);
 }
 
 const NEW_ID_SOURCES = new Set(['clear', 'compact', 'startup']);
@@ -79,7 +90,10 @@ export function transition(
       return {
         status: 'needs-you',
         pendingPermission: { tool, summary },
-        notify: { kind: 'needsYou', text: summary ? `${tool}: ${summary}` : tool },
+        notify: {
+          kind: 'needsYou',
+          text: tool === 'AskUserQuestion' && summary ? summary : summary ? `${tool}: ${summary}` : tool,
+        },
       };
     }
     case 'Notification': {
