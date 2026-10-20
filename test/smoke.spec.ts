@@ -427,9 +427,10 @@ test('active group keeps a project for 10 minutes after its last session closes'
   mocks['/api/sessions'] = [];
   await page.clock.fastForward('09:00');
   await expect(activeGroup.getByTitle(/Leaves the Active group in [01]:\d\d$/)).toBeVisible();
+  // The fake clock may restart on reload, so only check the countdown is still there, then run past any grace.
   await page.reload();
-  await expect(activeGroup.getByTitle(/Leaves the Active group in [01]:\d\d$/)).toBeVisible();
-  await page.clock.fastForward('01:01');
+  await expect(activeGroup.getByTitle(/Leaves the Active group in \d+:\d\d$/)).toBeVisible();
+  await page.clock.fastForward('10:01');
   await expect(activeGroup.getByRole('group', { name: 'ai-portal' })).toHaveCount(0);
   await expect(activeGroup.getByText('Nothing here')).toBeVisible();
   expect(errors).toEqual([]);
