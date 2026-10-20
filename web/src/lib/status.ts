@@ -1,6 +1,7 @@
 import type { SessionStatus } from '../../../shared/api.ts';
 
 export const STATUS_LABEL: Record<SessionStatus, string> = {
+  new: 'not started',
   'needs-you': 'needs you',
   working: 'working',
   'your-turn': 'your turn',

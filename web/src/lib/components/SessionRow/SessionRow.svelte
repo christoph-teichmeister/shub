@@ -53,6 +53,10 @@
     color: var(--fg-2);
   }
 
+  .new:not(:hover, .selected) .name {
+    color: var(--muted);
+  }
+
   .needs-you {
     background: var(--status-needs-you-bg);
     color: var(--status-needs-you-fg);

@@ -108,7 +108,8 @@ export interface Config {
 // ---------- sessions ----------
 
 export type SessionKind = 'claude' | 'shell' | 'global';
-export type SessionStatus = 'working' | 'needs-you' | 'your-turn' | 'paused' | 'exited';
+/** "new": Claude is up but no prompt was sent yet. */
+export type SessionStatus = 'new' | 'working' | 'needs-you' | 'your-turn' | 'paused' | 'exited';
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'auto' | 'bypassPermissions';
 export const PROMPT_SKIPPING_MODES: PermissionMode[] = ['auto', 'bypassPermissions'];
 export const PERMISSION_MODES: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];

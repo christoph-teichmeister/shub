@@ -6,4 +6,4 @@ The small status mark in front of a session name. Decorative (aria-hidden): alwa
 | -------- | --------------- | ----- |
 | `status` | `SessionStatus` |       |
 
-States: `needs-you` (solid orange dot, the only orange), `working` (cyan ring), `your-turn` (green check), `paused` (pause bars), `exited` (muted ring).
+States: `new` (dashed muted ring, Claude is up but got no prompt yet), `needs-you` (solid orange dot, the only orange), `working` (cyan ring), `your-turn` (green check), `paused` (pause bars), `exited` (muted ring).

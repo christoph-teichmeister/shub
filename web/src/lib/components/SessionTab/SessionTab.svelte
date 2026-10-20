@@ -116,6 +116,10 @@
     color: var(--status-needs-you-fg);
   }
 
+  .new:not(.selected, :hover) {
+    color: var(--muted);
+  }
+
   .label {
     height: 100%;
     padding: 0;

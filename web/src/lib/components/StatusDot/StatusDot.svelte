@@ -29,6 +29,10 @@
     border: var(--ring) solid var(--status-working);
   }
 
+  .new {
+    border: var(--ring) dashed var(--muted);
+  }
+
   .exited {
     border: var(--ring) solid var(--muted);
   }
