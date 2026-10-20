@@ -7,6 +7,8 @@
   interface Props {
     session: Session;
     selected?: boolean;
+    /** Fades out, says "Closing" and takes no input while the session shuts down. */
+    closing?: boolean;
     /** Bindable: true while the name is being edited (double-click or Alt R). */
     renaming?: boolean;
     onselect?: () => void;
@@ -14,7 +16,16 @@
     onclose?: () => void;
     onmenu?: (e: MouseEvent) => void;
   }
-  let { session, selected = false, renaming = $bindable(false), onselect, onrename, onclose, onmenu }: Props = $props();
+  let {
+    session,
+    selected = false,
+    closing = false,
+    renaming = $bindable(false),
+    onselect,
+    onrename,
+    onclose,
+    onmenu,
+  }: Props = $props();
 
   const skipsPrompts = $derived(PROMPT_SKIPPING_MODES.includes(session.permissionMode as PermissionMode));
 
@@ -40,6 +51,8 @@
 <div
   class="tab {session.status}"
   class:selected
+  class:closing
+  inert={closing}
   role="presentation"
   oncontextmenu={onmenu ? (e) => (e.preventDefault(), onmenu(e)) : undefined}
 >
@@ -77,6 +90,9 @@
       >{session.permissionMode === 'auto' ? 'auto' : 'bypass'}</span
     >
   {/if}
+  {#if closing}
+    <span class="badge-closing">Closing</span>
+  {/if}
   {#each session.links.slice(0, 1) as link (link.url)}
     <a class="chip" href={link.url} target="_blank" rel="noreferrer">{link.label}</a>
   {/each}
@@ -98,6 +114,7 @@
     border-radius: var(--radius-md) var(--radius-md) 0 0;
     color: var(--fg-2);
     white-space: nowrap;
+    transition: opacity var(--duration-slow) var(--ease-standard);
   }
 
   .selected {
@@ -158,6 +175,18 @@
 
   .close {
     visibility: hidden;
+  }
+
+  .closing {
+    opacity: 0.4;
+  }
+
+  .badge-closing {
+    font-size: var(--text-xs);
+    padding: 0 var(--space-1-5);
+    border-radius: var(--radius-xs);
+    border: var(--hairline) solid var(--line);
+    color: var(--fg-2);
   }
 
   .tab.selected .close,

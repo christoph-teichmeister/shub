@@ -32,6 +32,8 @@ export const app = $state({
   me: null as { name?: string; caller?: { kind: string; id: string }; device?: Device | null } | null,
   /** Bumped per session on services.changed so views can refetch. */
   servicesVersion: {} as Record<string, number>,
+  /** Sessions on their way out: tab and sidebar row fade and say "Closing" until they are dropped. */
+  closing: {} as Record<string, boolean>,
   /** Bumped whenever the theme is re-applied (canvas consumers re-read tokens). */
   themeVersion: 0,
 });
@@ -57,6 +59,18 @@ export async function startSession(req: StartSessionRequest): Promise<Session | 
   }
   if (!app.sessions.some((s) => s.id === res.id)) app.sessions.push(res);
   return res;
+}
+
+/** How long a closed session stays on screen fading out; matches --duration-slow. */
+const CLOSE_FADE_MS = 400;
+
+/** Closes a session; it shows as closing until session.closed drops it. */
+export async function closeSession(id: string): Promise<void> {
+  app.closing[id] = true;
+  await api('sessionClose', { params: { id } }).catch((err: unknown) => {
+    delete app.closing[id];
+    toastError(err);
+  });
 }
 
 /** Sends tmux keys: named keys (Escape, C-c, Up, Down, Tab, Enter) or literal text. */
@@ -146,7 +160,12 @@ export function handleEvent(e: ServerEvent): void {
     case 'session.status':
       return setStatus(e.sessionId, e.status);
     case 'session.closed':
-      app.sessions = app.sessions.filter((s) => s.id !== e.sessionId);
+      // Also for closes from another device: let the fade-out play before the session goes.
+      app.closing[e.sessionId] = true;
+      setTimeout(() => {
+        app.sessions = app.sessions.filter((s) => s.id !== e.sessionId);
+        delete app.closing[e.sessionId];
+      }, CLOSE_FADE_MS);
       return;
     case 'projects.changed':
       void loadProjects();

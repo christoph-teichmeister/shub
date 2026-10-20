@@ -134,6 +134,7 @@
   /* Motion */
   --duration-fast: 120ms;
   --duration-base: 200ms;
+  --duration-slow: 400ms;
   --duration-blink: 1s;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
 
@@ -149,6 +150,7 @@
   :root {
     --duration-fast: 0ms;
     --duration-base: 0ms;
+    --duration-slow: 0ms;
   }
 }
 

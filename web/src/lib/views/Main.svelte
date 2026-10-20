@@ -39,6 +39,7 @@
   import { go, href, parseHash, router } from '../stores/router.svelte.ts';
   import {
     app,
+    closeSession,
     loadProjects,
     needsYouCount,
     sessionHref,
@@ -165,7 +166,7 @@
   }
 
   async function newChat() {
-    if (globalSession) await api('sessionClose', { params: { id: globalSession.id } }).catch(toastError);
+    if (globalSession) await closeSession(globalSession.id);
     await newSession(null);
   }
 
@@ -223,7 +224,7 @@
   }
 
   function close(s: Session) {
-    const run = () => void api('sessionClose', { params: { id: s.id } }).catch(toastError);
+    const run = () => void closeSession(s.id);
     if (s.status === 'working')
       confirm = { title: `Close ${s.name}?`, body: 'It is still working.', action: 'Close', danger: true, run };
     else run();
@@ -495,7 +496,12 @@
               onmenu={(e) => (projectMenu = { project: p, x: e.clientX, y: e.clientY })}
             >
               {#each list as s (s.id)}
-                <SessionRow session={s} href={sessionHref(s)} selected={s.id === active?.id} />
+                <SessionRow
+                  session={s}
+                  href={sessionHref(s)}
+                  selected={s.id === active?.id}
+                  closing={app.closing[s.id]}
+                />
               {/each}
             </ProjectRow>
           {/each}
@@ -607,6 +613,7 @@
           <SessionTab
             session={s}
             selected={s.id === active?.id}
+            closing={app.closing[s.id]}
             bind:renaming={() => renamingId === s.id, (v) => (renamingId = v ? s.id : null)}
             onselect={() => (location.hash = sessionHref(s))}
             onrename={(name) => rename(s, name)}

@@ -7,5 +7,6 @@ One session under its project in the sidebar: status mark, name, status text. A 
 | `session`  | `Session` |         |
 | `href`     | `string`  |         |
 | `selected` | `boolean` | `false` |
+| `closing`  | `boolean` | `false` |
 
-States: needs-you (tinted orange row), working, your-turn, paused, exited, selected.
+States: closing (fades out, status reads `Closing`, inert), needs-you (tinted orange row), working, your-turn, paused, exited, selected.

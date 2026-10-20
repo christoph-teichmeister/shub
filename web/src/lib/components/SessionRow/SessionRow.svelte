@@ -7,14 +7,23 @@
     session: Session;
     href: string;
     selected?: boolean;
+    /** Fades out and says "Closing" instead of the status while the session shuts down. */
+    closing?: boolean;
   }
-  let { session, href, selected = false }: Props = $props();
+  let { session, href, selected = false, closing = false }: Props = $props();
 </script>
 
-<a class="row {session.status}" class:selected {href} aria-current={selected ? 'page' : undefined}>
+<a
+  class="row {session.status}"
+  class:selected
+  class:closing
+  inert={closing}
+  {href}
+  aria-current={selected ? 'page' : undefined}
+>
   <StatusDot status={session.status} />
   <span class="name">{session.name}</span>
-  <span class="status">{STATUS_LABEL[session.status]}</span>
+  <span class="status">{closing ? 'Closing' : STATUS_LABEL[session.status]}</span>
 </a>
 
 <style>
@@ -26,6 +35,11 @@
     border-radius: var(--radius-sm);
     color: var(--fg-2);
     text-decoration: none;
+    transition: opacity var(--duration-slow) var(--ease-standard);
+  }
+
+  .closing {
+    opacity: 0.4;
   }
 
   .row:hover,

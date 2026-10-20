@@ -225,7 +225,12 @@
               settingsHref="#/styleguide"
               selected
             >
-              {#each SESSIONS as s, i (s.id)}<SessionRow session={s} href="#/styleguide" selected={i === 1} />{/each}
+              {#each SESSIONS as s, i (s.id)}<SessionRow
+                  session={s}
+                  href="#/styleguide"
+                  selected={i === 1}
+                  closing={i === SESSIONS.length - 1}
+                />{/each}
             </ProjectRow>
             <ProjectRow project={PROJECTS[1]} sessions={[]} href="#/styleguide" settingsHref="#/styleguide" />
             <ProjectRow
@@ -247,6 +252,7 @@
         <SessionTab session={SESSIONS[1]} onclose={() => {}} />
         <SessionTab session={SESSIONS[2]} bind:renaming onclose={() => {}} />
         <SessionTab session={{ ...SESSIONS[1], permissionMode: 'auto' }} onclose={() => {}} />
+        <SessionTab session={SESSIONS[1]} closing onclose={() => {}} />
         {#snippet trailing()}<IconButton label="New session" icon="plus" size="md" tone="muted" />{/snippet}
       </TabBar>
       <div class="row"><Button size="sm" onclick={() => (renaming = true)}>Rename the third tab</Button></div>
