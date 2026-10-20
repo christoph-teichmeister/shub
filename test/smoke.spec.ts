@@ -68,6 +68,7 @@ const API: Record<string, unknown> = {
       dnsName: 'pc.tail.ts.net',
       https: true,
       phones: ['Pixel'],
+      offlinePhones: [],
       served: true,
     },
     publicUrl: 'https://pc.tail.ts.net',

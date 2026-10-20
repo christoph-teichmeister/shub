@@ -24,14 +24,14 @@ interface TailscaleStatus {
 /** The wizard's view of `tailscale status --json` and `tailscale serve status --json`. */
 export function parseTailscale(status: TailscaleStatus, serve: unknown, port: number): PhoneSetup['tailscale'] {
   const serveText = JSON.stringify(serve ?? {});
+  const phones = Object.values(status.Peer ?? {}).filter((p) => /^(ios|android)$/i.test(p.OS ?? ''));
   return {
     installed: true,
     running: status.BackendState === 'Running',
     dnsName: status.Self?.DNSName?.replace(/\.$/, '') || undefined,
     https: (status.CertDomains ?? []).length > 0,
-    phones: Object.values(status.Peer ?? {})
-      .filter((p) => p.Online && /^(ios|android)$/i.test(p.OS ?? ''))
-      .map((p) => p.HostName ?? '?'),
+    phones: phones.filter((p) => p.Online).map((p) => p.HostName ?? '?'),
+    offlinePhones: phones.filter((p) => !p.Online).map((p) => p.HostName ?? '?'),
     served: serveText.includes(`127.0.0.1:${port}"`) || serveText.includes(`localhost:${port}"`),
   };
 }
@@ -42,7 +42,7 @@ async function tailscale(port: number): Promise<PhoneSetup['tailscale']> {
     status = (await json(['status', '--json'])) as TailscaleStatus;
   } catch (err) {
     const missing = (err as NodeJS.ErrnoException).code === 'ENOENT';
-    return { installed: !missing, running: false, https: false, phones: [], served: false };
+    return { installed: !missing, running: false, https: false, phones: [], offlinePhones: [], served: false };
   }
   const serve = await json(['serve', 'status', '--json']).catch(() => ({}));
   return parseTailscale(status, serve, port);

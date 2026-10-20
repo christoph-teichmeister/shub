@@ -341,6 +341,8 @@ export interface PhoneSetup {
     https: boolean;
     /** Online phones (iOS/Android) in the tailnet. */
     phones: string[];
+    /** Phones known to the tailnet but offline (Tailscale app closed or VPN off). */
+    offlinePhones: string[];
     /** `tailscale serve` forwards to shub's port. */
     served: boolean;
   };
