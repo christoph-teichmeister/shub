@@ -22,4 +22,4 @@ Every other command (`shub status`, `shub session start`, ...) goes to the insta
 
 Releases are verified before they are installed: the archive's SHA-256 must be in a `SHA256SUMS` signed with the
 shub release key (`release-keys.pem`). Versions live in `~/.local/share/shub/versions/` (`SHUB_HOME`), `current`
-points at the active one, the last two stay for rollback.
+points at the active one and only the previous one stays for rollback.

@@ -71,12 +71,10 @@ export function switchTo(home: string, version: string): void {
   renameSync(tmp, join(home, 'current'));
 }
 
-/** Keeps current, previous and the newest others, three in all (the last two plus current); returns the removed. */
+/** Keeps only current and previous (the rollback target); returns the removed. */
 export function prune(home: string): string[] {
   const pinned = new Set([currentVersion(home), readState(home).previous].filter((v) => !!v));
-  const removed = installedVersions(home)
-    .filter((v) => !pinned.has(v))
-    .slice(Math.max(0, 3 - pinned.size));
+  const removed = installedVersions(home).filter((v) => !pinned.has(v));
   for (const v of removed) rmSync(versionDir(home, v), { recursive: true, force: true });
   return removed;
 }

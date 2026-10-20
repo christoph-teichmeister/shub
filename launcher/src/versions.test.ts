@@ -41,19 +41,19 @@ test('switching rewrites the current link in one rename', () => {
   assert.equal(currentVersion(h), '2026.10.1');
 });
 
-test('pruning keeps current, previous and the newest other: three versions', () => {
+test('pruning keeps only current and previous', () => {
   const h = home(['2026.9.0', '2026.9.1', '2026.10.0', '2026.10.1', '2026.10.2', 'not-a-version']);
   switchTo(h, '2026.10.2');
   writeState(h, { previous: '2026.10.1' });
-  assert.deepEqual(prune(h), ['2026.9.1', '2026.9.0']);
-  assert.deepEqual(installedVersions(h), ['2026.10.2', '2026.10.1', '2026.10.0']);
+  assert.deepEqual(prune(h), ['2026.10.0', '2026.9.1', '2026.9.0']);
+  assert.deepEqual(installedVersions(h), ['2026.10.2', '2026.10.1']);
 
   // After switching back to an old version, the previous one is kept even though it is not among the newest.
   const g = home(['2026.9.0', '2026.10.0', '2026.10.1', '2026.10.2']);
   switchTo(g, '2026.10.2');
   writeState(g, { previous: '2026.9.0' });
-  assert.deepEqual(prune(g), ['2026.10.0']);
-  assert.deepEqual(installedVersions(g), ['2026.10.2', '2026.10.1', '2026.9.0']);
+  assert.deepEqual(prune(g), ['2026.10.1', '2026.10.0']);
+  assert.deepEqual(installedVersions(g), ['2026.10.2', '2026.9.0']);
 });
 
 test('state is merged and written atomically', () => {

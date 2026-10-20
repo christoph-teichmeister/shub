@@ -533,6 +533,11 @@
                     : 'Not checked yet'}
               </span>
             </div>
+            {#if update.previous}
+              <p class="muted small">
+                Roll back only if this version misbehaves. If a new version does not start, shub goes back by itself.
+              </p>
+            {/if}
           </div>
         {/if}
       </Section>
