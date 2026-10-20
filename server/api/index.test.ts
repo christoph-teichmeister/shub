@@ -209,6 +209,16 @@ test('settings and themes', async () => {
   assert.equal(config.notifications.pushYourTurn, true);
   assert.equal((await asUser('PATCH', '/api/settings', { activeGroup: 'yes' })).status, 400);
   assert.equal((await (await asUser('PATCH', '/api/settings', { activeGroup: true })).json()).activeGroup, true);
+  assert.equal((await asUser('PATCH', '/api/settings', { terminal: { fontSize: 200 } })).status, 400);
+  assert.equal((await asUser('PATCH', '/api/settings', { terminal: { fontFamily: 'x; color: red' } })).status, 400);
+  assert.equal((await asUser('PATCH', '/api/settings', { terminal: { colour: 'red' } })).status, 400);
+  assert.equal((await asUser('PATCH', '/api/settings', { terminal: { fallbackFont: '' } })).status, 400);
+  await asUser('PATCH', '/api/settings', { terminal: { fontSize: 15 } });
+  const terminal = (await (await asUser('PATCH', '/api/settings', { terminal: { cursorStyle: 'bar' } })).json())
+    .terminal;
+  assert.deepEqual(terminal, { fontSize: 15, cursorStyle: 'bar' });
+  const reset = (await (await asUser('PATCH', '/api/settings', { terminal: { fontSize: null } })).json()).terminal;
+  assert.deepEqual(reset, { cursorStyle: 'bar' });
 });
 
 test('pairing: single use code creates a phone device', async () => {

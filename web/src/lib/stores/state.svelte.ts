@@ -9,8 +9,10 @@ import type {
   Session,
   SessionStatus,
   StartSessionRequest,
+  TerminalSettings,
   UpdateStatus,
 } from '../../../../shared/api.ts';
+import { TERMINAL_SETTINGS_DEFAULTS, terminalSettingsError } from '../../../../shared/api.ts';
 import { applyTheme, findTheme } from '../tokens/tokens.ts';
 import { api, ApiError, wsUrl } from './api.ts';
 import { href } from './router.svelte.ts';
@@ -48,6 +50,31 @@ export const ui = $state({
   phone: matchMedia('(max-width: 699px)').matches,
 });
 matchMedia('(max-width: 699px)').addEventListener('change', (e) => (ui.phone = e.matches));
+
+const DEVICE_TERMINAL_KEY = 'shub.terminal.device';
+function readDeviceTerminal(): Partial<TerminalSettings> | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(DEVICE_TERMINAL_KEY) ?? 'null') as unknown;
+    return v && !terminalSettingsError(v) ? (v as Partial<TerminalSettings>) : null;
+  } catch {
+    return null;
+  }
+}
+/** This browser's own terminal settings over the shared ones (Settings > Terminal); null follows config.json. */
+export const deviceTerminal = $state({ value: readDeviceTerminal() });
+export function setDeviceTerminal(value: Partial<TerminalSettings> | null): void {
+  deviceTerminal.value = value;
+  try {
+    if (value) localStorage.setItem(DEVICE_TERMINAL_KEY, JSON.stringify(value));
+    else localStorage.removeItem(DEVICE_TERMINAL_KEY);
+  } catch {
+    // No storage (private window): keeps working until reload.
+  }
+}
+/** The terminal look in effect here: defaults, then config.json, then this device's own settings. */
+export function terminalSettings(): TerminalSettings {
+  return { ...TERMINAL_SETTINGS_DEFAULTS, ...app.config?.terminal, ...deviceTerminal.value };
+}
 
 export const sessionHref = (s: Session) => (s.projectId ? href('p', s.projectId, s.id) : href('g'));
 

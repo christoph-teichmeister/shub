@@ -97,6 +97,8 @@ export interface Config {
   }[];
   /** Sidebar shows an "Active" group on top: every project with a session, kept 10 minutes after its last one. */
   activeGroup?: boolean;
+  /** Terminal look; a missing field keeps its default (TERMINAL_SETTINGS_DEFAULTS). */
+  terminal?: Partial<TerminalSettings>;
   /** Mode for sessions the user starts and the global Claude; a button's own mode wins. Default: "default". */
   defaultPermissionMode: LaunchPermissionMode;
   /** Release channel for updates. Absent: "beta" while a beta runs, else "stable". */
@@ -109,6 +111,59 @@ export interface Config {
   /** Never stored: why config.json or local.json could not be read. shub then runs on the last good config and
    *  refuses changes until the file is fixed (it reloads on save). */
   problem?: string;
+}
+
+export type TerminalCursorStyle = 'underline' | 'block' | 'bar';
+export interface TerminalSettings {
+  /** CSS font-family list; fonts missing on a device fall back to the next one. */
+  fontFamily: string;
+  /** Used where none of `fontFamily` is installed (another machine, the phone); appended after it. */
+  fallbackFont: string;
+  /** px; split panes and the phone use one px less. */
+  fontSize: number;
+  /** Multiple of the font size. */
+  lineHeight: number;
+  /** Extra px between letters. */
+  letterSpacing: number;
+  fontWeight: 'normal' | 'bold';
+  cursorStyle: TerminalCursorStyle;
+  cursorBlink: boolean;
+  /** Lines kept above the screen. */
+  scrollback: number;
+}
+export const TERMINAL_SETTINGS_DEFAULTS: TerminalSettings = {
+  fontFamily: "'JetBrains Mono'",
+  fallbackFont: 'ui-monospace, monospace',
+  fontSize: 13,
+  lineHeight: 1,
+  letterSpacing: 0,
+  fontWeight: 'normal',
+  cursorStyle: 'underline',
+  cursorBlink: true,
+  scrollback: 5000,
+};
+
+/** Why a terminal settings patch is invalid, or null. Unknown keys and out-of-range values are invalid (a bad font
+ *  size would make every terminal unusable); null resets a field. */
+export function terminalSettingsError(t: unknown): string | null {
+  if (typeof t !== 'object' || t === null || Array.isArray(t)) return 'terminal must be an object';
+  const num = (v: unknown, min: number, max: number) => typeof v === 'number' && v >= min && v <= max;
+  const font = (v: unknown) => typeof v === 'string' && v.trim().length > 0 && v.length <= 200 && !/[;{}<>]/.test(v);
+  const valid: Record<keyof TerminalSettings, (v: unknown) => boolean> = {
+    fontFamily: font,
+    fallbackFont: font,
+    fontSize: (v) => num(v, 6, 40),
+    lineHeight: (v) => num(v, 1, 2),
+    letterSpacing: (v) => num(v, -2, 10),
+    fontWeight: (v) => v === 'normal' || v === 'bold',
+    cursorStyle: (v) => v === 'underline' || v === 'block' || v === 'bar',
+    cursorBlink: (v) => typeof v === 'boolean',
+    scrollback: (v) => Number.isInteger(v) && num(v, 0, 100_000),
+  };
+  for (const [k, v] of Object.entries(t)) {
+    if (!(k in valid) || (v !== null && !valid[k as keyof TerminalSettings](v))) return `terminal.${k} is invalid`;
+  }
+  return null;
 }
 
 // ---------- sessions ----------
