@@ -2,18 +2,26 @@ import type { Approval, Session, StartSessionRequest } from '../../shared/api.ts
 import { api, CliError, output, parse, table } from './lib/client.ts';
 import { findProject } from './lib/projects.ts';
 
-export const summary = 'List, start or inspect sessions.';
+export const summary = 'List, start, rename or inspect sessions.';
 export const usage = `shub session list [--project <id|name>]
 shub session start <project|global> [--prompt <text>] [--button <id> [--input <text>]] [--name <name>] [--shell]
 shub session status [<session id>]   (defaults to $SHUB_SESSION_ID inside a session)
+shub session rename <name> [--id <session id>]   (defaults to $SHUB_SESSION_ID; a session may only rename itself)
 shub session close [<session id>]    (defaults to $SHUB_SESSION_ID; a session may only close itself)`;
 
 export async function run(args: string[], opts: { json: boolean }): Promise<void> {
   const [sub, ...rest] = args;
-  const { positional, flags } = parse(rest, ['project', 'prompt', 'button', 'input', 'name']);
+  const { positional, flags } = parse(rest, ['project', 'prompt', 'button', 'input', 'name', 'id']);
   if (sub === 'list' || sub === undefined) return list(flags.project, opts.json);
   if (sub === 'start') return start(positional[0], flags, opts.json);
   if (sub === 'status') return status(positional[0] ?? process.env.SHUB_SESSION_ID, opts.json);
+  if (sub === 'rename') {
+    return rename(
+      typeof flags.id === 'string' ? flags.id : process.env.SHUB_SESSION_ID,
+      positional.join(' '),
+      opts.json,
+    );
+  }
   if (sub === 'close') return close(positional[0] ?? process.env.SHUB_SESSION_ID, opts.json);
   throw new CliError(`unknown subcommand "${sub}"\n${usage}`);
 }
@@ -63,6 +71,13 @@ async function status(id: string | undefined, json: boolean): Promise<void> {
     json,
     () => `${session.name} (${session.id}): ${session.status}, last activity ${session.lastActivityAt}`,
   );
+}
+
+async function rename(id: string | undefined, name: string, json: boolean): Promise<void> {
+  if (!name) throw new CliError(`usage:\n${usage}`);
+  if (!id) throw new CliError('which session? Pass --id (see "shub session list").');
+  const result = await api<Session>('PATCH', `/api/sessions/${encodeURIComponent(id)}`, { name });
+  output(result, json, () => `Renamed ${result.id} to ${result.name}.`);
 }
 
 async function close(id: string | undefined, json: boolean): Promise<void> {
