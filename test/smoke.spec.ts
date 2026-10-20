@@ -162,8 +162,10 @@ test('sidebar hides, stays hidden after reload and comes back with Alt B', async
   await page.goto('/#/');
   const nav = page.getByRole('navigation', { name: 'Projects' });
   await nav.getByRole('button', { name: 'Hide sidebar (Alt B)' }).click();
-  await expect(nav.getByRole('link', { name: 'ai-portal' })).toBeHidden();
+  await expect(nav.getByRole('button', { name: 'Project settings for ai-portal' })).toBeHidden();
   await expect(nav).toHaveJSProperty('offsetWidth', 56);
+  // The rail keeps the project icons with their status.
+  await expect(nav.getByRole('link', { name: 'ai-portal · 1 needs you' })).toBeVisible();
 
   await page.reload();
   await expect(nav.getByRole('button', { name: 'Show sidebar (Alt B)' })).toBeVisible();

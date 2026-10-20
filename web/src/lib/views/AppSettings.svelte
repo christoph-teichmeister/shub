@@ -16,6 +16,7 @@
   import Section from '../components/Section/Section.svelte';
   import SelectField from '../components/SelectField/SelectField.svelte';
   import StatusBadge from '../components/StatusBadge/StatusBadge.svelte';
+  import TextField from '../components/TextField/TextField.svelte';
   import { api } from '../stores/api.ts';
   import { pushEnabled, pushSupported, subscribePush } from '../stores/push.ts';
   import { href } from '../stores/router.svelte.ts';
@@ -70,6 +71,8 @@
   let now = $state(Date.now());
   let push = $state(false);
   let unpair = $state<Device | null>(null);
+  let renaming = $state<Device | null>(null);
+  let newName = $state('');
   let rotating = $state(false);
   let logs = $state<{ plugin: string; lines: string[] } | null>(null);
   let activity = $state<ActivityEntry[] | null>(null);
@@ -132,6 +135,15 @@
   async function doUnpair(d: Device) {
     unpair = null;
     await api('deviceDelete', { params: { id: d.id } }).then(() => toast(`${d.name} unpaired`), toastError);
+    void loadDevices();
+  }
+
+  async function doRename(e: SubmitEvent) {
+    e.preventDefault();
+    if (!renaming) return;
+    const id = renaming.id;
+    renaming = null;
+    await api('deviceUpdate', { params: { id }, body: { name: newName } }).catch(toastError);
     void loadDevices();
   }
 
@@ -298,6 +310,7 @@
                 size="sm"
                 onclick={() => api('pushTest').then(() => toast('Test push sent'), toastError)}>Test push</Button
               >{/if}
+            <Button size="sm" onclick={() => ((newName = d.name), (renaming = d))}>Rename</Button>
             {#if d.id !== myDevice?.id}<Button size="sm" variant="danger" onclick={() => (unpair = d)}>Unpair</Button
               >{/if}
           </li>
@@ -475,6 +488,16 @@
   {#snippet actions()}
     <Button variant="ghost" onclick={() => (unpair = null)}>Cancel</Button>
     <Button variant="danger" onclick={() => unpair && doUnpair(unpair)}>Unpair</Button>
+  {/snippet}
+</Dialog>
+
+<Dialog open={!!renaming} title="Rename {renaming?.name}" onclose={() => (renaming = null)}>
+  <form id="rename-device" onsubmit={doRename}>
+    <TextField label="Device name" bind:value={newName} required autocomplete="off" />
+  </form>
+  {#snippet actions()}
+    <Button variant="ghost" onclick={() => (renaming = null)}>Cancel</Button>
+    <Button type="submit" form="rename-device">Save</Button>
   {/snippet}
 </Dialog>
 

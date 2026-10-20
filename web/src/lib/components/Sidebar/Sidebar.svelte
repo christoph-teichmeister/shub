@@ -6,12 +6,14 @@
     header: Snippet;
     children: Snippet;
     footer?: Snippet;
-    /** Folded to a slim rail that only shows the toggle. */
+    /** Icons shown in the slim rail while collapsed (projects, groups). */
+    rail?: Snippet;
+    /** Folded to a slim rail that shows the toggle and `rail`. */
     collapsed?: boolean;
     /** Shows the toggle button in the top right corner; the first header row leaves room for it. */
     ontoggle?: () => void;
   }
-  let { header, children, footer, collapsed = false, ontoggle }: Props = $props();
+  let { header, children, footer, rail, collapsed = false, ontoggle }: Props = $props();
 </script>
 
 <nav class="sidebar" class:collapsed aria-label="Projects">
@@ -26,6 +28,7 @@
       />
     </span>
   {/if}
+  {#if collapsed && rail}<div class="rail">{@render rail()}</div>{/if}
   <div class="content" inert={collapsed}>
     <div class="header">{@render header()}</div>
     <div class="scroll">{@render children()}</div>
@@ -60,6 +63,17 @@
     top: var(--space-4);
     right: var(--space-3);
     z-index: 1;
+  }
+
+  .rail {
+    position: absolute;
+    inset: calc(var(--space-4) + var(--size-control) + var(--space-3)) 0 var(--space-4);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    overflow-y: auto;
+    scrollbar-width: none;
   }
 
   /* Fixed width, so the content is clipped while the sidebar folds instead of reflowing. */

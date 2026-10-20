@@ -223,6 +223,14 @@ test('pairing: single use code creates a phone device', async () => {
   assert.ok(devices.some((d: { kind: string }) => d.kind === 'phone'));
 });
 
+test('a device can be renamed', async () => {
+  const [device] = await (await asUser('GET', '/api/devices')).json();
+  const res = await asUser('PATCH', `/api/devices/${device.id}`, { name: '  Laptop  ' });
+  assert.equal((await res.json()).name, 'Laptop');
+  assert.equal((await asUser('PATCH', `/api/devices/${device.id}`, { name: ' ' })).status, 400);
+  assert.equal((await asUser('PATCH', '/api/devices/nope', { name: 'x' })).status, 404);
+});
+
 test('events WebSocket says hello and forwards bus events; needs Origin with a cookie', async () => {
   const wsUrl = base.replace('http', 'ws') + '/api/events';
   const noOrigin = new WebSocket(wsUrl, { headers: { cookie } });
