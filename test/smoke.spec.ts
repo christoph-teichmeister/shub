@@ -507,6 +507,23 @@ test('contrast ratio follows WCAG', () => {
   expect(contrastRatio('var(--x)', '#fff')).toBeNull();
 });
 
+test('a selection Claude copies with OSC 52 lands in the clipboard', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const { errors } = await mockApi(page);
+  let replies = 0;
+  // As tmux forwards it: empty selection field, base64 of UTF-8. The `?` read request must stay unanswered.
+  const b64 = Buffer.from('Opus · Claude\n').toString('base64');
+  await page.routeWebSocket('**/api/terminals/**', (ws) => {
+    ws.onMessage((m) => typeof m === 'string' && m.includes('\u001b]52') && replies++);
+    ws.send(`\u001b]52;;${b64}\u0007\u001b]52;c;?\u0007`);
+  });
+  await page.goto('/#/p/ai-portal/s1');
+  await expect(page.locator('.xterm')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('Opus · Claude\n');
+  expect(replies).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('closing the last terminal hides the bottom panel instead of showing Services', async ({ page }) => {
   const shell: Session = { ...session, id: 'sh1', kind: 'shell', name: 'shell', status: 'your-turn', parentId: 's1' };
   // Session has its own `status`, so wrap it to keep mockApi from reading it as the HTTP status.

@@ -126,6 +126,20 @@
       const s = t.getSelection();
       if (s) navigator.clipboard?.writeText(s).catch(() => {});
     });
+    // Apps that own the mouse (Claude's fullscreen UI) copy their own selection with OSC 52 `ESC]52;<sel>;<base64>`.
+    // tmux forwards it with an empty <sel>. Write only: a `?` read request is ignored, so no app can read the clipboard.
+    t.parser.registerOscHandler(52, (data) => {
+      const b64 = data.slice(data.indexOf(';') + 1);
+      if (b64 && b64 !== '?') {
+        try {
+          const text = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+          navigator.clipboard?.writeText(text).catch(() => {});
+        } catch {
+          // Not base64: ignore.
+        }
+      }
+      return true;
+    });
     // Ctrl+V / Ctrl+Shift+V: let the browser fire its paste event (handled below) instead of sending ^V.
     // Ctrl+C stays an interrupt; Alt shortcuts are taken by the view before xterm sees them.
     // Ctrl+Left/Right jump a word: sent as Alt+B/F (ESC b/f), which readline and Claude's prompt understand,
