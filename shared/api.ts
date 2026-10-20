@@ -398,6 +398,14 @@ export interface UpdateStatus {
   last?: { at: string; from: string | null; to: string; ok: boolean; message: string };
 }
 
+/** One release of GET /api/updates/changelog. */
+export interface ReleaseNotes {
+  version: string;
+  publishedAt: string;
+  /** Markdown. */
+  notes: string;
+}
+
 // ---------- HTTP routes ----------
 // All under /api, JSON in and out, auth by cookie (browser) or `Authorization: Bearer <token>`.
 
@@ -477,6 +485,7 @@ export const ROUTES = {
   updateRollback: 'POST /api/updates/rollback', // -> { ok, version }, user only
   updateChannel: 'PATCH /api/updates/channel', // { channel } -> UpdateStatus, user only
   updateMode: 'PATCH /api/updates/mode', // { mode } -> UpdateStatus, user only
+  changelog: 'GET /api/updates/changelog', // -> ReleaseNotes[], newest first, up to the running version
 } as const;
 
 // ---------- WebSockets ----------

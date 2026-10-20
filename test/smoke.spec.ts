@@ -252,7 +252,7 @@ test('app settings and project settings', async ({ page }) => {
 
   const updates = page.getByRole('region', { name: 'Updates' });
   await expect(updates.getByText('shub 2026.10.1 is available')).toBeVisible();
-  await expect(updates.getByText('- launcher: add shub doctor')).toBeVisible();
+  await expect(updates.getByRole('listitem').filter({ hasText: 'launcher: add shub doctor' })).toBeVisible();
   await expect(updates.getByLabel('Release channel')).toHaveValue('stable');
   await updates.getByRole('button', { name: 'Install 2026.10.1' }).click();
   await expect.poll(() => calls.find((c) => c.path === '/api/updates/install')?.body).toEqual({ version: '2026.10.1' });
