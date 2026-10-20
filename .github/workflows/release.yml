@@ -111,3 +111,6 @@ jobs:
           if [ "$CHANNEL" = beta ]; then prerelease="--prerelease"; fi
           gh release create "v$VERSION" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "shub $VERSION" --notes-file notes.md $prerelease
+      # Running installs listen on this ntfy topic and check for updates at once (server/updates); best effort.
+      - name: Notify installs
+        run: curl -fsS -m 10 -d "$VERSION" https://ntfy.sh/christoph-teichmeister-shub-releases || true
