@@ -27,7 +27,9 @@ function parseStart(body: Partial<StartSessionRequest>): StartSessionRequest {
     throw new HttpError(400, 'invalid session request');
   }
   if (body.buttonId && body.prompt) throw new HttpError(400, 'give either buttonId or prompt');
-  if (body.kind === 'shell' && !body.parentId && !body.cwd) throw new HttpError(400, 'shells need a parentId or a cwd');
+  if (body.kind === 'shell' && !body.parentId && !body.cwd && !body.projectId) {
+    throw new HttpError(400, 'shells need a parentId, a cwd or a project');
+  }
   if (body.cwd && body.kind === 'global') throw new HttpError(400, 'the global Claude takes no cwd');
   if (body.resumeClaudeSessionId !== undefined) {
     if (body.kind !== 'claude') throw new HttpError(400, 'only claude sessions can resume a conversation');
@@ -48,11 +50,12 @@ async function startRoute(
   const request = parseStart(body as Partial<StartSessionRequest>);
   const project = request.projectId ? services.config.project(request.projectId) : undefined;
   const button = request.buttonId ? project?.buttons.find((b) => b.id === request.buttonId) : undefined;
-  // Without a parent, a cwd must be one of the project's worktrees (the main checkout included).
+  // Without a parent, a cwd must lie inside one of the project's worktrees (the main checkout included).
   if (request.cwd && !request.parentId) {
     if (!project) throw new HttpError(400, 'a cwd needs a project');
-    if (!(await listWorktrees(project.path)).some((w) => w.path === request.cwd))
-      throw new HttpError(400, `not a worktree of ${project.name}: ${request.cwd}`);
+    const cwd = request.cwd;
+    if (!(await listWorktrees(project.path)).some((w) => cwd === w.path || cwd.startsWith(`${w.path}/`)))
+      throw new HttpError(400, `not inside a worktree of ${project.name}: ${cwd}`);
   }
   const decision = services.permissions.decide(caller, {
     kind: 'session.start',
@@ -99,6 +102,12 @@ function routes(sessions: SessionsService, services: Services, router: Router): 
   router.add(ROUTES.sessionStart, async (req, res) =>
     startRoute(sessions, services, req.caller, await req.json(), res),
   );
+  router.add(ROUTES.sessionClaudeHere, async (req, res) => {
+    const shell = sessions.get(req.params.id);
+    if (shell?.kind !== 'shell') throw new HttpError(404, 'no such terminal');
+    const cwd = sessions.currentPath(shell.id);
+    return startRoute(sessions, services, req.caller, { projectId: shell.projectId, kind: 'claude', cwd }, res);
+  });
   router.add(ROUTES.sessionUpdate, async (req) => {
     // The user, or a session changing itself.
     if (!isUser(req.caller) && req.caller.id !== `session:${req.params.id}`) throw new HttpError(403, 'not yours');

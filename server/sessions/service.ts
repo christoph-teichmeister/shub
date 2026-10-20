@@ -234,7 +234,7 @@ export class SessionsService implements Sessions {
       }
       this.#db.prepare('DELETE FROM sessions WHERE id = ?').run(GLOBAL_ID);
     }
-    const parent = request.kind === 'shell' ? this.require(request.parentId ?? '') : undefined;
+    const parent = request.kind === 'shell' && request.parentId ? this.require(request.parentId) : undefined;
     const projectId = request.kind === 'global' ? null : (parent?.projectId ?? request.projectId);
     const project = projectId ? this.#services.config.project(projectId) : undefined;
     if (request.kind === 'claude' && !project) throw new HttpError(404, 'no such project');
@@ -254,7 +254,11 @@ export class SessionsService implements Sessions {
       request.name?.trim() || request.kind !== 'claude' || button ? undefined : (prompt ?? resumed?.firstPrompt);
     const name =
       request.name?.trim() ||
-      (request.kind === 'global' ? 'Global Claude' : autoName({ button, input: request.input, prompt: namePrompt, n }));
+      (request.kind === 'global'
+        ? 'Global Claude'
+        : request.kind === 'shell'
+          ? `Terminal ${n}`
+          : autoName({ button, input: request.input, prompt: namePrompt, n }));
 
     const at = now();
     this.#db
@@ -338,6 +342,8 @@ export class SessionsService implements Sessions {
   #launch(row: Row, opts: { prompt?: string; resume: boolean }): void {
     const env: Record<string, string> = {
       SHUB_URL: `http://127.0.0.1:${this.#ctx.port}`,
+      // Shells get it too (no token: the CLI there signs in as you), so `shub claude` knows its terminal.
+      SHUB_SESSION_ID: row.id,
       PATH: `${this.#binDir}:${process.env.PATH ?? '/usr/bin:/bin'}`,
     };
     const settingsFile = join(this.#ctx.paths.stateDir, 'sessions', row.id, 'settings.json');
@@ -357,7 +363,7 @@ export class SessionsService implements Sessions {
         });
         this.#db.prepare('UPDATE sessions SET token = ? WHERE id = ?').run(token, row.id);
       }
-      Object.assign(env, { SHUB_SESSION_ID: row.id, SHUB_TOKEN: token });
+      env.SHUB_TOKEN = token;
     }
     const argv = this.#launcher({
       kind: row.kind,
@@ -614,6 +620,12 @@ export class SessionsService implements Sessions {
         console.error(`shub: command for ${id}`, err);
       }
     }, this.#startedGapMs).unref();
+  }
+
+  /** Where a running session's shell is now; for "Start Claude here" in a terminal. */
+  currentPath(id: string): string {
+    this.#requireRunning(id);
+    return this.#tmux.currentPath(tmuxName(id));
   }
 
   pasteText(id: string, text: string): void {

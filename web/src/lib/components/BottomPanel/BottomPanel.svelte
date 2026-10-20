@@ -8,7 +8,7 @@
     tabs: { id: string; label: string; closable?: boolean }[];
     active: string;
     onselect: (id: string) => void;
-    /** "+" button: new plain terminal (Alt T). */
+    /** "+" button: new plain terminal (Alt Shift T). */
     onnew?: () => void;
     onclose?: (id: string) => void;
     onhide: () => void;
@@ -40,7 +40,7 @@
           />{/if}
       {/each}
       {#if onnew}<IconButton
-          label="New plain terminal (Alt T)"
+          label="New plain terminal (Alt Shift T)"
           icon="plus"
           size="xs"
           tone="muted"

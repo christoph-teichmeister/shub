@@ -195,3 +195,40 @@ test('health, login, project, session, terminal, hooks, close', { timeout: 60_00
   assert.ok(!tmuxHas(`shub-${started.id}`));
   assert.equal((await api('POST', '/api/hooks/Stop', {}, bearer)).status, 401, 'session token revoked');
 });
+
+test('a terminal tab starts Claude in the folder it was cd-ed to, inside the project only', async () => {
+  const repo = join(root, 'repo');
+  mkdirSync(join(repo, 'web'), { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  const project = await json<ProjectView>('POST', '/api/projects', { name: 'Repo', path: repo });
+
+  const shell = await json<Session>('POST', '/api/sessions', { kind: 'shell', projectId: project.id });
+  assert.equal(shell.cwd, repo, 'a terminal tab opens in the project folder');
+  assert.equal(shell.name, 'Terminal 1');
+  const cd = async (dir: string) => {
+    await json('POST', `/api/sessions/${shell.id}/keys`, { keys: [`cd ${dir}`, 'Enter'] });
+    await waitFor(
+      () =>
+        execFileSync(
+          'tmux',
+          ['-L', socket, 'display-message', '-p', '-t', `=shub-${shell.id}:`, '#{pane_current_path}'],
+          {
+            encoding: 'utf8',
+          },
+        ).trim() === dir,
+      `shell in ${dir}`,
+    );
+  };
+
+  await cd(join(repo, 'web'));
+  const claude = await json<Session>('POST', `/api/sessions/${shell.id}/claude-here`);
+  assert.equal(claude.kind, 'claude');
+  assert.equal(claude.projectId, project.id);
+  assert.equal(claude.cwd, join(repo, 'web'));
+
+  await cd(dirs.state);
+  assert.equal((await api('POST', `/api/sessions/${shell.id}/claude-here`)).status, 400, 'outside the project');
+  assert.equal((await api('POST', `/api/sessions/${claude.id}/claude-here`)).status, 404, 'terminals only');
+  await json('DELETE', `/api/sessions/${claude.id}`);
+  await json('DELETE', `/api/sessions/${shell.id}`);
+});

@@ -73,6 +73,11 @@ export class Tmux {
     this.run(['send-keys', '-t', `=${name}:`, '-l', '--', text]);
   }
 
+  /** The folder the pane's shell is in right now (follows `cd`). */
+  currentPath(name: string): string {
+    return this.run(['display-message', '-p', '-t', `=${name}:`, '#{pane_current_path}']).trim();
+  }
+
   /** Bracketed paste, so Claude sees one paste instead of typed lines. load-buffer avoids argv size limits. */
   paste(name: string, text: string): void {
     const buffer = `shub-${name}`;
