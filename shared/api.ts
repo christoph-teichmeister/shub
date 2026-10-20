@@ -263,6 +263,28 @@ export interface Worktree {
   branch: string; // short name, "" when detached
 }
 
+/** One state per worktree; see `classify` in server/projects/worktrees.ts for the order. */
+export type WorktreeState =
+  | 'active' // a shub session runs in it
+  | 'folder-gone' // prunable
+  | 'locked'
+  | 'dirty' // uncommitted or untracked files
+  | 'merged' // HEAD is contained in origin/develop, main or master
+  | 'remote-gone' // the branch's upstream was deleted, usually after a squash merge
+  | 'not-pushed' // commits on no remote
+  | 'detached'
+  | 'open'; // clean, pushed, not merged yet
+
+/** GET /api/worktrees: a project's worktrees for the cleanup section (main checkout left out). */
+export interface WorktreeInfo {
+  projectId: string;
+  path: string;
+  name: string; // folder name
+  branch: string; // "" when detached
+  state: WorktreeState;
+  lastCommitAt: string | null; // ISO date of HEAD's commit
+}
+
 export interface OldSession {
   claudeSessionId: string;
   projectId: string;
@@ -500,6 +522,9 @@ export const ROUTES = {
 
   skills: 'GET /api/projects/:id/skills',
   projectWorktrees: 'GET /api/projects/:id/worktrees', // -> Worktree[]
+  worktrees: 'GET /api/worktrees', // ?fetch=1 fetches first -> WorktreeInfo[] of every project
+  worktreeRemove: 'POST /api/worktrees/remove', // { projectId, path } -> { branchDeleted } (user only, plain git)
+  worktreePrune: 'POST /api/worktrees/prune', // { projectId } -> { ok } (user only)
 
   sessions: 'GET /api/sessions',
   sessionStart: 'POST /api/sessions', // StartSessionRequest -> Session | { approval: Approval }

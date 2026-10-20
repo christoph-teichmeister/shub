@@ -59,6 +59,16 @@ const API: Record<string, unknown> = {
   '/api/sessions/restorable': [],
   '/api/approvals': [],
   '/api/plugins': [],
+  '/api/worktrees': [
+    {
+      projectId: 'ai-portal',
+      path: '/home/chris/PycharmProjects/work/ai-portal/.claude/worktrees/2200',
+      name: '2200',
+      branch: 'feature/#2200-api',
+      state: 'remote-gone',
+      lastCommitAt: null,
+    },
+  ],
   '/api/auth/me': { caller: { kind: 'user', id: 'user' }, device: null },
   '/api/devices': [],
   '/api/phone-setup': {
@@ -139,6 +149,7 @@ test('app shell, wordmark and projects render', async ({ page }) => {
   await expect(nav.getByRole('link', { name: 'street-tours' })).toHaveCount(0);
   await expect(nav.getByText('1 needs you')).toBeVisible();
   await expect(page).toHaveTitle('(1) shub');
+  await expect(nav.getByRole('button', { name: 'ai-portal / 2200' })).toBeEnabled();
 
   await nav.getByRole('link', { name: 'ai-portal' }).click();
   await expect(page.getByRole('heading', { name: 'ai-portal', level: 1 })).toBeVisible();
@@ -154,18 +165,18 @@ test('sidebar groups collapse and stay collapsed after reload', async ({ page })
   const { errors } = await mockApi(page);
   await page.goto('/#/');
   const nav = page.getByRole('navigation', { name: 'Projects' });
-  const toggle = nav.getByRole('button', { name: 'Work' });
+  const toggle = nav.getByRole('button', { name: 'Work', exact: true });
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await expect(nav.getByRole('link', { name: 'ai-portal' })).toBeVisible();
 
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await expect(nav.getByRole('link', { name: 'ai-portal' })).toHaveCount(0);
-  await expect(nav.getByRole('region', { name: 'Work' }).getByText('1 needs you')).toBeVisible();
+  await expect(nav.getByRole('region', { name: 'Work', exact: true }).getByText('1 needs you')).toBeVisible();
 
   await page.reload();
-  await expect(nav.getByRole('button', { name: 'Work' })).toHaveAttribute('aria-expanded', 'false');
-  await nav.getByRole('button', { name: 'Work' }).click();
+  await expect(nav.getByRole('button', { name: 'Work', exact: true })).toHaveAttribute('aria-expanded', 'false');
+  await nav.getByRole('button', { name: 'Work', exact: true }).click();
   await expect(nav.getByRole('link', { name: 'ai-portal' })).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -520,7 +531,7 @@ test('active group keeps a project for 10 minutes after its last session closes'
   const activeGroup = page.getByRole('region', { name: 'Active' });
   await expect(activeGroup.getByRole('group', { name: 'ai-portal' })).toBeVisible();
   await expect(activeGroup.getByRole('group', { name: 'street-tours' })).toHaveCount(0);
-  await expect(page.getByRole('region', { name: 'Work' })).toHaveCount(0); // the switch hides the normal groups
+  await expect(page.getByRole('region', { name: 'Work', exact: true })).toHaveCount(0); // the switch hides the normal groups
 
   events!.send(JSON.stringify({ type: 'session.closed', sessionId: 's1' }));
   mocks['/api/sessions'] = [];
@@ -535,7 +546,7 @@ test('active group keeps a project for 10 minutes after its last session closes'
   await expect(activeGroup.getByRole('group', { name: 'ai-portal' })).toHaveCount(0);
   await expect(activeGroup.getByText('Nothing here')).toBeVisible();
   await page.getByRole('switch', { name: 'Active only' }).click();
-  await expect(page.getByRole('region', { name: 'Work' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Work', exact: true })).toBeVisible();
   await expect(activeGroup).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -626,7 +637,7 @@ test('sessions: sidebar sorts by status, a dragged tab keeps its place in both l
   const { errors, calls } = await mockApi(page, { '/api/sessions': [session, paused, working] });
   await page.goto('/#/p/ai-portal/s1');
   const tabs = page.getByRole('tab');
-  const rows = page.getByRole('region', { name: 'Work' }).getByRole('link', { name: /one|review/ });
+  const rows = page.getByRole('region', { name: 'Work', exact: true }).getByRole('link', { name: /one|review/ });
   await expect(tabs).toHaveText(['MR 2136 review', 'Paused one', 'Working one']);
   await expect(rows).toHaveText([/MR 2136 review/, /Working one/, /Paused one/]);
 
