@@ -173,6 +173,18 @@ test('sidebar hides, stays hidden after reload and comes back with Alt B', async
   expect(errors).toEqual([]);
 });
 
+test('global Claude drawer slides in with the sidebar timing (Alt G)', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  await page.goto('/#/');
+  await page.keyboard.press('Alt+KeyG');
+  // The minified CSS writes the 200ms token as .2s; the slide must still take 200ms.
+  const durations = await page
+    .locator('aside.drawer')
+    .evaluate((el) => el.getAnimations().map((a) => a.effect?.getComputedTiming().duration));
+  expect(durations).toEqual([200]);
+  expect(errors).toEqual([]);
+});
+
 test('styleguide renders every section', async ({ page }) => {
   const { errors } = await mockApi(page);
   await page.goto('/#/styleguide');
