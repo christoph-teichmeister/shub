@@ -266,7 +266,12 @@ test('wait parks a session, ending the wait hands it back', async () => {
   svc.setStatus(s.id, 'working');
   svc.wait(s.id, 'still Kai', 'chris');
   assert.equal(svc.get(s.id)?.status, 'working', 'mid-turn the Stop hook parks it');
-  svc.setStatus(s.id, 'waiting');
+  svc.setStatus(s.id, 'needs-you', { tool: 'Bash', summary: 'ls' });
+  svc.wait(s.id, 'still Kai', 'chris');
+  assert.equal(svc.get(s.id)?.status, 'needs-you', 'an open permission question stays');
+  svc.setStatus(s.id, 'needs-you', null);
+  svc.wait(s.id, 'still Kai', 'chris');
+  assert.equal(svc.get(s.id)?.status, 'waiting', 'the idle reminder gives way');
   const back = svc.wait(s.id, null, `session:${s.id}`);
   assert.equal(back.status, 'your-turn');
   assert.equal(back.waitingFor, null);

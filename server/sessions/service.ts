@@ -392,8 +392,11 @@ export class SessionsService implements Sessions {
     this.#db
       .prepare('UPDATE sessions SET waiting_for = ?, wait_check = ? WHERE id = ?')
       .run(clean, waitCheck && JSON.stringify(waitCheck), id);
-    // Mid-turn (working, needs-you) the status follows on the turn's Stop hook.
-    if (clean && (session.status === 'your-turn' || session.status === 'new')) this.setStatus(id, 'waiting');
+    // Mid-turn (working, or a permission question open) the status follows on the turn's Stop hook.
+    // "needs-you" without a question is Claude's idle reminder after the turn: no Stop follows, park now.
+    const idle =
+      ['your-turn', 'new'].includes(session.status) || (session.status === 'needs-you' && !session.pendingPermission);
+    if (clean && idle) this.setStatus(id, 'waiting');
     if (!clean && session.status === 'waiting') this.setStatus(id, 'your-turn');
     this.#services.permissions.log({
       actor,
