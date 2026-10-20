@@ -297,6 +297,43 @@ test('app settings and project settings', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('terminal settings send only the changed field and update the sample', async ({ page }) => {
+  const { errors, calls } = await mockApi(page, {
+    'PATCH /api/settings': { ...config, terminal: { fontSize: 16 } },
+  });
+  await page.goto('/#/settings');
+  const section = page.getByRole('region', { name: 'Terminal' });
+  await expect(section.getByLabel('Size (px)')).toHaveValue('13');
+  await section.getByLabel('Size (px)').fill('16');
+  await section.getByLabel('Size (px)').press('Enter');
+  await expect.poll(() => calls.find((c) => c.path === '/api/settings')?.body).toEqual({ terminal: { fontSize: 16 } });
+  await expect(section.getByLabel('Font sample')).toHaveCSS('font-size', '16px');
+  await section.getByRole('button', { name: 'Reset to defaults' }).click();
+  await expect
+    .poll(() => calls.filter((c) => c.path === '/api/settings').at(-1)?.body)
+    .toEqual({ terminal: { fontSize: null } });
+  expect(errors).toEqual([]);
+});
+
+test('own terminal settings stay in this browser and win over the shared ones', async ({ page }) => {
+  const { errors, calls } = await mockApi(page, { '/api/config': { ...config, terminal: { fontSize: 15 } } });
+  await page.goto('/#/settings');
+  const section = page.getByRole('region', { name: 'Terminal' });
+  await section.getByLabel('Own settings for this device').check();
+  await section.getByLabel('Size (px)').fill('11');
+  await section.getByLabel('Size (px)').press('Enter');
+  await expect(section.getByLabel('Font sample')).toHaveCSS('font-size', '11px');
+  expect(await page.evaluate(() => localStorage.getItem('shub.terminal.device'))).toBe('{"fontSize":11}');
+  await page.reload();
+  await expect(section.getByLabel('Size (px)')).toHaveValue('11');
+  await section.getByRole('button', { name: 'Reset to shared' }).click();
+  await expect(section.getByLabel('Size (px)')).toHaveValue('15');
+  await section.getByLabel('Own settings for this device').uncheck();
+  expect(await page.evaluate(() => localStorage.getItem('shub.terminal.device'))).toBeNull();
+  expect(calls.filter((c) => c.path === '/api/settings')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test('update dot on the user chip; read-only updates from a git checkout', async ({ page }) => {
   const { errors } = await mockApi(page);
   await page.goto('/#/');

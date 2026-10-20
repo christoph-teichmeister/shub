@@ -6,7 +6,7 @@
   import { WebglAddon } from '@xterm/addon-webgl';
   import type { TerminalControl } from '../../../../../shared/api.ts';
   import { api, wsUrl } from '../../stores/api.ts';
-  import { app } from '../../stores/state.svelte.ts';
+  import { app, terminalSettings } from '../../stores/state.svelte.ts';
   import { toastError } from '../../stores/toasts.svelte.ts';
   import { readToken } from '../../tokens/tokens.ts';
 
@@ -17,13 +17,30 @@
     /** Focus the terminal whenever this becomes true. */
     focused?: boolean;
     label?: string;
-    /** Smaller font for split panes. */
+    /** One px smaller font for split panes. */
     compact?: boolean;
   }
   let { sessionId, accent, focused = false, label = 'Terminal', compact = false }: Props = $props();
 
   let host = $state<HTMLDivElement>();
   let term = $state<Terminal>();
+  let fit: FitAddon | undefined;
+
+  /** Font and cursor options from Settings > Terminal. */
+  function look() {
+    const s = terminalSettings();
+    return {
+      fontFamily: `${s.fontFamily}, ${s.fallbackFont}`,
+      fontSize: s.fontSize - (compact ? 1 : 0),
+      fontWeight: s.fontWeight,
+      lineHeight: s.lineHeight,
+      letterSpacing: s.letterSpacing,
+      cursorStyle: s.cursorStyle,
+      cursorInactiveStyle: s.cursorStyle,
+      cursorBlink: s.cursorBlink,
+      scrollback: s.scrollback,
+    } as const;
+  }
 
   function theme(): ITheme {
     const t = readToken;
@@ -57,16 +74,8 @@
   };
 
   onMount(() => {
-    const t = new Terminal({
-      cursorStyle: 'underline',
-      cursorInactiveStyle: 'underline',
-      cursorBlink: true,
-      fontFamily: readToken('font-mono'),
-      fontSize: parseFloat(readToken(compact ? 'text-sm' : 'text-md')),
-      scrollback: 5000,
-      theme: theme(),
-    });
-    const fit = new FitAddon();
+    const t = new Terminal({ ...look(), theme: theme() });
+    fit = new FitAddon();
     t.loadAddon(fit);
     t.loadAddon(new WebLinksAddon());
     t.open(host!);
@@ -154,7 +163,7 @@
     host!.addEventListener('drop', onDrop);
 
     const refit = () => {
-      if (host!.offsetWidth && host!.offsetHeight) fit.fit();
+      if (host!.offsetWidth && host!.offsetHeight) fit?.fit();
     };
     const observer = new ResizeObserver(() => requestAnimationFrame(refit));
     observer.observe(host!);
@@ -167,6 +176,7 @@
       ws?.close();
       t.dispose();
       term = undefined;
+      fit = undefined;
     };
   });
 
@@ -174,6 +184,13 @@
     void app.themeVersion;
     void accent;
     if (term) term.options.theme = theme();
+  });
+
+  $effect(() => {
+    const options = look();
+    if (!term) return;
+    Object.assign(term.options, options);
+    if (host?.offsetWidth && host.offsetHeight) fit?.fit(); // cell size changed: new cols/rows
   });
 
   $effect(() => {

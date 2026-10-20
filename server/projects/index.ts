@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import {
   ROUTES,
+  terminalSettingsError,
   type Approval,
   type ButtonDef,
   type Config,
@@ -311,7 +312,12 @@ function settingsRoutes(services: Services, router: Router): void {
     requireUser(req.caller);
     const body =
       await req.json<
-        Partial<Pick<Config, 'activeTheme' | 'notifications' | 'groups' | 'defaultPermissionMode' | 'activeGroup'>>
+        Partial<
+          Pick<
+            Config,
+            'activeTheme' | 'notifications' | 'groups' | 'defaultPermissionMode' | 'activeGroup' | 'terminal'
+          >
+        >
       >();
     const current = config.get();
     if (body.activeTheme !== undefined && !current.themes.some((t) => t.id === body.activeTheme)) bad('unknown theme');
@@ -323,6 +329,10 @@ function settingsRoutes(services: Services, router: Router): void {
     }
     if (body.activeGroup !== undefined && typeof body.activeGroup !== 'boolean')
       bad('activeGroup must be true or false');
+    if (body.terminal !== undefined) {
+      const error = terminalSettingsError(body.terminal);
+      if (error) bad(error);
+    }
     if (body.notifications !== undefined) {
       const known = Object.keys(current.notifications);
       for (const [k, v] of Object.entries(body.notifications)) {
@@ -335,6 +345,12 @@ function settingsRoutes(services: Services, router: Router): void {
       if (body.notifications !== undefined) Object.assign(c.notifications, body.notifications);
       if (body.defaultPermissionMode !== undefined) c.defaultPermissionMode = body.defaultPermissionMode;
       if (body.activeGroup !== undefined) c.activeGroup = body.activeGroup;
+      if (body.terminal !== undefined) {
+        // null resets a field to its default.
+        const t: Record<string, unknown> = { ...c.terminal, ...body.terminal };
+        for (const k of Object.keys(t)) if (t[k] === null) delete t[k];
+        c.terminal = t;
+      }
     }, req.caller.id);
   });
 }
