@@ -7,9 +7,16 @@ export interface Allowed {
   origins: Set<string>;
 }
 
+/** Other shub hosts whose installed app may call this one (spike: SHUB_PEER_ORIGINS, comma-separated). */
+export const peerOrigins = (): string[] =>
+  (process.env.SHUB_PEER_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim().toLowerCase())
+    .filter(Boolean);
+
 export function allowList(port: number, publicUrl?: string): Allowed {
   const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
-  const origins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
+  const origins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`, ...peerOrigins()]);
   if (publicUrl) {
     const url = new URL(publicUrl);
     hosts.add(url.host.toLowerCase());

@@ -1,0 +1,14 @@
+{
+  "name": "shub multi-host test",
+  "short_name": "shub test",
+  "id": "/multihost/",
+  "start_url": "/multihost/index.html",
+  "scope": "/multihost/",
+  "display": "standalone",
+  "background_color": "#272822",
+  "theme_color": "#272822",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

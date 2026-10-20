@@ -49,7 +49,10 @@ export function parseCookies(header: string | undefined): Record<string, string>
 
 function bearer(req: IncomingMessage): string | null {
   const m = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? '');
-  return m ? m[1] : null;
+  if (m) return m[1];
+  // Browsers cannot set headers on a WebSocket: a peer's app sends `bearer.<token>` as a subprotocol.
+  const proto = (req.headers['sec-websocket-protocol'] ?? '').split(',').map((p) => p.trim());
+  return proto.find((p) => p.startsWith('bearer.'))?.slice('bearer.'.length) || null;
 }
 
 function toDevice(row: DeviceRow): Device {
@@ -297,8 +300,11 @@ function routes(auth: AuthService, router: Router): void {
   router.add(
     ROUTES.pairingRedeem,
     async (req, res) => {
-      const body = await req.json<{ code?: unknown; deviceName?: unknown }>();
+      const body = await req.json<{ code?: unknown; deviceName?: unknown; bearer?: unknown }>();
       const { device, session } = auth.redeemPairing(body.code, deviceName(body, req.raw));
+      // Spike: an app installed from another host keeps a Bearer token instead of this origin's cookie.
+      if (body.bearer === true)
+        return { device, token: auth.issueClientToken({ kind: 'user', id: 'chris', rights: [] }) };
       setSessionCookie(req.raw, res, session);
       return { device };
     },

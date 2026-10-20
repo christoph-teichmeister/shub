@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="manifest" href="/multihost/manifest.webmanifest" />
+    <meta name="theme-color" content="#272822" />
+    <title>shub multi-host test</title>
+    <style>
+      body {
+        font:
+          16px/1.4 system-ui,
+          sans-serif;
+        margin: 0;
+        padding: 16px;
+        background: #272822;
+        color: #f8f8f2;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 4px;
+      }
+      .muted {
+        color: #a6a28c;
+        font-size: 14px;
+      }
+      section {
+        margin: 16px 0;
+      }
+      .host {
+        border: 1px solid #49483e;
+        border-radius: 8px;
+        padding: 10px;
+        margin: 8px 0;
+      }
+      .host b {
+        word-break: break-all;
+      }
+      button,
+      input {
+        font: inherit;
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid #75715e;
+      }
+      button {
+        background: #3e3d32;
+        color: #f8f8f2;
+        margin: 4px 4px 0 0;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        background: #1e1f1c;
+        color: #f8f8f2;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-all;
+        font-size: 13px;
+        background: #1e1f1c;
+        padding: 8px;
+        border-radius: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>shub multi-host test v__VERSION__</h1>
+    <div class="muted">Installed from <span id="origin"></span></div>
+    <section>
+      <input id="pair" placeholder="Paste a pairing link (https://…/pair/…)" />
+      <button id="add">Add host</button>
+    </section>
+    <section id="hosts"></section>
+    <section>
+      <button id="push">Enable push</button>
+      <button id="update">Check for updates</button>
+    </section>
+    <pre id="log"></pre>
+    <script src="/multihost/app.js"></script>
+  </body>
+</html>

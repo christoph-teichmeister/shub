@@ -9,15 +9,12 @@ import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { publicUrl } from '../config/index.ts';
-import { allowList, refuse } from './guard.ts';
+import { allowList, peerOrigins, refuse } from './guard.ts';
 import { HttpError, readBody, Router, sendJson, type Caller, type Request } from './router.ts';
 import { installUpgrades, onUpgrade } from './upgrade.ts';
 
 const SECURITY_HEADERS: Record<string, string> = {
-  'content-security-policy':
-    "default-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' ws: wss:; " +
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; " +
-    "frame-ancestors 'none'",
+  'content-security-policy': `default-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' ws: wss: ${peerOrigins().join(' ')}; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-ancestors 'none'`,
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'same-origin',
   'x-frame-options': 'DENY',
@@ -136,6 +133,20 @@ async function handle(
   const refusal = check(raw);
   if (refusal) throw new HttpError(403, refusal);
   const method = raw.method ?? 'GET';
+  // A peer host's installed app calls us with a Bearer token (check() already refused any other foreign origin).
+  const origin = raw.headers.origin?.toLowerCase();
+  if (origin && peerOrigins().includes(origin)) {
+    res.setHeader('access-control-allow-origin', origin);
+    res.setHeader('vary', 'origin');
+    if (method === 'OPTIONS') {
+      res.writeHead(204, {
+        'access-control-allow-methods': 'GET, POST, PATCH, DELETE',
+        'access-control-allow-headers': 'authorization, content-type',
+        'access-control-max-age': '600',
+      });
+      return void res.end();
+    }
+  }
   const path = new URL(raw.url ?? '/', 'http://x').pathname;
   const found = router.match(method, path);
   if (!found) {

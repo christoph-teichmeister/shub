@@ -16,6 +16,7 @@ import * as skills from './skills/index.ts';
 import * as projects from './projects/index.ts';
 import * as plugins from './plugins/index.ts';
 import * as updates from './updates/index.ts';
+import * as spike from './spike/index.ts';
 import * as api from './api/index.ts';
 
 // Started from a git hook or another repo's tooling, GIT_DIR and friends would point every `git` call shub
@@ -44,6 +45,7 @@ use('skills', skills.create(ctx, services));
 use(null, projects.create(ctx, services));
 use('plugins', plugins.create(ctx, services));
 use(null, updates.create(ctx, services));
+use(null, spike.create(ctx, services));
 
 // The api module owns the HTTP server: auth check, routing, events WebSocket, static web app.
 const server = await api.listen(ctx, services, modules);
