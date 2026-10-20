@@ -74,7 +74,12 @@ Automatic starts share a budget of 5 per hour with all other non-user callers. F
 | `SHUB_TOKEN`       | Bearer token for this process run, revoked when it exits |
 | `SHUB_PLUGIN_NAME` | the manifest name                                        |
 
-The rest of shub's environment is inherited.
+The rest of shub's environment is inherited. Extra variables go in `config.json` under the plugin's entry, so they
+travel with a shared config; a variable already set in shub's environment wins. They apply from the plugin's next start.
+
+```json
+"plugins": [{ "name": "kb-board", "enabled": true, "grantedRights": ["read"], "env": { "KB_CARD_URL": "https://…/cards/{id}" } }]
+```
 
 ## API usage
 

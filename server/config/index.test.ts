@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ServerEvent } from '../../shared/api.ts';
@@ -78,4 +78,67 @@ test('projectView resolves auto icons from git and picks the accent', () => {
   assert.equal(store.projectView('sym')!.accent, '#a6e22e');
   assert.equal(store.projectView('orange')!.accent, DEFAULT_ACCENT);
   assert.equal(store.projectView('plain')!.resolvedIcon.kind, 'none');
+});
+
+test('paths under home are stored as ~ and expanded on read; missing folders are flagged', () => {
+  const home = tmp();
+  const cfg = join(home, 'cfg');
+  const repo = join(home, 'code', 'repo');
+  mkdirSync(repo, { recursive: true });
+  const store = new FileConfigStore(cfg, new EventBus(), home);
+  store.update((c) => {
+    c.projects.push(project('here', repo));
+    c.projects.push(project('elsewhere', join(home, 'not-cloned')));
+    c.projects.push(project('outside', '/opt/x'));
+  }, 'test');
+  const onDisk = JSON.parse(readFileSync(join(cfg, 'config.json'), 'utf8'));
+  assert.deepEqual(
+    onDisk.projects.map((p: { path: string }) => p.path),
+    ['~/code/repo', '~/not-cloned', '/opt/x'],
+  );
+  // Another machine with another home reads the same file.
+  const otherHome = tmp();
+  writeFileSync(join(otherHome, 'config.json'), JSON.stringify(onDisk));
+  const other = new FileConfigStore(otherHome, new EventBus(), otherHome);
+  assert.equal(other.project('here')?.path, join(otherHome, 'code', 'repo'));
+  assert.equal(store.projectView('here')!.missing, undefined);
+  assert.equal(store.projectView('elsewhere')!.missing, true);
+});
+
+test('local.json wins over config.json and keeps machine-only keys out of it', () => {
+  const dir = tmp();
+  writeFileSync(join(dir, 'config.json'), JSON.stringify({ activeTheme: 'dracula', defaultPermissionMode: 'plan' }));
+  writeFileSync(join(dir, 'local.json'), JSON.stringify({ defaultPermissionMode: 'acceptEdits' }));
+  const store = new FileConfigStore(dir, new EventBus());
+  assert.equal(store.get().defaultPermissionMode, 'acceptEdits');
+  store.update((c) => {
+    c.defaultPermissionMode = 'default';
+    c.updateChannel = 'beta';
+    c.activeTheme = 'monokai';
+  }, 'test');
+  const shared = JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8'));
+  const local = JSON.parse(readFileSync(join(dir, 'local.json'), 'utf8'));
+  assert.equal(shared.activeTheme, 'monokai');
+  assert.equal(shared.defaultPermissionMode, 'plan'); // untouched: this machine overrides it
+  assert.equal(shared.updateChannel, undefined);
+  assert.deepEqual(local, { defaultPermissionMode: 'default', updateChannel: 'beta' });
+});
+
+test('reload picks up outside edits, emits once, and ignores broken files', () => {
+  const dir = tmp();
+  const bus = new EventBus();
+  const events: ServerEvent['type'][] = [];
+  bus.on((e) => events.push(e.type));
+  const store = new FileConfigStore(dir, bus);
+  store.reload();
+  assert.deepEqual(events, []);
+  const file = join(dir, 'config.json');
+  const onDisk = JSON.parse(readFileSync(file, 'utf8'));
+  writeFileSync(file, JSON.stringify({ ...onDisk, groups: ['Work'] }));
+  store.reload();
+  assert.deepEqual(store.get().groups, ['Work']);
+  assert.deepEqual(events, ['config.changed', 'projects.changed']);
+  writeFileSync(file, '{ half a git merge');
+  store.reload();
+  assert.deepEqual(store.get().groups, ['Work']);
 });

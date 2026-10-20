@@ -55,14 +55,18 @@ function flags(args: string[], valued: string[]): Record<string, string | true> 
 
 const str = (v: string | true | undefined): string | undefined => (typeof v === 'string' ? v : undefined);
 
-/** The channel picked in the app's Settings (config.json); the launcher never writes that file. */
+/** The channel picked in the app's Settings (local.json, older apps config.json); the launcher never writes them. */
 function configuredChannel(): string | undefined {
   const dir = env.SHUB_CONFIG_DIR ?? join(env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'shub');
-  try {
-    return (JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8')) as { updateChannel?: string }).updateChannel;
-  } catch {
-    return undefined;
+  for (const file of ['local.json', 'config.json']) {
+    try {
+      const channel = (JSON.parse(readFileSync(join(dir, file), 'utf8')) as { updateChannel?: string }).updateChannel;
+      if (channel) return channel;
+    } catch {
+      // missing or unreadable: try the next file
+    }
   }
+  return undefined;
 }
 
 function deps(home: string): Deps {

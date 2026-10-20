@@ -1,5 +1,5 @@
 // Project, theme and settings routes on top of the config store, gated by the permission model.
-import { readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import {
@@ -341,7 +341,8 @@ function mainCheckoutUpdates(services: Services): { start(): void; stop(): void 
   const tick = () => {
     for (const p of services.config.get().projects) {
       const minutes = p.mainCheckout?.updateMinutes ?? 0;
-      if (!minutes || busy.has(p.id) || Date.now() - (last.get(p.id) ?? 0) < minutes * 60_000) continue;
+      if (!minutes || busy.has(p.id) || !existsSync(p.path) || Date.now() - (last.get(p.id) ?? 0) < minutes * 60_000)
+        continue;
       busy.add(p.id);
       last.set(p.id, Date.now());
       updateMainCheckout(p.path, p.mainCheckout!.branch)

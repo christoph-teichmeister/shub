@@ -98,7 +98,15 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
         const rights = granted(name, plugin.manifest);
         const token = services.auth.issueClientToken({ kind: 'plugin', id: `plugin:${name}`, rights });
         return {
-          vars: { SHUB_URL: `http://${ctx.host}:${ctx.port}`, SHUB_TOKEN: token, SHUB_PLUGIN_NAME: name },
+          vars: {
+            // config.json env (shared between machines) only fills what shub's own environment leaves unset.
+            ...Object.fromEntries(
+              Object.entries(entryFor(name)?.env ?? {}).filter(([k]) => process.env[k] === undefined),
+            ),
+            SHUB_URL: `http://${ctx.host}:${ctx.port}`,
+            SHUB_TOKEN: token,
+            SHUB_PLUGIN_NAME: name,
+          },
           release: () => services.auth.revokeClientToken(token),
         };
       },

@@ -60,7 +60,18 @@ set `SHUB_PUBLIC_URL` to that address. A systemd user unit example is in [deploy
 ## Configuration
 
 `~/.config/shub/config.json` holds projects, groups, buttons and themes and contains no secrets, so you can keep it in
-your dotfiles. Secrets and runtime state live in `~/.local/state/shub/`.
+your dotfiles and share it between machines:
+
+- Project paths under your home are stored as `~/...`. A project whose folder is missing on a machine shows dimmed
+  there and is never removed.
+- shub reloads the file when it changes on disk (git pull, Syncthing, an editor); a broken file keeps the last good
+  config.
+- `~/.config/shub/local.json` (keep it out of your dotfiles) holds what stays on one machine; its keys win over
+  `config.json`. The update channel always goes there; put any other key there (e.g. `"defaultPermissionMode"`) to make
+  it machine-only.
+- The systemd unit written by `shub service install` is machine-specific (absolute paths); keep it out of your dotfiles.
+
+Secrets and runtime state live in `~/.local/state/shub/`.
 
 ## Security
 

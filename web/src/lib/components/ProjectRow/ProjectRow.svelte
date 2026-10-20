@@ -41,6 +41,8 @@
   <div
     class="row"
     class:selected
+    class:missing={project.missing}
+    title={project.missing ? `Not on this machine: ${project.path}` : undefined}
     class:over
     draggable={ondragstart ? 'true' : undefined}
     role="group"
@@ -57,7 +59,9 @@
     </a>
     {#if badge}<span class="badge"><StatusBadge text={badge.text} tone={badge.tone} /></span>{/if}
     <span class="actions">
-      <IconButton label="New session in {project.name}" icon="plus" onclick={onnewsession} />
+      {#if !project.missing}
+        <IconButton label="New session in {project.name}" icon="plus" onclick={onnewsession} />
+      {/if}
       <IconButton label="Project settings for {project.name}" icon="gear" href={settingsHref} variant="filled" />
     </span>
   </div>
@@ -107,6 +111,10 @@
     padding: var(--space-1-5) 0;
     color: inherit;
     text-decoration: none;
+  }
+
+  .missing .link {
+    opacity: 0.5;
   }
 
   .name {
