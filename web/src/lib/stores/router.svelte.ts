@@ -1,6 +1,6 @@
 // Hash router: #/, #/g, #/p/<projectId>[/<sessionId>], #/styleguide, #/login, #/settings/...
 // Plus one path route: /pair/<code> (the phone opens the QR link; the server serves index.html for it).
-// Settings: #/settings, #/settings/project/<id|new>, #/settings/theme/<id|new>, #/settings/import.
+// Settings: #/settings[/<area>], #/settings/project/<id|new>, #/settings/theme/<id|new>, #/settings/import.
 export type Route =
   | { name: 'home' }
   | { name: 'login' }
