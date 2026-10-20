@@ -3,7 +3,8 @@
 // Payload facts (Claude Code 2.1.303, checked with a real `claude -p` run plus the CLI's bundled zod schema).
 // Every event carries: session_id, transcript_path, cwd, hook_event_name, and mostly permission_mode, prompt_id.
 //   UserPromptSubmit: { prompt, source?: 'user'|'sdk'|'system'|... }
-//   Stop:             { stop_hook_active, last_assistant_message, background_tasks, ... }
+//   Stop:             { stop_hook_active, last_assistant_message, background_tasks, ... }  the message is
+//                     raw Markdown, so code fences survive (the terminal render drops them).
 //   Notification:     { message, title?, notification_type }  types seen in the CLI: permission_prompt,
 //                     idle_prompt, elicitation_dialog, auth_success
 //   PermissionRequest:{ tool_name, tool_input, permission_suggestions?, mcp_server? }
@@ -13,6 +14,7 @@
 //   SessionStart:     { source: 'startup'|'resume'|'clear'|'compact' }  no status meaning, but /clear (and
 //                     compact, or a fresh start) can bring a new session_id: see newClaudeSessionId.
 import type { Session, SessionStatus } from '../../shared/api.ts';
+import { RUN_MARKER } from '../sessions/launch.ts';
 
 export const HOOK_EVENTS = [
   'UserPromptSubmit',
@@ -28,6 +30,8 @@ export interface Transition {
   status: SessionStatus;
   /** undefined = leave as is. */
   pendingPermission?: Session['pendingPermission'];
+  /** undefined = leave as is. */
+  pendingCommands?: Session['pendingCommands'];
   notify?: { kind: 'yourTurn' } | { kind: 'needsYou'; text: string };
   /** The turn ended but background work still runs; shub falls back to your-turn if nothing follows. */
   background?: true;
@@ -95,6 +99,22 @@ function backgroundWork(tasks: unknown): 'none' | 'ending' | 'open' {
   return awaited.every((t) => ENDING_TASKS.has(String(t?.type))) ? 'ending' : 'open';
 }
 
+const FENCE = /^```([^\n]*)\n([\s\S]*?)^```[ \t]*$/gm;
+const COMMANDS_MAX = 5;
+
+/**
+ * Shell commands Claude hands over in its last message: only fenced blocks whose info string carries RUN_MARKER
+ * (shub's sessions are told so at launch), so examples and commands Claude ran stay quiet. A leading "$ " goes.
+ */
+export function handedOverCommands(message: unknown): string[] {
+  if (typeof message !== 'string') return [];
+  return [...message.matchAll(FENCE)]
+    .filter((m) => m[1].trim().split(/\s+/).includes(RUN_MARKER))
+    .map((m) => m[2].replace(/^\$ /gm, '').trim())
+    .filter(Boolean)
+    .slice(0, COMMANDS_MAX);
+}
+
 const NEW_ID_SOURCES = new Set(['clear', 'compact', 'startup']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -114,15 +134,26 @@ export function transition(
 ): Transition | null {
   switch (event) {
     case 'UserPromptSubmit':
-      return { status: 'working', pendingPermission: null };
+      return { status: 'working', pendingPermission: null, pendingCommands: null };
     case 'Stop': {
       // A background shell or agent still runs and wakes Claude when it ends: the turn is not over.
       // Servers and watchers never end, so they do not count; other shells get the fallback timer.
       const work = backgroundWork(payload.background_tasks);
       if (work === 'ending') return { status: 'working', pendingPermission: null };
       if (work === 'open') return { status: 'working', pendingPermission: null, background: true };
-      if (waiting) return { status: 'waiting', pendingPermission: null };
-      return { status: 'your-turn', pendingPermission: null, notify: { kind: 'yourTurn' } };
+      const commands = handedOverCommands(payload.last_assistant_message);
+      if (commands.length) {
+        // Commands win over a wait: they need the user now.
+        const more = commands.length > 1 ? ` (+${commands.length - 1} more)` : '';
+        return {
+          status: 'needs-you',
+          pendingPermission: null,
+          pendingCommands: commands,
+          notify: { kind: 'needsYou', text: `Run: ${truncate(commands[0])}${more}` },
+        };
+      }
+      if (waiting) return { status: 'waiting', pendingPermission: null, pendingCommands: null };
+      return { status: 'your-turn', pendingPermission: null, pendingCommands: null, notify: { kind: 'yourTurn' } };
     }
     case 'PermissionRequest': {
       const tool = String(payload.tool_name ?? 'tool');
@@ -149,7 +180,7 @@ export function transition(
       return { status: 'needs-you', notify: { kind: 'needsYou', text: message || 'Claude needs you' } };
     }
     case 'PostToolUse':
-      return current === 'needs-you' ? { status: 'working', pendingPermission: null } : null;
+      return current === 'needs-you' ? { status: 'working', pendingPermission: null, pendingCommands: null } : null;
     case 'SessionStart':
       return null;
   }

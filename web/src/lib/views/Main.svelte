@@ -13,6 +13,7 @@
   import BottomPanel from '../components/BottomPanel/BottomPanel.svelte';
   import Button from '../components/Button/Button.svelte';
   import Checkbox from '../components/Checkbox/Checkbox.svelte';
+  import CommandChip from '../components/CommandChip/CommandChip.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
   import Drawer from '../components/Drawer/Drawer.svelte';
   import EmptyState from '../components/EmptyState/EmptyState.svelte';
@@ -177,13 +178,7 @@
   }
 
   /** What a folded group still shows: who needs you, else what is working. */
-  function groupBadge(projects: ProjectView[]) {
-    const list = projects.flatMap((p) => sessionsOf(p.id));
-    const waiting = list.filter((s) => s.status === 'needs-you').length;
-    if (waiting) return { text: `${waiting} needs you`, tone: 'needs-you' as const };
-    const working = list.filter((s) => s.status === 'working').length;
-    return working ? { text: `${working} working`, tone: 'working' as const } : null;
-  }
+  const groupBadge = (projects: ProjectView[]) => projectBadge(projects.flatMap((p) => sessionsOf(p.id)));
   const dormantCount = $derived(app.projects.filter((p) => p.visibility === 'dormant').length);
   const pluginSections = $derived(
     app.plugins
@@ -275,6 +270,7 @@
       panelOpen = true;
       panelTab = s.id;
     }
+    return s?.id;
   }
 
   /** The prompt a button will run, as shown before starting it. */
@@ -707,7 +703,7 @@
         {#each groups as group (group.name)}
           <hr class="rail-group" title={group.name} />
           {#each group.projects as p (p.id)}
-            {@const badge = projectBadge(sessionsOf(p.id).map((s) => s.status))}
+            {@const badge = projectBadge(sessionsOf(p.id))}
             <a
               class="rail-item"
               class:selected={p.id === project?.id}
@@ -818,6 +814,7 @@
       {#key active.id}
         <TerminalView sessionId={active.id} accent={project.accent} label={active.name} focused={!ui.drawer} />
       {/key}
+      <CommandChip session={active} onterminal={newShell} />
     {:else}
       <EmptyState
         title={sessions.length ? 'All tabs hidden' : 'No session yet'}

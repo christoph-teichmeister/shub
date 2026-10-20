@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newClaudeSessionId, summarizeTool, transition } from './transition.ts';
+import { handedOverCommands, newClaudeSessionId, summarizeTool, transition } from './transition.ts';
 
 test('prompt submit means working and clears a pending question', () => {
   assert.deepEqual(transition('your-turn', 'UserPromptSubmit', { prompt: 'hi' }), {
     status: 'working',
     pendingPermission: null,
+    pendingCommands: null,
   });
 });
 
@@ -77,7 +78,11 @@ test('notification: permission prompt needs you, but no second push after a perm
 
 test('a tool that ran after a permission question means working again', () => {
   const p = { tool_name: 'Bash', tool_input: { command: 'ls' }, tool_response: {} };
-  assert.deepEqual(transition('needs-you', 'PostToolUse', p), { status: 'working', pendingPermission: null });
+  assert.deepEqual(transition('needs-you', 'PostToolUse', p), {
+    status: 'working',
+    pendingPermission: null,
+    pendingCommands: null,
+  });
   assert.equal(transition('working', 'PostToolUse', p), null);
   assert.equal(transition('your-turn', 'PostToolUse', p), null);
 });
@@ -102,8 +107,40 @@ test('SessionStart: /clear, compact and startup bring a new Claude session id, r
 
 test('a waiting session parks again after a turn and ignores the idle reminder', () => {
   assert.equal(transition('waiting', 'UserPromptSubmit', { prompt: 'check the MR' }, true)?.status, 'working');
-  assert.deepEqual(transition('working', 'Stop', {}, true), { status: 'waiting', pendingPermission: null });
+  assert.deepEqual(transition('working', 'Stop', {}, true), {
+    status: 'waiting',
+    pendingPermission: null,
+    pendingCommands: null,
+  });
   assert.equal(transition('waiting', 'Notification', { notification_type: 'idle_prompt' }, true), null);
   const ask = transition('working', 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'ls' } }, true);
   assert.equal(ask?.status, 'needs-you');
+});
+
+const HANDOVER = [
+  'Changing git state in ~, so please run this yourself:',
+  '',
+  '```bash shub-run',
+  '$ cd ~ && git pull',
+  '```',
+  '',
+  'Also:',
+  '',
+  '```shub-run',
+  'sudo systemctl restart x',
+  '```',
+].join('\n');
+
+test('stop with commands to run means needs you, with the commands', () => {
+  const t = transition('working', 'Stop', { last_assistant_message: HANDOVER });
+  assert.equal(t?.status, 'needs-you');
+  assert.deepEqual(t?.pendingCommands, ['cd ~ && git pull', 'sudo systemctl restart x']);
+  assert.deepEqual(t?.notify, { kind: 'needsYou', text: 'Run: cd ~ && git pull (+1 more)' });
+});
+
+test('only blocks marked shub-run count', () => {
+  assert.deepEqual(handedOverCommands('Please run this yourself:\n\n```bash\nnpm test\n```\n'), []);
+  const mixed = '```python\nprint(1)\n```\ntext\n```bash\nls\n```\n```bash shub-run\nmake\n```\n';
+  assert.deepEqual(handedOverCommands(mixed), ['make']);
+  assert.deepEqual(handedOverCommands(undefined), []);
 });

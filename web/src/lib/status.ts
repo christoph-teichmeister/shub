@@ -10,11 +10,24 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
   exited: 'exited',
 };
 
-/** Sidebar badge for a project: needs-you wins, then working; nothing when idle. */
-export function projectBadge(statuses: SessionStatus[]): { text: string; tone: 'needs-you' | 'working' } | null {
-  const needs = statuses.filter((s) => s === 'needs-you').length;
-  if (needs) return { text: `${needs} ${needs === 1 ? 'needs' : 'need'} you`, tone: 'needs-you' };
-  const working = statuses.filter((s) => s === 'working').length;
+const commandCount = (n: number) => `${n} ${n === 1 ? 'command' : 'commands'}`;
+
+/** Status text of one session: a needs-you that waits for commands Claude handed over says so. */
+export const statusLabel = (s: Session): string =>
+  s.status === 'needs-you' && s.pendingCommands?.length
+    ? `▶ ${commandCount(s.pendingCommands.length)}`
+    : STATUS_LABEL[s.status];
+
+/** Sidebar badge for projects and groups: needs-you wins (commands only, if that is all it is), then working. */
+export function projectBadge(sessions: Session[]): { text: string; tone: 'needs-you' | 'working' } | null {
+  const needs = sessions.filter((s) => s.status === 'needs-you');
+  if (needs.length) {
+    const text = needs.every((s) => s.pendingCommands?.length)
+      ? commandCount(needs.length)
+      : `${needs.length} ${needs.length === 1 ? 'needs' : 'need'} you`;
+    return { text, tone: 'needs-you' };
+  }
+  const working = sessions.filter((s) => s.status === 'working').length;
   return working ? { text: `${working} working`, tone: 'working' } : null;
 }
 

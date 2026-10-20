@@ -145,6 +145,15 @@ function routes(sessions: SessionsService, services: Services, router: Router): 
     requireUser(req.caller);
     return sessions.resume(req.params.id, req.caller.id);
   });
+  router.add(ROUTES.sessionCommand, async (req) => {
+    requireUser(req.caller);
+    const { index, action, enter } = await req.json<{ index?: unknown; action?: unknown; enter?: unknown }>();
+    if (typeof index !== 'number' || (action !== 'run' && action !== 'dismiss')) {
+      throw new HttpError(400, "index: number, action: 'run' | 'dismiss'");
+    }
+    sessions.answerCommand(req.params.id, index, action, enter === true);
+    return { ok: true };
+  });
   router.add(ROUTES.sessionKeys, async (req) => {
     requireUser(req.caller);
     const { keys } = await req.json<{ keys?: unknown }>();
