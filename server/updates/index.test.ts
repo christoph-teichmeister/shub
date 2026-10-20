@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer, type ServerResponse } from 'node:http';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -51,6 +52,7 @@ function setup(withLauncher: boolean, extraEnv: NodeJS.ProcessEnv = {}) {
   const env = {
     ...(withLauncher && { SHUB_LAUNCHER: join(root, 'launcher.mjs') }),
     SHUB_HOME: home,
+    SHUB_RELEASE_FEED: '',
     FAKE_OUT: out,
     ...extraEnv,
   };
@@ -98,7 +100,7 @@ test('from a git checkout the updates are read-only', async () => {
   await assert.rejects(call('GET /api/updates', session), HttpError);
 });
 
-test('hourly check through the launcher, cached per version and channel', async () => {
+test('periodic check through the launcher, cached per version and channel', async () => {
   const { module, call, events, services } = setup(true);
   module.start!();
   await changed(events);
@@ -117,6 +119,33 @@ test('hourly check through the launcher, cached per version and channel', async 
   await changed(events, 2);
   assert.equal((await call('GET /api/updates', user)).latest, '2026.11.0-beta.1');
   module.stop!();
+});
+
+test('a message on the release feed starts a check right away', async () => {
+  let stream: ServerResponse | undefined;
+  const feed = createServer((_req, res) => {
+    res.write('{"event":"open"}\n');
+    stream = res;
+  });
+  await new Promise<void>((r) => feed.listen(0, '127.0.0.1', r));
+  const { port } = feed.address() as { port: number };
+  const { module, events, services } = setup(true, { SHUB_RELEASE_FEED: `http://127.0.0.1:${port}/json` });
+  try {
+    module.start!();
+    await changed(events);
+    for (let i = 0; i < 100 && !stream; i++) await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(events.filter((e) => e.type === 'updates.changed').length, 1, 'connect right after a check: no 2nd');
+
+    services.state.db.prepare("UPDATE update_check SET checked_at = '2000-01-01T00:00:00Z'").run();
+    stream!.write('{"event":"keepalive"}\n{"event":"message","message":"2026.10.1"}\n');
+    await changed(events, 2);
+    assert.equal(events.filter((e) => e.type === 'updates.changed').length, 2);
+  } finally {
+    module.stop!();
+    feed.closeAllConnections();
+    feed.close();
+  }
 });
 
 test('install and rollback start the launcher, only for the browser user', async () => {

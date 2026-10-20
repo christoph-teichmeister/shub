@@ -102,11 +102,16 @@ export const loadApprovals = async () => (app.approvals = (await guard(api<Appro
 export const loadPlugins = async () => (app.plugins = (await guard(api<PluginInfo[]>('plugins'))) ?? app.plugins);
 /** The server version this page's code came with; another one means an update ran, so reload to get its frontend. */
 let loadedVersion: string | undefined;
+let announced: string | undefined;
 export async function loadUpdate(): Promise<void> {
   app.update = (await guard(api<UpdateStatus>('updates'))) ?? app.update;
   const current = app.update?.current;
   loadedVersion ??= current;
   if (current && current !== loadedVersion) location.reload();
+  const latest = app.update?.mode === 'ask' ? app.update.latest : undefined;
+  if (latest && latest !== announced)
+    toast(`shub ${latest} is available. Install it in Settings > Updates.`, 'needs-you', 15_000);
+  announced = latest ?? announced;
 }
 
 export async function loadAll(): Promise<void> {

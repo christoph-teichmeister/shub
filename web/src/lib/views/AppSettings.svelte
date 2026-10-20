@@ -408,7 +408,7 @@
             />
             <SelectField
               label="New versions"
-              hint="shub checks every hour unless off. Automatic installs restart shub; sessions keep running."
+              hint="shub checks as soon as a release is out, unless off. Automatic installs restart shub; sessions keep running."
               bind:value={() => update.mode, (v) => setMode(v)}
               options={UPDATE_MODES}
             />

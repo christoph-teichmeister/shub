@@ -1,11 +1,12 @@
 // Updates for shub installed with the launcher (launcher/). The launcher does the real work: download, signature
-// check, version switch, service restart and the automatic rollback. This module asks it every hour whether a
-// newer release exists (cached in sqlite), shows the launcher's last result and starts an install when the user
+// check, version switch, service restart and the automatic rollback. This module asks it whether a newer release
+// exists (cached in sqlite) as soon as the release workflow posts to the ntfy topic below, and every 6 hours as backup, shows the launcher's last result and starts an install when the user
 // clicks, or right after the check in mode "auto". Started from a git checkout (no SHUB_LAUNCHER in the environment) everything here is read-only.
 import { execFile, spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { ROUTES, type UpdateChannel, type UpdateMode, type UpdateStatus } from '../../shared/api.ts';
 import { appVersion } from '../api/index.ts';
@@ -14,7 +15,11 @@ import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 
-const HOUR = 60 * 60 * 1000;
+const EVERY = 6 * 60 * 60 * 1000;
+/** The release workflow posts each new version here. Anyone can post, so a message only starts a check (at most
+ * one a minute); what gets installed still comes from GitHub and must pass the signature check. */
+const FEED = 'https://ntfy.sh/christoph-teichmeister-shub-releases/json';
+const MIN_GAP = 60_000;
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const run = promisify(execFile);
 
@@ -127,7 +132,45 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
     closeSync(log);
   }
 
+  /** Checks now unless a check ran in the last minute. */
+  const nudge = (): void => {
+    const row = cached();
+    if (mode() !== 'off' && !(row && Date.parse(row.checked_at) > Date.now() - MIN_GAP)) void check();
+  };
+
+  /** Keeps a stream to the ntfy topic open; a connect (it may have missed one) or a message nudges a check. */
+  async function listen(url: string, signal: AbortSignal): Promise<void> {
+    let delay = 5_000;
+    while (!signal.aborted) {
+      // ntfy sends a keepalive every 45 s; silence for 2 minutes means the connection is dead.
+      const idle = new AbortController();
+      const timeout = setTimeout(() => idle.abort(), 120_000);
+      try {
+        const res = await fetch(url, { signal: AbortSignal.any([signal, idle.signal]) });
+        if (!res.ok || !res.body) throw new Error(`ntfy answered ${res.status}`);
+        let buf = '';
+        for await (const chunk of res.body.pipeThrough(new TextDecoderStream())) {
+          timeout.refresh();
+          const lines = (buf + chunk).split('\n');
+          buf = lines.pop()!;
+          for (const line of lines) {
+            const { event } = JSON.parse(line || '{}') as { event?: string };
+            if (event === 'open') delay = 5_000;
+            if (event === 'open' || event === 'message') nudge();
+          }
+        }
+      } catch {
+        // offline or ntfy down: the backup check still runs, try again later
+      } finally {
+        clearTimeout(timeout);
+      }
+      await sleep(delay, undefined, { signal }).catch(() => {});
+      delay = Math.min(delay * 2, 10 * 60_000);
+    }
+  }
+
   let timer: ReturnType<typeof setInterval> | undefined;
+  const feed = new AbortController();
   return {
     module: {
       name: 'updates',
@@ -181,12 +224,15 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
       start() {
         if (!launcher) return;
         const row = cached();
-        if (mode() !== 'off' && (!row || Date.parse(row.checked_at) < Date.now() - HOUR)) void check();
-        timer = setInterval(() => mode() !== 'off' && void check(), HOUR);
+        if (mode() !== 'off' && (!row || Date.parse(row.checked_at) < Date.now() - EVERY)) void check();
+        timer = setInterval(() => mode() !== 'off' && void check(), EVERY);
         timer.unref();
+        const url = env.SHUB_RELEASE_FEED ?? FEED;
+        if (url) void listen(url, feed.signal);
       },
       stop() {
         clearInterval(timer);
+        feed.abort();
       },
     },
   };
