@@ -21,7 +21,7 @@ function setup() {
   // The "plugin" prints its env and then stays alive.
   writeFileSync(
     join(dir, 'p.mjs'),
-    'console.log("hi", process.env.SHUB_PLUGIN_NAME, process.env.SHUB_TOKEN); setInterval(() => {}, 1000);',
+    'console.log("hi", process.env.SHUB_PLUGIN_NAME, process.env.SHUB_TOKEN, process.env.DEMO_URL, process.env.HOME); setInterval(() => {}, 1000);',
   );
   writeFileSync(
     join(dir, 'shub-plugin.json'),
@@ -122,6 +122,19 @@ test('plugin lifecycle: listed disabled, enabled with grants, sections, actions,
   assert.equal(list[0].running, false);
   assert.equal(list[0].sections[0].content, null);
   await waitFor(() => tokens.size === 0);
+  await module.stop!();
+});
+
+test('config env reaches the plugin but never overrides the inherited environment', async () => {
+  const { module, call, config } = setup();
+  config.plugins = [
+    { name: 'demo', enabled: true, grantedRights: [], env: { DEMO_URL: 'https://x/{id}', HOME: '/nope' } },
+  ];
+  await module.start!();
+  const logs = async () => ((await call('GET /api/plugins/demo/logs', user)) as { lines: string[] }).lines.join('\n');
+  for (let i = 0; i < 100 && !(await logs()).includes('https://x/{id}'); i++)
+    await new Promise((r) => setTimeout(r, 20));
+  assert.match(await logs(), new RegExp(`https://x/\\{id\\} ${process.env.HOME}`));
   await module.stop!();
 });
 

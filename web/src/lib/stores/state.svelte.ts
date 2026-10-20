@@ -88,10 +88,13 @@ function themeFromConfig(): void {
   app.themeVersion++;
 }
 
+let shownProblem: string | undefined;
 export async function loadConfig(): Promise<void> {
   const config = await guard(api<Config>('config'));
   if (config) app.config = config;
   themeFromConfig();
+  if (config?.problem && config.problem !== shownProblem) toast(config.problem, 'error', 15_000);
+  shownProblem = config?.problem;
 }
 export const loadProjects = async () => (app.projects = (await guard(api<ProjectView[]>('projects'))) ?? app.projects);
 export const loadSessions = async () => (app.sessions = (await guard(api<Session[]>('sessions'))) ?? app.sessions);

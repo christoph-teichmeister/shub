@@ -15,4 +15,4 @@ A project in the sidebar: icon, name, status badge. Right-click opens the projec
 | `onmenu`       | `(e: MouseEvent) => void` | Right-click: project menu       |
 | `children`     | snippet                   | `SessionRow`s under the project |
 
-States: idle, selected, needs-you badge, working badge, hover (buttons), drag-over.
+States: idle, selected, needs-you badge, working badge, hover (buttons), drag-over, missing (`project.missing`: the folder is not on this machine; dimmed, path as tooltip, no "+ new session").

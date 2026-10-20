@@ -61,6 +61,8 @@ export interface ProjectView extends Project {
   resolvedIcon: ResolvedIcon;
   /** Underscore / cursor colour; project colour, default pink for auto icons. Never the status orange. */
   accent: string;
+  /** The folder does not exist on this machine (config.json is shared between machines). */
+  missing?: boolean;
 }
 
 export interface ThemeDef {
@@ -84,11 +86,20 @@ export interface Config {
     pushYourTurn: boolean;
     noPushWhileDesktopFocused: boolean;
   };
-  plugins: { name: string; enabled: boolean; grantedRights: Right[] }[];
+  plugins: {
+    name: string;
+    enabled: boolean;
+    grantedRights: Right[];
+    /** Extra environment for the plugin process, e.g. KB_CARD_URL. shub's own environment wins. */
+    env?: Record<string, string>;
+  }[];
   /** Mode for sessions the user starts and the global Claude; a button's own mode wins. Default: "default". */
   defaultPermissionMode: LaunchPermissionMode;
   /** Release channel for updates. Absent: "beta" while a beta runs, else "stable". */
   updateChannel?: UpdateChannel;
+  /** Never stored: why config.json or local.json could not be read. shub then runs on the last good config and
+   *  refuses changes until the file is fixed (it reloads on save). */
+  problem?: string;
 }
 
 // ---------- sessions ----------
