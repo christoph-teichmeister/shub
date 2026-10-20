@@ -12,8 +12,16 @@
     closing?: boolean;
     /** Right-click or the hover menu button; `at` is where the menu opens. */
     onmenu?: (at: { x: number; y: number }) => void;
+    /** Drag and drop to reorder; `after` when dropped on the lower half. */
+    ondragstart?: (e: DragEvent) => void;
+    ondrop?: (after: boolean) => void;
   }
-  let { session, href, selected = false, closing = false, onmenu }: Props = $props();
+  let { session, href, selected = false, closing = false, onmenu, ondragstart, ondrop }: Props = $props();
+  let over = $state<'before' | 'after' | null>(null);
+  const half = (e: DragEvent) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return e.clientY > r.top + r.height / 2 ? 'after' : 'before';
+  };
 </script>
 
 <div
@@ -22,6 +30,15 @@
   class:closing
   inert={closing}
   role="presentation"
+  draggable={ondragstart ? 'true' : undefined}
+  {ondragstart}
+  ondragover={ondrop ? (e) => (e.preventDefault(), e.stopPropagation(), (over = half(e))) : undefined}
+  ondragleave={() => (over = null)}
+  ondrop={ondrop
+    ? (e) => (e.preventDefault(), e.stopPropagation(), (over = null), ondrop(half(e) === 'after'))
+    : undefined}
+  class:over-before={over === 'before'}
+  class:over-after={over === 'after'}
   oncontextmenu={onmenu ? (e) => (e.preventDefault(), onmenu({ x: e.clientX, y: e.clientY })) : undefined}
 >
   <a class="link" {href} aria-current={selected ? 'page' : undefined} title={waitTitle(session)}>
@@ -65,6 +82,14 @@
     padding: var(--space-1) var(--space-1-5) var(--space-1) var(--space-2-5);
     color: inherit;
     text-decoration: none;
+  }
+
+  .over-before {
+    box-shadow: inset 0 var(--ring) 0 var(--primary);
+  }
+
+  .over-after {
+    box-shadow: inset 0 calc(-1 * var(--ring)) 0 var(--primary);
   }
 
   .closing {

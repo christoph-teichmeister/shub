@@ -547,3 +547,20 @@ test('a tab menu parks the session with a background check', async ({ page }) =>
   });
   expect(errors).toEqual([]);
 });
+
+test('sessions: sidebar sorts by status, a dragged tab keeps its place in both lists', async ({ page }) => {
+  const paused: Session = { ...session, id: 's2', name: 'Paused one', status: 'paused' };
+  const working: Session = { ...session, id: 's3', name: 'Working one', status: 'working' };
+  const { errors, calls } = await mockApi(page, { '/api/sessions': [session, paused, working] });
+  await page.goto('/#/p/ai-portal/s1');
+  const tabs = page.getByRole('tab');
+  const rows = page.getByRole('region', { name: 'Work' }).getByRole('link', { name: /one|review/ });
+  await expect(tabs).toHaveText(['MR 2136 review', 'Paused one', 'Working one']);
+  await expect(rows).toHaveText([/MR 2136 review/, /Working one/, /Paused one/]);
+
+  await tabs.nth(2).dragTo(tabs.nth(0), { targetPosition: { x: 4, y: 8 } });
+  await expect(tabs).toHaveText(['Working one', 'MR 2136 review', 'Paused one']);
+  await expect(rows).toHaveText([/Working one/, /MR 2136 review/, /Paused one/]);
+  expect(calls.find((c) => c.path === '/api/sessions/reorder')?.body).toEqual({ positions: { s3: 0 } });
+  expect(errors).toEqual([]);
+});

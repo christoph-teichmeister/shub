@@ -30,7 +30,7 @@
   import SplitView from '../components/SplitView/SplitView.svelte';
   import StatusBadge from '../components/StatusBadge/StatusBadge.svelte';
   import StatusDot from '../components/StatusDot/StatusDot.svelte';
-  import { projectBadge } from '../status.ts';
+  import { dropPositions, placeSessions, projectBadge } from '../status.ts';
   import TabBar from '../components/TabBar/TabBar.svelte';
   import TerminalView from '../components/TerminalView/TerminalView.svelte';
   import TextField from '../components/TextField/TextField.svelte';
@@ -59,7 +59,7 @@
   const project = $derived<ProjectView | null>(
     route.name === 'project' ? (app.projects.find((p) => p.id === route.projectId) ?? null) : null,
   );
-  const sessions = $derived(project ? sessionsOf(project.id) : []);
+  const sessions = $derived(project ? placeSessions(sessionsOf(project.id), false) : []);
   const tabs = $derived(sessions.filter((s) => !hiddenTabs.includes(s.id)));
   const active = $derived<Session | null>(
     (route.name === 'project' && sessions.find((s) => s.id === route.sessionId)) || tabs[0] || null,
@@ -469,6 +469,23 @@
     })();
   }
 
+  let dragSession: string | null = null;
+  /** Drop the dragged session next to `target` in `list` (the project's sessions in tab or sidebar order). */
+  function dropSession(list: Session[], target: Session, after: boolean) {
+    const id = dragSession;
+    dragSession = null;
+    if (!id || !list.some((s) => s.id === id)) return; // another project's session
+    const i = list.indexOf(target) + (after ? 1 : 0);
+    const positions = dropPositions(list, id, list[i]?.id ?? null);
+    if (!Object.keys(positions).length) return;
+    for (const s of list) if (s.id in positions) s.position = positions[s.id];
+    void api('sessionsReorder', { body: { positions } }).catch(toastError);
+  }
+  const dragSessionStart = (s: Session) => (e: DragEvent) => {
+    dragSession = s.id;
+    e.dataTransfer?.setData('text/plain', s.name);
+  };
+
   // ---------- shortcuts: Alt only, never Ctrl ----------
   function nextNeedsYou() {
     const list = app.sessions.filter((s) => s.status === 'needs-you');
@@ -601,7 +618,7 @@
           entries={activeProjects.length ? undefined : []}
         >
           {#each activeProjects as p (p.id)}
-            {@const list = sessionsOf(p.id)}
+            {@const list = placeSessions(sessionsOf(p.id), true)}
             {@const g = grace(p.id)}
             <div style:opacity={g?.opacity}>
               <ProjectRow
@@ -621,6 +638,8 @@
                     selected={s.id === active?.id}
                     closing={app.closing[s.id]}
                     onmenu={(at) => (menu = { session: s, ...at })}
+                    ondragstart={dragSessionStart(s)}
+                    ondrop={(after) => dropSession(list, s, after)}
                   />
                 {/each}
               </ProjectRow>
@@ -636,7 +655,7 @@
           ondrop={() => dropProject(group.name, null)}
         >
           {#each group.projects as p (p.id)}
-            {@const list = sessionsOf(p.id)}
+            {@const list = placeSessions(sessionsOf(p.id), true)}
             <ProjectRow
               project={p}
               sessions={list}
@@ -658,6 +677,8 @@
                   selected={s.id === active?.id}
                   closing={app.closing[s.id]}
                   onmenu={(at) => (menu = { session: s, ...at })}
+                  ondragstart={dragSessionStart(s)}
+                  ondrop={(after) => dropSession(list, s, after)}
                 />
               {/each}
             </ProjectRow>
@@ -776,6 +797,8 @@
             onrename={(name) => rename(s, name)}
             onhide={() => hideTab(s)}
             onmenu={(at) => (menu = { session: s, ...at })}
+            ondragstart={dragSessionStart(s)}
+            ondrop={(after) => dropSession(sessions, s, after)}
           />
         {/each}
         {#snippet trailing()}

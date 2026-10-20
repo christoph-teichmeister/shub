@@ -154,6 +154,8 @@ export interface Session {
   waitingFor?: string | null;
   /** Background check while waiting: a small model reads (never writes) whether it happened, every few minutes. */
   waitCheck?: WaitCheck | null;
+  /** Place in its project's list the user dragged it to; null follows the default order. */
+  position?: number | null;
 }
 
 export interface WaitCheck {
@@ -426,6 +428,7 @@ export const ROUTES = {
   sessions: 'GET /api/sessions',
   sessionStart: 'POST /api/sessions', // StartSessionRequest -> Session | { approval: Approval }
   sessionUpdate: 'PATCH /api/sessions/:id', // { name } rename, { waitingFor: string | null, waitCheck?, waitEveryMinutes? } wait / stop
+  sessionsReorder: 'POST /api/sessions/reorder', // { positions: { [id]: number | null } } -> Session[], user only
   sessionClose: 'DELETE /api/sessions/:id',
   sessionPause: 'POST /api/sessions/:id/pause',
   sessionResume: 'POST /api/sessions/:id/resume',

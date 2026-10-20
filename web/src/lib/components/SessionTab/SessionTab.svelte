@@ -17,6 +17,9 @@
     onhide?: () => void;
     /** Right-click or the tab's menu button; `at` is where the menu opens. */
     onmenu?: (at: { x: number; y: number }) => void;
+    /** Drag and drop to reorder; `after` when dropped on the right half. */
+    ondragstart?: (e: DragEvent) => void;
+    ondrop?: (after: boolean) => void;
   }
   let {
     session,
@@ -27,7 +30,14 @@
     onrename,
     onhide,
     onmenu,
+    ondragstart,
+    ondrop,
   }: Props = $props();
+  let over = $state<'before' | 'after' | null>(null);
+  const half = (e: DragEvent) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return e.clientX > r.left + r.width / 2 ? 'after' : 'before';
+  };
 
   const skipsPrompts = $derived(PROMPT_SKIPPING_MODES.includes(session.permissionMode as PermissionMode));
 
@@ -56,6 +66,13 @@
   class:closing
   inert={closing}
   role="presentation"
+  draggable={ondragstart && !renaming ? 'true' : undefined}
+  {ondragstart}
+  ondragover={ondrop ? (e) => (e.preventDefault(), (over = half(e))) : undefined}
+  ondragleave={() => (over = null)}
+  ondrop={ondrop ? (e) => (e.preventDefault(), (over = null), ondrop(half(e) === 'after')) : undefined}
+  class:over-before={over === 'before'}
+  class:over-after={over === 'after'}
   oncontextmenu={onmenu ? (e) => (e.preventDefault(), onmenu({ x: e.clientX, y: e.clientY })) : undefined}
 >
   <StatusDot status={session.status} />
@@ -198,6 +215,14 @@
 
   .reveal {
     visibility: hidden;
+  }
+
+  .over-before {
+    box-shadow: inset var(--ring) 0 0 var(--primary);
+  }
+
+  .over-after {
+    box-shadow: inset calc(-1 * var(--ring)) 0 0 var(--primary);
   }
 
   .closing {
