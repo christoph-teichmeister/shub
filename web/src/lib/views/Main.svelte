@@ -872,6 +872,13 @@
     text-decoration: none;
   }
 
+  .user:hover,
+  .user:focus-visible {
+    outline: var(--hairline) solid var(--line);
+    background: var(--raised);
+    color: var(--fg);
+  }
+
   .avatar {
     position: relative;
     display: inline-flex;
