@@ -22,8 +22,11 @@
   const id = `drawer-${Math.random().toString(36).slice(2, 8)}`;
   let aside = $state<HTMLElement>();
   // Same timing as the sidebar fold; the token is 0ms under prefers-reduced-motion.
-  const duration = () =>
-    parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--duration-base')) || 0;
+  // The CSS minifier rewrites 200ms as .2s, so read the unit too.
+  const duration = () => {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--duration-base').trim();
+    return (parseFloat(v) || 0) * (v.endsWith('ms') ? 1 : 1000);
+  };
 </script>
 
 <svelte:window
