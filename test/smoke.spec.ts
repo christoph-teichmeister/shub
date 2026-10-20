@@ -395,6 +395,21 @@ test('phone overview answers a permission', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('theme editor blinks the colour you point at in the preview', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  await page.goto('/#/settings/theme/new');
+  const side = page.locator('.p-side');
+  const bg = () => side.evaluate((el) => getComputedStyle(el).backgroundColor);
+  await expect.poll(bg).toBe('rgb(30, 31, 28)');
+  await page.locator('.color').filter({ hasText: 'Sidebar' }).hover();
+  // Monokai panel #1e1f1c alternates with its inverse #e1e0e3.
+  await expect.poll(bg).toBe('rgb(225, 224, 227)');
+  await expect.poll(bg).toBe('rgb(30, 31, 28)');
+  await page.mouse.move(0, 0);
+  await expect(page.locator('.preview')).not.toHaveClass(/flashing/);
+  expect(errors).toEqual([]);
+});
+
 test('contrast ratio follows WCAG', () => {
   expect(contrastRatio('#000', '#fff')).toBeCloseTo(21, 1);
   expect(contrastRatio('#f8f8f2', '#272822')!).toBeGreaterThan(4.5);
