@@ -64,6 +64,7 @@ const API: Record<string, unknown> = {
   '/api/updates': {
     current: '2026.10.0',
     channel: 'stable',
+    mode: 'ask',
     managedBy: 'launcher',
     latest: '2026.10.1',
     changelog: '## 2026.10.1\n\n### Features\n\n- launcher: add shub doctor',
