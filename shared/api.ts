@@ -92,6 +92,8 @@ export interface Config {
     name: string;
     enabled: boolean;
     grantedRights: Right[];
+    /** Git URL it was installed from; a machine without the plugin clones it from here on start. */
+    source?: string;
     /** Extra environment for the plugin process, e.g. KB_CARD_URL. shub's own environment wins. */
     env?: Record<string, string>;
   }[];
