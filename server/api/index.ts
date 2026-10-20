@@ -8,6 +8,7 @@ import { API_VERSION, ROUTES, type ServerEvent } from '../../shared/api.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
+import { publicUrl } from '../config/index.ts';
 import { allowList, refuse } from './guard.ts';
 import { HttpError, readBody, Router, sendJson, type Caller, type Request } from './router.ts';
 import { installUpgrades, onUpgrade } from './upgrade.ts';
@@ -163,14 +164,15 @@ export async function listen(ctx: Context, services: Services, modules: ShubModu
   eventsRoutes(ctx, router, appVersion(ctx.paths.appDir));
   for (const m of modules) m.routes?.(router);
 
-  const allowed = allowList(ctx.port);
+  // Per request: the phone setup can set the public URL while shub runs.
+  const allowed = () => allowList(ctx.port, publicUrl(services.config.get()));
   const distDir = join(ctx.paths.appDir, 'web', 'dist');
   const server = createServer((req, res) => {
-    handle(router, services, distDir, (r) => refuse(r, allowed), req, res).catch((err) => sendError(res, err));
+    handle(router, services, distDir, (r) => refuse(r, allowed()), req, res).catch((err) => sendError(res, err));
   });
   installUpgrades(
     server,
-    (r) => refuse(r, allowed, true),
+    (r) => refuse(r, allowed(), true),
     (r) => services.auth.resolve(r),
   );
   attachEventsSocket(ctx, server);

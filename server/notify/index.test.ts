@@ -14,6 +14,7 @@ test('VAPID keys are generated once into a 0600 file', () => {
   const db = new DatabaseSync(':memory:');
   const services = {
     state: { db, migrate: (_: string, s: string[]) => s.forEach((x) => db.exec(x)) },
+    config: { get: () => ({}) },
   } as unknown as Services;
   const first = new NotifyService(ctx, services).publicKey;
   assert.equal(statSync(join(stateDir, 'vapid.json')).mode & 0o777, 0o600);

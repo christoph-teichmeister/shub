@@ -57,8 +57,9 @@ npm start            # http://127.0.0.1:4780
 Started like this, shub's updates are managed by git (Settings > Updates is read-only).
 
 On first start shub creates an access token and prints the file it lives in. Open the URL, paste the token, done.
-shub only ever listens on `127.0.0.1`. For your phone, put it behind `tailscale serve` (tailnet only, never Funnel) and
-set `SHUB_PUBLIC_URL` to that address. A systemd user unit example is in [deploy/shub.service](deploy/shub.service).
+shub only ever listens on `127.0.0.1`. For your phone, Settings > Phone walks you through it: it checks Tailscale, runs
+`tailscale serve` for shub (tailnet only, never Funnel), stores the address as `publicUrl` in `local.json` and shows the
+pairing QR code. `SHUB_PUBLIC_URL` still works and wins over `publicUrl`. A systemd user unit example is in [deploy/shub.service](deploy/shub.service).
 
 ## Configuration
 
