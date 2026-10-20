@@ -47,6 +47,9 @@ export function discover(pluginsDir: string): Map<string, Installed> {
 }
 
 /** Clone a plugin into <pluginsDir>/<name>; a dot folder holds it until the manifest checks out. */
+const git = (dir: string, ...args: string[]) =>
+  promisify(execFile)('git', ['-C', dir, ...args]).then((r) => r.stdout.trim());
+
 export async function cloneInto(pluginsDir: string, name: string, url: string): Promise<void> {
   const tmp = join(pluginsDir, `.tmp-${process.pid}-${Date.now()}`);
   try {
@@ -73,6 +76,9 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
   let unsubscribe: (() => void) | null = null;
   // Tried once per server run, so a bad URL does not clone again on every config change.
   const cloneTried = new Set<string>();
+  // Plugins whose source has a newer commit; filled by checkUpdates, never pulled without a click.
+  const updates = new Set<string>();
+  let updateTimer: ReturnType<typeof setInterval> | undefined;
 
   const entryFor = (name: string) => services.config.get().plugins.find((p) => p.name === name);
   const granted = (name: string, manifest: PluginManifest): Right[] =>
@@ -92,6 +98,7 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
       version: manifest.version,
       ...(manifest.description !== undefined && { description: manifest.description }),
       source: plugin.source,
+      updateAvailable: updates.has(name),
       enabled: entryFor(name)?.enabled ?? false,
       running: running.get(name)?.running ?? false,
       requestedRights: manifest.rights,
@@ -201,6 +208,59 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
     return info(name, plugin);
   }
 
+  /** Fetch each plugin's newest commit; shallow clones only know their own, so compare with FETCH_HEAD. */
+  async function checkUpdates(): Promise<void> {
+    let changed = false;
+    for (const [name, plugin] of discover(pluginsDir)) {
+      if (!plugin.source) continue;
+      try {
+        await git(plugin.dir, 'fetch', '--depth', '1', '-q', 'origin');
+        const newer =
+          (await git(plugin.dir, 'rev-parse', 'HEAD')) !== (await git(plugin.dir, 'rev-parse', 'FETCH_HEAD'));
+        if (newer !== updates.has(name)) {
+          if (newer) updates.add(name);
+          else updates.delete(name);
+          changed = true;
+        }
+      } catch (err) {
+        console.warn(`shub: update check for plugin ${name} failed: ${(err as Error).message}`);
+      }
+    }
+    if (changed) ctx.bus.emit({ type: 'plugins.changed' });
+  }
+
+  async function upgrade(caller: Caller, name: string) {
+    const plugin = installed(name);
+    if (!plugin.source) throw new HttpError(409, 'not installed from git, nothing to pull');
+    if (await git(plugin.dir, 'status', '--porcelain')) {
+      throw new HttpError(409, `${plugin.dir} has local changes; commit or discard them first`);
+    }
+    const before = await git(plugin.dir, 'rev-parse', 'HEAD');
+    try {
+      await git(plugin.dir, 'fetch', '--depth', '1', '-q', 'origin');
+      await git(plugin.dir, 'reset', '-q', '--hard', 'FETCH_HEAD');
+      const manifest = validateManifest(JSON.parse(readFileSync(join(plugin.dir, MANIFEST_FILE), 'utf8')));
+      if (manifest.name !== name) throw new Error(`the new version is called "${manifest.name}"`);
+    } catch (err) {
+      await git(plugin.dir, 'reset', '-q', '--hard', before).catch(() => {});
+      throw new HttpError(400, `update failed, kept the old version: ${(err as Error).message}`);
+    }
+    updates.delete(name);
+    const after = await git(plugin.dir, 'rev-parse', '--short', 'HEAD');
+    // Restart so the new code runs; new rights in the manifest stay ungranted until ticked.
+    const proc = running.get(name);
+    running.delete(name);
+    sections.delete(name);
+    await proc?.stop();
+    await reconcile();
+    services.permissions.log({
+      actor: caller.id,
+      action: 'plugin.upgrade',
+      detail: `${name}: ${before.slice(0, 7)} -> ${after}`,
+    });
+    return info(name, installed(name));
+  }
+
   async function remove(caller: Caller, name: string) {
     const plugin = installed(name);
     const run = running.get(name);
@@ -270,6 +330,10 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
         const body = await req.json().catch(() => ({}));
         return action(req.caller, pluginName(req.params.name), req.params.actionId, body);
       });
+      router.add(ROUTES.pluginUpgrade, (req) => {
+        requireUser(req.caller);
+        return upgrade(req.caller, pluginName(req.params.name));
+      });
       router.add(ROUTES.pluginLogs, (req) => {
         requireUser(req.caller);
         return { lines: logs.get(pluginName(req.params.name)) ?? [] };
@@ -280,9 +344,13 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
         if (e.type === 'config.changed') void reconcile();
       });
       await reconcile();
+      void checkUpdates();
+      updateTimer = setInterval(() => void checkUpdates(), 6 * 3600_000);
+      updateTimer.unref();
     },
     async stop() {
       unsubscribe?.();
+      clearInterval(updateTimer);
       await Promise.all([...running.values()].map((proc) => proc.stop()));
       running.clear();
     },

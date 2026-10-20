@@ -233,6 +233,15 @@
     void loadPlugins();
   }
 
+  let upgrading = $state<string | null>(null);
+  async function upgradePlugin(p: PluginInfo) {
+    upgrading = p.name;
+    const res = await api<PluginInfo>('pluginUpgrade', { params: { name: p.name } }).catch(toastError);
+    upgrading = null;
+    if (res) toast(`${p.name} updated to ${res.version}`);
+    void loadPlugins();
+  }
+
   async function showLogs(name: string) {
     const res = await api<{ lines: string[] }>('pluginLogs', { params: { name } }).catch(toastError);
     if (res) logs = { plugin: name, lines: res.lines };
@@ -552,6 +561,11 @@
               </fieldset>
             </span>
             <StatusBadge text={p.running ? 'running' : 'stopped'} tone={p.running ? 'done' : 'neutral'} />
+            {#if p.updateAvailable}
+              <Button size="sm" disabled={upgrading === p.name} onclick={() => upgradePlugin(p)}
+                >{upgrading === p.name ? 'Updating…' : 'Update'}</Button
+              >
+            {/if}
             <Button size="sm" onclick={() => showLogs(p.name)}>Logs</Button>
           </li>
         {/each}

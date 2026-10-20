@@ -447,6 +447,8 @@ export interface PluginInfo {
   version: string;
   description?: string;
   source: string; // git url
+  /** The git source has a newer commit than the installed one (checked on start and every 6 h). */
+  updateAvailable: boolean;
   enabled: boolean;
   running: boolean;
   requestedRights: Right[];
@@ -596,6 +598,7 @@ export const ROUTES = {
   pluginAction: 'POST /api/plugins/:name/actions/:actionId', // user clicked an action -> forwarded as event
   pluginLogs: 'GET /api/plugins/:name/logs', // -> { lines: string[] } user only
   pluginRemove: 'DELETE /api/plugins/:name', // user only, deletes the plugin folder
+  pluginUpgrade: 'POST /api/plugins/:name/upgrade', // user only, pulls the newest commit and restarts it -> PluginInfo
 
   pushKey: 'GET /api/push/key',
   pushSubscribe: 'POST /api/push/subscribe',
