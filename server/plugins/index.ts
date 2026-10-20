@@ -1,7 +1,9 @@
 // Plugins: discovery under <configDir>/plugins/<name>/, one supervised process per enabled plugin,
 // sidebar sections they push, and actions the user clicks forwarded as events.
-import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import type { PluginInfo, PluginManifest, Right, SidebarSectionContent } from '../../shared/api.ts';
 import { ROUTES } from '../../shared/api.ts';
 import { HttpError, requireUser, type Caller } from '../api/router.ts';
@@ -44,6 +46,19 @@ export function discover(pluginsDir: string): Map<string, Installed> {
   return found;
 }
 
+/** Clone a plugin into <pluginsDir>/<name>; a dot folder holds it until the manifest checks out. */
+export async function cloneInto(pluginsDir: string, name: string, url: string): Promise<void> {
+  const tmp = join(pluginsDir, `.tmp-${process.pid}-${Date.now()}`);
+  try {
+    await promisify(execFile)('git', ['clone', '--depth', '1', '--', url, tmp]);
+    const manifest = validateManifest(JSON.parse(readFileSync(join(tmp, MANIFEST_FILE), 'utf8')));
+    if (manifest.name !== name) throw new Error(`the repository holds plugin "${manifest.name}", not "${name}"`);
+    renameSync(tmp, join(pluginsDir, name));
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 function pluginName(value: string): string {
   if (!NAME_RE.test(value)) throw new HttpError(400, 'invalid plugin name');
   return value;
@@ -56,6 +71,8 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
   // Logs outlive a stopped process so a crash on enable can still be read.
   const logs = new Map<string, string[]>();
   let unsubscribe: (() => void) | null = null;
+  // Tried once per server run, so a bad URL does not clone again on every config change.
+  const cloneTried = new Set<string>();
 
   const entryFor = (name: string) => services.config.get().plugins.find((p) => p.name === name);
   const granted = (name: string, manifest: PluginManifest): Right[] =>
@@ -122,7 +139,25 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
 
   /** Bring running processes in line with config: start enabled ones, stop disabled or removed ones. */
   async function reconcileNow(): Promise<void> {
-    const found = discover(pluginsDir);
+    // config.json is shared between machines; install what it lists but this machine lacks.
+    let found = discover(pluginsDir);
+    const missing = services.config
+      .get()
+      .plugins.filter((p) => p.source && !found.has(p.name) && !cloneTried.has(p.name) && NAME_RE.test(p.name));
+    for (const { name, source } of missing) {
+      cloneTried.add(name);
+      const log = logs.get(name) ?? [];
+      logs.set(name, log);
+      try {
+        mkdirSync(pluginsDir, { recursive: true });
+        await cloneInto(pluginsDir, name, source!);
+        log.push(`${new Date().toISOString()} [shub] installed from ${source}`);
+      } catch (err) {
+        log.push(`${new Date().toISOString()} [shub] install from ${source} failed: ${(err as Error).message}`);
+        console.warn(`shub: installing plugin ${name} failed: ${(err as Error).message}`);
+      }
+    }
+    if (missing.length) found = discover(pluginsDir);
     for (const [name, proc] of running) {
       if (found.has(name) && entryFor(name)?.enabled) continue;
       running.delete(name);
@@ -152,6 +187,7 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
     services.config.update((c) => {
       let entry = c.plugins.find((p) => p.name === name);
       if (!entry) c.plugins.push((entry = { name, enabled: false, grantedRights: [] }));
+      if (plugin.source) entry.source = plugin.source;
       if (body.enabled !== undefined) entry.enabled = body.enabled as boolean;
       if (rights) entry.grantedRights = rights;
     }, caller.id);

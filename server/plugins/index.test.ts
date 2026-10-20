@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, writeFileSync, existsSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ROUTES, type Config, type PluginInfo, type ServerEvent } from '../../shared/api.ts';
@@ -167,4 +168,40 @@ test('supervisor restarts a crashing plugin with backoff and keeps 500 log lines
   assert.equal(proc.logs.length, 500);
   assert.ok(proc.logs.some((l) => l.includes('exited (3)')));
   assert.equal(proc.running, false);
+});
+
+test('a plugin listed in config with a source but missing here is cloned and started', async () => {
+  const { module, call, config, dir } = setup();
+  // Turn the demo plugin into a git repo outside the plugins folder, as on another machine.
+  const repo = mkdtempSync(join(tmpdir(), 'shub-plugin-repo-'));
+  renameSync(dir, join(repo, 'demo'));
+  const src = join(repo, 'demo');
+  const git = (...args: string[]) => execFileSync('git', ['-C', src, ...args], { stdio: 'ignore' });
+  git('init', '-q');
+  git('add', '.');
+  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'demo');
+  config.plugins = [
+    { name: 'demo', enabled: true, grantedRights: [], source: src },
+    { name: 'gone', enabled: true, grantedRights: [], source: join(repo, 'nope') },
+  ];
+  await module.start!();
+  assert.ok(existsSync(join(dir, 'shub-plugin.json')));
+  const list = (await call('GET /api/plugins', user)) as PluginInfo[];
+  assert.deepEqual(
+    list.map((p) => [p.name, p.running, p.source]),
+    [['demo', true, src]],
+  );
+  const gone = (await call('GET /api/plugins/gone/logs', user)) as { lines: string[] };
+  assert.match(gone.lines.join('\n'), /install from .* failed/);
+  await module.stop!();
+});
+
+test('enabling records where the plugin came from', async () => {
+  const { module, call, config, dir } = setup();
+  mkdirSync(join(dir, '.git'));
+  writeFileSync(join(dir, '.git', 'config'), '[remote "origin"]\n\turl = https://example.com/demo.git\n');
+  await module.start!();
+  await call('PATCH /api/plugins/demo', user, { enabled: false });
+  assert.equal(config.plugins[0].source, 'https://example.com/demo.git');
+  await module.stop!();
 });
