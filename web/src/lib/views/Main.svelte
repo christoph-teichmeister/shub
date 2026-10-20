@@ -30,6 +30,7 @@
   import SplitView from '../components/SplitView/SplitView.svelte';
   import StatusBadge from '../components/StatusBadge/StatusBadge.svelte';
   import StatusDot from '../components/StatusDot/StatusDot.svelte';
+  import { projectBadge } from '../status.ts';
   import TabBar from '../components/TabBar/TabBar.svelte';
   import TerminalView from '../components/TerminalView/TerminalView.svelte';
   import TextField from '../components/TextField/TextField.svelte';
@@ -505,6 +506,38 @@
         <p class="hint">No projects yet. Add one with the + button.</p>
       {/if}
 
+      {#snippet rail()}
+        <button type="button" class="rail-item" title="Search projects (Alt K)" onclick={() => (ui.search = true)}>
+          <Icon name="search" />
+        </button>
+        <button
+          type="button"
+          class="rail-item"
+          title="Global Claude (Alt G)"
+          aria-expanded={ui.drawer}
+          onclick={() => (ui.drawer = !ui.drawer)}
+        >
+          <span class="global-icon" aria-hidden="true"><Icon name="sparkle" size="sm" weight={2} /></span>
+          {#if globalSession}<span class="rail-dot"><StatusDot status={globalSession.status} /></span>{/if}
+        </button>
+        {#each groups as group (group.name)}
+          <hr class="rail-group" title={group.name} />
+          {#each group.projects as p (p.id)}
+            {@const badge = projectBadge(sessionsOf(p.id).map((s) => s.status))}
+            <a
+              class="rail-item"
+              class:selected={p.id === project?.id}
+              href={href('p', p.id)}
+              title={badge ? `${p.name} · ${badge.text}` : p.name}
+              aria-current={p.id === project?.id ? 'page' : undefined}
+            >
+              <ProjectIcon icon={p.resolvedIcon} name={p.name} />
+              {#if badge}<span class="rail-dot"><StatusDot status={badge.tone} /></span>{/if}
+            </a>
+          {/each}
+        {/each}
+      {/snippet}
+
       {#snippet footer()}
         <div class="hints">
           {#if dormantCount}<span>{dormantCount} dormant projects · find them with Alt K</span>{/if}
@@ -836,6 +869,45 @@
 
   .global[aria-expanded='true'] {
     background: var(--raised);
+  }
+
+  .rail-item {
+    position: relative;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--size-control);
+    height: var(--size-control);
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--fg-2);
+    cursor: pointer;
+  }
+
+  .rail-item:hover {
+    background: var(--bg);
+  }
+
+  .rail-item.selected {
+    background: var(--raised);
+  }
+
+  .rail-dot {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: flex;
+  }
+
+  .rail-group {
+    flex: none;
+    width: var(--size-control);
+    margin: var(--space-1) 0;
+    border: 0;
+    border-top: var(--hairline) solid var(--line);
   }
 
   .global-icon {
