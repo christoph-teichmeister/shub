@@ -166,6 +166,12 @@ body,
   margin: 0;
 }
 
+/* Every built-in theme is dark; scrollbar-color is inherited, so this themes all scrollbars (terminal included). */
+:root {
+  color-scheme: dark;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
 body {
   background: var(--bg);
   color: var(--fg);
