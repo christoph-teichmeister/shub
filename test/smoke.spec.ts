@@ -149,7 +149,6 @@ test('app shell, wordmark and projects render', async ({ page }) => {
   await expect(nav.getByRole('link', { name: 'street-tours' })).toHaveCount(0);
   await expect(nav.getByText('1 needs you')).toBeVisible();
   await expect(page).toHaveTitle('(1) shub');
-  await expect(nav.getByRole('button', { name: 'ai-portal / 2200' })).toBeEnabled();
 
   await nav.getByRole('link', { name: 'ai-portal' }).click();
   await expect(page.getByRole('heading', { name: 'ai-portal', level: 1 })).toBeVisible();
@@ -526,6 +525,24 @@ test('closing the last terminal hides the bottom panel instead of showing Servic
   await panel.getByRole('button', { name: 'Close Terminal 1' }).click();
   events!.send(JSON.stringify({ type: 'session.closed', sessionId: 'sh1' }));
   await expect(panel).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('the Worktrees dialog finds a worktree and opens a terminal in it as its own tab', async ({ page }) => {
+  const path = '/home/chris/PycharmProjects/work/ai-portal/.claude/worktrees/2200';
+  const shell: Session = { ...session, id: 'sh1', kind: 'shell', name: 'Terminal · 2200', cwd: path, parentId: null };
+  const { errors, calls } = await mockApi(page, { 'POST /api/sessions': { status: 200, json: shell } });
+  await page.goto('/#/p/ai-portal/s1');
+  await page.getByRole('button', { name: 'Worktrees', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Worktrees of ai-portal' });
+  await expect(dialog.getByText('feature/#2200-api')).toBeVisible();
+  await dialog.getByLabel('Search').fill('nothing like it');
+  await expect(dialog.getByText('No worktree matches.')).toBeVisible();
+  await dialog.getByLabel('Search').fill('2200');
+  await dialog.getByRole('button', { name: 'Terminal in 2200' }).click();
+  await expect(dialog).toBeHidden();
+  const start = calls.find((c) => c.method === 'POST' && c.path === '/api/sessions');
+  expect(start?.body).toMatchObject({ projectId: 'ai-portal', kind: 'shell', cwd: path });
   expect(errors).toEqual([]);
 });
 

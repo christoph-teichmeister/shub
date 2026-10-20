@@ -7,7 +7,6 @@
     ServiceContainer,
     Session,
     SessionLink,
-    SidebarSectionContent,
     StartSessionRequest,
     Worktree,
     WorktreeInfo,
@@ -194,16 +193,24 @@
   const railCount = (text: string) => /\d+/.exec(text)?.[0] ?? '•';
   const dormantCount = $derived(app.projects.filter((p) => p.visibility === 'dormant').length);
 
-  // ---------- Worktrees: cleanup section over every project's worktrees ----------
-  let worktreeList = $state<WorktreeInfo[]>([]);
+  // ---------- Worktrees: the open project's worktrees, searchable, with a terminal or Claude in each ----------
+  let wt = $state<{ projectId: string; list: WorktreeInfo[] | null; query: string } | null>(null);
   async function loadWorktrees(fetch = false) {
-    worktreeList = await api<WorktreeInfo[]>('worktrees', fetch ? { query: { fetch: '1' } } : {}).catch(() => []);
+    const projectId = wt?.projectId;
+    if (!projectId) return;
+    const query = { projectId, ...(fetch ? { fetch: '1' } : {}) };
+    const list = await api<WorktreeInfo[]>('worktrees', { query }).catch((err: unknown) => {
+      toastError(err);
+      return null;
+    });
+    if (list && wt?.projectId === projectId) wt.list = list;
   }
-  onMount(() => {
-    void loadWorktrees(true);
-    const timer = setInterval(() => void loadWorktrees(true), 10 * 60_000);
-    return () => clearInterval(timer);
-  });
+  function openWorktrees() {
+    if (!project) return;
+    wt = { projectId: project.id, list: null, query: '' };
+    // The quick list first, then once more after `git fetch --prune` so merged and remote-gone are current.
+    void loadWorktrees().then(() => loadWorktrees(true));
+  }
   // A session ending is often a /worktree-close run; reload without fetching.
   $effect(() => {
     void app.sessions.length;
@@ -211,12 +218,16 @@
   });
   // Sessions come and go between loads; a session in a worktree always makes it active.
   const worktrees = $derived(
-    worktreeList.map((w) =>
+    (wt?.list ?? []).map((w) =>
       app.sessions.some((s) => s.cwd === w.path || s.cwd.startsWith(`${w.path}/`))
         ? { ...w, state: 'active' as const }
         : w,
     ),
   );
+  const shownWorktrees = $derived.by(() => {
+    const q = wt?.query.trim().toLowerCase() ?? '';
+    return q ? worktrees.filter((w) => `${w.name} ${w.branch} ${w.state}`.toLowerCase().includes(q)) : worktrees;
+  });
   /** Closing would lose work, git would refuse, or the session must end first. */
   const KEEP = ['active', 'locked', 'dirty', 'not-pushed'];
   const mergedWorktrees = $derived(worktrees.filter((w) => w.state === 'merged'));
@@ -224,20 +235,16 @@
     const days = iso ? Math.floor((Date.now() - Date.parse(iso)) / 86_400_000) : null;
     return days === null ? '' : days < 1 ? 'today' : `${days}d`;
   };
-  const worktreeEntries = $derived<SidebarSectionContent['entries']>([
-    ...(mergedWorktrees.length > 1
-      ? [{ id: 'close-merged', title: `Close all merged (${mergedWorktrees.length})`, action: 'close-merged' }]
-      : []),
-    ...worktrees.map((w) => ({
-      id: w.path,
-      title: `${app.projects.find((p) => p.id === w.projectId)?.name ?? '?'} / ${w.name}`,
-      subtitle: [w.state.replace('-', ' '), w.branch || 'detached', age(w.lastCommitAt)].filter(Boolean).join(' · '),
-      tone:
-        w.state === 'active' ? ('working' as const) : KEEP.includes(w.state) ? ('neutral' as const) : ('done' as const),
-      action: KEEP.includes(w.state) ? undefined : w.state === 'folder-gone' ? 'prune' : 'close',
-    })),
-  ]);
   const closer = (p: ProjectView) => p.buttons.find((b) => b.skill === '/worktree-close');
+
+  /** A plain terminal (its own tab) or a Claude session in the worktree. */
+  async function startIn(w: WorktreeInfo, kind: 'shell' | 'claude') {
+    const name = kind === 'shell' ? `Terminal · ${w.name}` : undefined;
+    const s = await startSession({ projectId: w.projectId, kind, cwd: w.path, name });
+    if (!s) return;
+    wt = null;
+    location.hash = sessionHref(s);
+  }
 
   /** A project with a /worktree-close button closes through a Claude session (containers etc.), others by plain git. */
   async function closeWorktree(w: WorktreeInfo, open: boolean) {
@@ -245,8 +252,10 @@
     if (!p) return;
     const button = closer(p);
     if (button) {
-      if (open) await newSession(p, { buttonId: button.id, input: w.path });
-      else await startSession({ projectId: p.id, kind: 'claude', buttonId: button.id, input: w.path });
+      if (open) {
+        wt = null;
+        await newSession(p, { buttonId: button.id, input: w.path });
+      } else await startSession({ projectId: p.id, kind: 'claude', buttonId: button.id, input: w.path });
       return;
     }
     const { branchDeleted } = await api<{ branchDeleted: boolean }>('worktreeRemove', {
@@ -255,25 +264,24 @@
     toast(`Closed ${w.name}${w.branch ? (branchDeleted ? ' and its branch' : `; branch ${w.branch} kept`) : ''}`);
   }
 
-  function worktreeEntry(id: string, action: string | undefined) {
-    if (action === 'close-merged') {
-      const list = mergedWorktrees;
-      confirm = {
-        title: `Close ${list.length} merged worktrees?`,
-        body: `${list.map((w) => w.name).join(', ')}. Projects with a /worktree-close button get one session each.`,
-        action: 'Close all',
-        danger: true,
-        run: async () => {
-          for (const w of list) await closeWorktree(w, false).catch(toastError);
-          await loadWorktrees();
-        },
-      };
-      return;
-    }
-    const w = worktrees.find((x) => x.path === id);
-    const p = w && app.projects.find((x) => x.id === w.projectId);
-    if (!w || !p) return;
-    if (action === 'prune') {
+  function closeAllMerged() {
+    const list = mergedWorktrees;
+    confirm = {
+      title: `Close ${list.length} merged worktrees?`,
+      body: `${list.map((w) => w.name).join(', ')}. With a /worktree-close button each gets its own session.`,
+      action: 'Close all',
+      danger: true,
+      run: async () => {
+        for (const w of list) await closeWorktree(w, false).catch(toastError);
+        await loadWorktrees();
+      },
+    };
+  }
+
+  function askClose(w: WorktreeInfo) {
+    const p = app.projects.find((x) => x.id === w.projectId);
+    if (!p) return;
+    if (w.state === 'folder-gone') {
       confirm = {
         title: `Prune ${p.name}?`,
         body: `${w.path} is gone; git forgets it and every other missing worktree of ${p.name}.`,
@@ -814,15 +822,6 @@
         {/each}
       {/if}
 
-      {#if worktrees.length}
-        <SidebarSection
-          title="Worktrees"
-          badge={mergedWorktrees.length ? { text: `${mergedWorktrees.length} merged`, tone: 'neutral' } : null}
-          entries={worktreeEntries}
-          onentry={(entry) => worktreeEntry(entry.id, entry.action)}
-        />
-      {/if}
-
       {#if app.ready && !app.config?.activeGroup && groups.length === 0}
         <p class="hint">No projects yet. Add one with the + button.</p>
       {/if}
@@ -892,21 +891,6 @@
             </a>
           {/each}
         {/each}
-        {#if worktrees.length}
-          <hr class="rail-group" title="Worktrees" />
-          <button
-            type="button"
-            class="rail-item"
-            title={`${worktrees.length} worktree${worktrees.length === 1 ? '' : 's'}` +
-              (mergedWorktrees.length ? ` · ${mergedWorktrees.length} merged` : '')}
-            onclick={toggleSidebar}
-          >
-            <Icon name="folder" />
-            {#if mergedWorktrees.length}<span class="rail-dot"
-                ><StatusBadge text={String(mergedWorktrees.length)} tone="neutral" /></span
-              >{/if}
-          </button>
-        {/if}
         <a
           class="rail-item rail-user"
           href={href('settings')}
@@ -971,6 +955,7 @@
         <Button icon="split" pressed={split} onclick={() => (split = !split)}
           >{split ? 'Split view on' : 'Split view'}</Button
         >
+        <Button icon="folder" onclick={openWorktrees}>Worktrees</Button>
         <Button icon="services" pressed={panelOpen} onclick={() => (panelOpen = !panelOpen)}
           >Services{services.length ? ` · ${services.length}` : ''}</Button
         >
@@ -1256,6 +1241,61 @@
     or closing other sessions stays with you.
   {/snippet}
 </Drawer>
+
+<Dialog
+  open={!!wt}
+  title={`Worktrees of ${app.projects.find((p) => p.id === wt?.projectId)?.name ?? ''}`}
+  onclose={() => (wt = null)}
+>
+  {#if wt}
+    <div class="form">
+      <TextField label="Search" bind:value={wt.query} placeholder="Name, branch or state" autocomplete="off" />
+      {#if wt.list === null}
+        <p class="muted">Loading the worktrees…</p>
+      {:else if !shownWorktrees.length}
+        <p class="muted">{worktrees.length ? 'No worktree matches.' : 'No worktrees besides the main checkout.'}</p>
+      {:else}
+        <ul class="wt-list">
+          {#each shownWorktrees as w (w.path)}
+            <li class="wt-row">
+              <span class="stack grow">
+                <span class="wt-name"
+                  >{w.name}
+                  <StatusBadge
+                    text={w.state.replace('-', ' ')}
+                    tone={w.state === 'active' ? 'working' : KEEP.includes(w.state) ? 'neutral' : 'done'}
+                  /></span
+                >
+                <code class="muted" title={w.path}
+                  >{[w.branch || 'detached', age(w.lastCommitAt)].filter(Boolean).join(' · ')}</code
+                >
+              </span>
+              {#if w.state !== 'folder-gone'}
+                <Button size="sm" icon="terminal" aria-label="Terminal in {w.name}" onclick={() => startIn(w, 'shell')}
+                  >Terminal</Button
+                >
+                <Button size="sm" icon="sparkle" aria-label="Claude in {w.name}" onclick={() => startIn(w, 'claude')}
+                  >Claude</Button
+                >
+              {/if}
+              {#if !KEEP.includes(w.state)}
+                <Button size="sm" variant="ghost" onclick={() => askClose(w)}
+                  >{w.state === 'folder-gone' ? 'Prune' : 'Close'}</Button
+                >
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+  {/if}
+  {#snippet actions()}
+    {#if mergedWorktrees.length > 1}
+      <Button variant="ghost" onclick={closeAllMerged}>Close all merged ({mergedWorktrees.length})</Button>
+    {/if}
+    <Button variant="primary" onclick={() => (wt = null)}>Done</Button>
+  {/snippet}
+</Dialog>
 
 <style>
   .page-scroll {
@@ -1640,6 +1680,33 @@
 
   .worktree input {
     accent-color: var(--primary);
+  }
+
+  .wt-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1-5);
+    max-height: 50vh;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+  }
+
+  .wt-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1-5);
+    padding: var(--space-2) var(--space-2-5);
+    border: var(--hairline) solid var(--line);
+    border-radius: var(--radius-md);
+  }
+
+  .wt-name {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    overflow-wrap: anywhere;
   }
 
   .stack {

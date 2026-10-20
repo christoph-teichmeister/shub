@@ -277,7 +277,8 @@ function projectRoutes(services: Services, router: Router): void {
   router.add(ROUTES.worktrees, async (req) => {
     requireRight(req.caller, 'read');
     const fetch = req.query.get('fetch') === '1';
-    const projects = config.get().projects.filter((p) => existsSync(p.path));
+    const only = req.query.get('projectId');
+    const projects = config.get().projects.filter((p) => existsSync(p.path) && (!only || p.id === only));
     const seen = new Set<string>();
     return (await Promise.all(projects.map((p) => overview(p, fetch))))
       .flat()
