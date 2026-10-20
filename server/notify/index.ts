@@ -86,6 +86,10 @@ export class NotifyService implements Notify {
     if (deviceId) this.#db.prepare('UPDATE devices SET push = 1 WHERE id = ?').run(deviceId);
   }
 
+  devicePending(name: string): void {
+    desktop('shub: new device', `${name} wants to pair. Approve it in shub > Settings > Devices.`);
+  }
+
   forgetDevice(deviceId: string): void {
     this.#db.prepare('DELETE FROM push_subscriptions WHERE device_id = ?').run(deviceId);
   }

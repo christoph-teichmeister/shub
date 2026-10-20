@@ -105,6 +105,8 @@ export interface Notify {
   test(deviceId?: string): Promise<void>;
   /** The device was signed out or removed: drop its push subscriptions. */
   forgetDevice(deviceId: string): void;
+  /** A phone paired and waits for approval on this machine. */
+  devicePending(name: string): void;
 }
 
 /** server/docker: Engine API over the unix socket. */

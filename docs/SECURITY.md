@@ -5,15 +5,16 @@ protects against, the exact rules it enforces, and, just as important, what it d
 
 ## Threat model
 
-| Threat                                                                                                                       | Covered by                                                       |
-| ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Someone on your network or the internet reaching shub                                                                        | Loopback-only bind, Tailscale for the phone                      |
-| A web page in your browser talking to shub (CSRF, DNS rebinding)                                                             | Host and Origin allow-lists                                      |
-| A Claude session (e.g. reviewing someone else's code) being talked into starting more sessions, changing buttons or projects | Permission rules, approvals, activity log                        |
-| A runaway session or plugin starting sessions in a loop                                                                      | Rate limit, "one level deep"                                     |
-| A plugin doing more than you agreed to                                                                                       | Per-plugin token with only the rights you granted                |
-| Secrets showing up in the Docker panel                                                                                       | Env values with secret-looking keys and URL passwords are masked |
-| A tampered or fake update                                                                                                    | Signed `SHA256SUMS`, downloads only from the GitHub releases     |
+| Threat                                                                                                                       | Covered by                                                                                      |
+| ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Someone on your network or the internet reaching shub                                                                        | Loopback-only bind, Tailscale for the phone                                                     |
+| A web page in your browser talking to shub (CSRF, DNS rebinding)                                                             | Host and Origin allow-lists                                                                     |
+| A Claude session (e.g. reviewing someone else's code) being talked into starting more sessions, changing buttons or projects | Permission rules, approvals, activity log                                                       |
+| A runaway session or plugin starting sessions in a loop                                                                      | Rate limit, "one level deep"                                                                    |
+| A plugin doing more than you agreed to                                                                                       | Per-plugin token with only the rights you granted                                               |
+| Secrets showing up in the Docker panel                                                                                       | Env values with secret-looking keys and URL passwords are masked                                |
+| A tampered or fake update                                                                                                    | Signed `SHA256SUMS`, downloads only from the GitHub releases                                    |
+| A lost phone, or code in the phone app that should not be there                                                              | Non-extractable device key, five-minute tokens, levels, approval on the machine, instant revoke |
 
 Not covered: anything a process does with your Unix user's rights outside shub. See [Honest scope](#honest-scope).
 
@@ -22,19 +23,35 @@ Not covered: anything a process does with your Unix user's rights outside shub. 
 - shub listens on `127.0.0.1` only. The phone reaches it through `tailscale serve`; never put shub on `0.0.0.0` or behind a public proxy.
 - Every request needs the `Host` to be loopback on shub's port or the host of `SHUB_PUBLIC_URL`. A foreign `Origin` is refused; a cookie request that changes state must carry an allowed `Origin`.
 - **Access token** in `<stateDir>/token` (mode 0600). The browser exchanges it once for a device cookie; as a Bearer token it identifies the `cli` caller. Rotate it in Settings.
-- **Phone pairing**: single-use QR code, valid five minutes, gives the phone its own device cookie.
+- **Phone pairing**: single-use QR code, valid five minutes. The phone creates an ECDSA P-256 key pair in the browser whose private half cannot be read out (Web Crypto, non-extractable, kept in IndexedDB); shub stores only the public half. The phone stays **pending** until you approve it in shub on this machine (or `shub device approve`).
+- **Phone sign-in**: the phone signs a single-use challenge (valid one minute) and gets a token valid five minutes, held only in the app's memory and renewed the same way. Requests send it as `Authorization: Bearer`, WebSockets as the subprotocol `bearer.<token>`. Nothing on the phone outlives five minutes if copied; the key itself cannot be copied, so code running in the app could only misuse it while the app is open.
 - **Client tokens**: every Claude session and every plugin process gets its own Bearer token (`SHUB_TOKEN`), revoked when it ends. The token decides the caller kind; only the hashes are stored.
 
 ## Caller kinds
 
-| Kind              | Who                                                     |
-| ----------------- | ------------------------------------------------------- |
-| `user`            | You in the browser or on the phone (device cookie)      |
-| `cli`             | The access token, i.e. you in a terminal running `shub` |
-| `global-claude`   | The global Claude session                               |
-| `session`         | A normal project session                                |
-| `spawned-session` | A session started by another session                    |
-| `plugin`          | A plugin process                                        |
+| Kind              | Who                                                                                             |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| `user`            | You in the browser (device cookie) or on a paired phone (signed-in token, limited by its level) |
+| `cli`             | The access token, i.e. you in a terminal running `shub`                                         |
+| `global-claude`   | The global Claude session                                                                       |
+| `session`         | A normal project session                                                                        |
+| `spawned-session` | A session started by another session                                                            |
+| `plugin`          | A plugin process                                                                                |
+
+## Phone levels
+
+Every paired phone has a level. One gate in the server (`server/auth/levels.ts`, table `ROUTE_LEVELS` in `shared/api.ts`) checks it for every route; WebSockets follow it too.
+
+| Level   | May                                                                                                                                                                                                                      |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| View    | read everything, get push                                                                                                                                                                                                |
+| Prompts | View, plus decide approvals, answer permission questions (named keys such as Enter and Escape, single digits) and run commands Claude handed over (Run chips: the phone sends the index of a stored command, never text) |
+| Control | everything you can do in the browser, including typing in terminals and starting sessions                                                                                                                                |
+
+- A new phone gets **Prompts** once approved. Terminals open read-only below Control: keystrokes are dropped, resizes still apply.
+- Approving a phone and changing any level work only in shub on the machine itself: the browser signed in with the access token on `127.0.0.1`/`localhost`, or the `shub` CLI. A phone never approves or raises itself or another phone.
+- Removing a phone, or changing its level, closes its open WebSockets at once; removing it also ends its token.
+- Phones paired before this scheme (device cookie, no key) are signed out on start and pair again.
 
 ## Rules
 
@@ -57,6 +74,8 @@ Every write through shub is written to the activity log (Settings > Activity) wi
 ## Honest scope
 
 These rules only cover requests that go **through shub**. A Claude session runs in a shell as your user. From there it can run `claude -p "..."`, `tmux new`, `tmux send-keys` into another session, read `<stateDir>/token` and call shub as `cli`, or simply edit files, without shub ever seeing a request. What stands in the way of that is Claude Code's own permission prompts, nothing else. The per-session settings deny Claude's Read tool on the token, the database and the VAPID key, and its Edit and Write tools on all of `<stateDir>`; that only stops Claude's own file tools, not a shell command such as `cat <stateDir>/token`.
+
+The same goes for phones: a session that reads the token file can call `shub device approve` or raise a phone's level as `cli`. Approval on the machine stops a stranger with a pairing code, not a process already running as you.
 
 So shub makes actions visible and stops mistakes; it is **not a wall** between sessions. In practice:
 

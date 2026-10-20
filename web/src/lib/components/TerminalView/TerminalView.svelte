@@ -5,7 +5,7 @@
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import { WebglAddon } from '@xterm/addon-webgl';
   import type { TerminalControl } from '../../../../../shared/api.ts';
-  import { api, wsUrl } from '../../stores/api.ts';
+  import { api, wsProtocols, wsUrl } from '../../stores/api.ts';
   import { app, terminalSettings } from '../../stores/state.svelte.ts';
   import { toastError } from '../../stores/toasts.svelte.ts';
   import { readToken } from '../../tokens/tokens.ts';
@@ -98,8 +98,10 @@
       const msg: TerminalControl = { type: 'resize', cols: t.cols, rows: t.rows };
       send('\u0000' + JSON.stringify(msg));
     };
-    const connect = () => {
-      ws = new WebSocket(wsUrl(`/api/terminals/${encodeURIComponent(sessionId)}`));
+    const connect = async () => {
+      const protocols = await wsProtocols();
+      if (closed) return;
+      ws = new WebSocket(wsUrl(`/api/terminals/${encodeURIComponent(sessionId)}`), protocols);
       ws.binaryType = 'arraybuffer';
       ws.onopen = () => {
         if (opened) t.reset(); // tmux repaints the screen on re-attach
@@ -111,10 +113,10 @@
         else if (!m.data.startsWith('\u0000')) t.write(m.data);
       };
       ws.onclose = () => {
-        if (!closed) retry = setTimeout(connect, 2000);
+        if (!closed) retry = setTimeout(() => void connect(), 2000);
       };
     };
-    connect();
+    void connect();
 
     t.onData((d) => send(d));
     t.onBinary((d) => send(Uint8Array.from(d, (c) => c.charCodeAt(0))));

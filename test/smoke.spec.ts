@@ -222,7 +222,11 @@ test('styleguide renders every section', async ({ page }) => {
 });
 
 test('login on 401 and phone pairing', async ({ page }) => {
-  const { errors, calls } = await mockApi(page, { '/api/config': { status: 401, json: { error: 'login required' } } });
+  const { errors, calls } = await mockApi(page, {
+    '/api/config': { status: 401, json: { error: 'login required' } },
+    'POST /api/auth/pairing/redeem': { device: { id: 'phone-1', state: 'pending', level: 'prompts' } },
+    'POST /api/auth/challenge': { status: 409, json: { error: 'waiting for approval on the machine' } },
+  });
   await page.goto('/#/');
   await expect(page.getByText('your session hub')).toBeVisible();
   await page.getByLabel('Access token').fill('secret');
@@ -236,12 +240,13 @@ test('login on 401 and phone pairing', async ({ page }) => {
   await page.goto('/pair/abc123');
   await page.getByLabel('Device name').fill('Pixel');
   await page.getByRole('button', { name: 'Pair this phone' }).click();
-  await expect(page.getByText('This phone is signed in as Pixel.')).toBeVisible();
-  expect(calls.find((c) => c.path === '/api/auth/pairing/redeem')?.body).toEqual({
-    code: 'abc123',
-    deviceName: 'Pixel',
-  });
-  expect(errors.filter((e) => !e.includes('401'))).toEqual([]);
+  // Not approved on the machine yet: the challenge answers 409 and the page waits.
+  await expect(page.getByText(/Now approve Pixel in shub/)).toBeVisible();
+  const redeem = calls.find((c) => c.path === '/api/auth/pairing/redeem')?.body as Record<string, unknown>;
+  expect(redeem).toMatchObject({ code: 'abc123', deviceName: 'Pixel', publicKey: { kty: 'EC', crv: 'P-256' } });
+  expect(redeem.publicKey).not.toHaveProperty('d');
+  expect(calls.find((c) => c.path === '/api/auth/challenge')?.body).toEqual({ deviceId: 'phone-1' });
+  expect(errors.filter((e) => !e.includes('401') && !e.includes('409'))).toEqual([]);
 });
 
 test('app settings and project settings', async ({ page }) => {

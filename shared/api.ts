@@ -370,6 +370,13 @@ export interface ServiceInspect {
 
 // ---------- auth and devices ----------
 
+/**
+ * What a paired phone may do (docs/SECURITY.md): view = read + push, prompts = also answer approvals,
+ * permission questions and Run chips, control = everything. Desktop logins with the access token are control.
+ */
+export type DeviceLevel = 'view' | 'prompts' | 'control';
+export const DEVICE_LEVELS: DeviceLevel[] = ['view', 'prompts', 'control'];
+
 export interface Device {
   id: string;
   name: string;
@@ -377,7 +384,23 @@ export interface Device {
   pairedAt: string;
   lastSeenAt: string;
   push: boolean;
+  level: DeviceLevel;
+  /** pending: paired but not yet approved on the machine; it cannot sign in. */
+  state: 'pending' | 'active';
 }
+
+/**
+ * Lowest level a device needs per route. Unlisted routes: GET needs view, everything else control.
+ * The server gate (server/auth/levels.ts) enforces it; the web app only uses it to hide what would fail.
+ */
+export const ROUTE_LEVELS: Partial<Record<keyof typeof ROUTES, DeviceLevel>> = {
+  logout: 'view',
+  pushSubscribe: 'view',
+  pushTest: 'view',
+  approvalDecide: 'prompts',
+  sessionCommand: 'prompts', // by index only: runs a command Claude handed over, never text from the phone
+  sessionKeys: 'prompts', // prompts: named keys and single digits only, see sessions
+};
 
 // ---------- plugins ----------
 
@@ -503,9 +526,12 @@ export const ROUTES = {
   logout: 'POST /api/auth/logout',
   me: 'GET /api/auth/me',
   pairingStart: 'POST /api/auth/pairing', // -> { code, url, qrSvg, expiresAt }
-  pairingRedeem: 'POST /api/auth/pairing/redeem', // { code, deviceName } -> sets cookie
+  pairingRedeem: 'POST /api/auth/pairing/redeem', // { code, deviceName, publicKey: JWK } -> { device } (pending)
+  authChallenge: 'POST /api/auth/challenge', // { deviceId } -> { nonce }; 409 while the device is pending
+  authSession: 'POST /api/auth/session', // { deviceId, nonce, signature } -> { token, expiresAt }
   devices: 'GET /api/devices',
-  deviceUpdate: 'PATCH /api/devices/:id', // { name } -> Device, rename
+  deviceUpdate: 'PATCH /api/devices/:id', // { name } rename, { level } only from the machine itself -> Device
+  deviceApprove: 'POST /api/devices/:id/approve', // only from the machine itself -> Device
   deviceDelete: 'DELETE /api/devices/:id',
   rotateToken: 'POST /api/auth/rotate',
 
@@ -597,6 +623,7 @@ export type ServerEvent =
   | { type: 'services.changed'; sessionId: string }
   | { type: 'plugins.changed' }
   | { type: 'updates.changed' }
+  | { type: 'devices.changed' }
   | {
       type: 'plugin.action';
       plugin: string;
