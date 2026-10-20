@@ -427,6 +427,8 @@ test('active group keeps a project for 10 minutes after its last session closes'
 
   events!.send(JSON.stringify({ type: 'session.closed', sessionId: 's1' }));
   mocks['/api/sessions'] = [];
+  await page.clock.runFor(500); // the closing fade drops the session after 400 ms
+  await expect(activeGroup.getByTitle(/Leaves the Active group in \d+:\d\d$/)).toBeVisible();
   await page.clock.fastForward('09:00');
   await expect(activeGroup.getByTitle(/Leaves the Active group in [01]:\d\d$/)).toBeVisible();
   // The fake clock may restart on reload, so only check the countdown is still there, then run past any grace.

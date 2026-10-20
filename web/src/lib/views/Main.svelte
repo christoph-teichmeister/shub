@@ -545,7 +545,12 @@
                 onmenu={(e) => (projectMenu = { project: p, x: e.clientX, y: e.clientY })}
               >
                 {#each list as s (s.id)}
-                  <SessionRow session={s} href={sessionHref(s)} selected={s.id === active?.id} />
+                  <SessionRow
+                    session={s}
+                    href={sessionHref(s)}
+                    selected={s.id === active?.id}
+                    closing={app.closing[s.id]}
+                  />
                 {/each}
               </ProjectRow>
             </div>
