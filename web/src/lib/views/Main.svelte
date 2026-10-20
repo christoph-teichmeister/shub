@@ -347,6 +347,23 @@
     if (s) location.hash = sessionHref(s);
   }
 
+  // Remembered per browser; storage can be missing or throw (private window).
+  let sidebarCollapsed = $state(false);
+  try {
+    sidebarCollapsed = localStorage.getItem('shub.sidebar.collapsed') === '1';
+  } catch {
+    // starts open
+  }
+  function toggleSidebar() {
+    sidebarCollapsed = !sidebarCollapsed;
+    try {
+      if (sidebarCollapsed) localStorage.setItem('shub.sidebar.collapsed', '1');
+      else localStorage.removeItem('shub.sidebar.collapsed');
+    } catch {
+      // not remembered, still toggles
+    }
+  }
+
   function onKeydown(e: KeyboardEvent) {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
     const index = tabs.findIndex((s) => s.id === active?.id);
@@ -355,6 +372,9 @@
     else if (e.key === '?' || e.code === 'Slash') ui.shortcuts = !ui.shortcuts;
     else
       switch (e.code) {
+        case 'KeyB':
+          toggleSidebar();
+          break;
         case 'KeyG':
           ui.drawer = !ui.drawer;
           break;
@@ -400,7 +420,7 @@
 
 <AppShell>
   {#snippet sidebar()}
-    <Sidebar>
+    <Sidebar collapsed={sidebarCollapsed} ontoggle={toggleSidebar}>
       {#snippet header()}
         <div class="brand">
           <Wordmark accent={project?.accent} {needsYou} />
@@ -773,6 +793,9 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 var(--space-1-5);
+
+    /* The sidebar's hide button sits right of this row. */
+    margin-right: calc(var(--size-control) + var(--space-2));
   }
 
   .search,
@@ -928,7 +951,6 @@
 
   .tab-hint {
     margin-left: auto;
-    align-self: center;
     padding-right: var(--space-2);
     font-size: var(--text-sm);
     color: var(--muted);

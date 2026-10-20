@@ -13,7 +13,7 @@
 
 <div class="bar">
   <div class="tabs" role="tablist" tabindex="-1" aria-label={label} onkeydown={tabKeys}>{@render children()}</div>
-  {#if trailing}{@render trailing()}{/if}
+  {#if trailing}<div class="trailing">{@render trailing()}</div>{/if}
 </div>
 
 <style>
@@ -26,6 +26,15 @@
     /* Inset shadow, not a border: the bar scrolls, which would clip a selected tab overlapping a border. */
     box-shadow: inset 0 calc(-1 * var(--hairline)) 0 var(--line);
     overflow-x: auto;
+  }
+
+  /* As tall as a tab and centred in it: aligned to the bottom, the buttons sat on the line. */
+  .trailing {
+    flex: 1 0 auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-0-5);
+    height: var(--size-tab);
   }
 
   .tabs {

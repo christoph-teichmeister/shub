@@ -108,7 +108,16 @@
     });
     // Ctrl+V / Ctrl+Shift+V: let the browser fire its paste event (handled below) instead of sending ^V.
     // Ctrl+C stays an interrupt; Alt shortcuts are taken by the view before xterm sees them.
-    t.attachCustomKeyEventHandler((e) => !((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v'));
+    // Ctrl+Left/Right jump a word: sent as Alt+B/F (ESC b/f), which readline and Claude's prompt understand,
+    // since Alt+B itself toggles the sidebar.
+    const wordJump: Record<string, string> = { ArrowLeft: '\u001bb', ArrowRight: '\u001bf' };
+    t.attachCustomKeyEventHandler((e) => {
+      if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.key in wordJump) {
+        if (e.type === 'keydown') send(wordJump[e.key]);
+        return false;
+      }
+      return !((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v');
+    });
 
     // Paste and drop go through the server (images become files, their path is typed in).
     const onPaste = (e: ClipboardEvent) => {
