@@ -8,7 +8,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { promisify } from 'node:util';
-import { ROUTES, type UpdateChannel, type UpdateMode, type UpdateStatus } from '../../shared/api.ts';
+import { ROUTES, type ReleaseNotes, type UpdateChannel, type UpdateMode, type UpdateStatus } from '../../shared/api.ts';
 import { appVersion } from '../api/index.ts';
 import { HttpError, requireUser, type Caller } from '../api/router.ts';
 import type { Context } from '../context.ts';
@@ -22,6 +22,8 @@ const FEED = 'https://ntfy.sh/christoph-teichmeister-shub-releases/json';
 const MIN_GAP = 60_000;
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const run = promisify(execFile);
+// ponytail: first page only, plenty for reading back; page through when someone wants older notes.
+const RELEASES = 'https://api.github.com/repos/christoph-teichmeister/shub/releases?per_page=50';
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS update_check (
@@ -169,6 +171,26 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
     }
   }
 
+  /** Notes of the running version and the ones before it on the channel, from GitHub (newest first). */
+  async function releaseNotes(): Promise<ReleaseNotes[]> {
+    const res = await fetch(RELEASES, { headers: { accept: 'application/vnd.github+json' } }).catch(() => null);
+    if (!res?.ok)
+      throw new HttpError(502, `could not load the release notes from GitHub${res ? ` (${res.status})` : ''}`);
+    const list = (await res.json()) as {
+      tag_name: string;
+      draft: boolean;
+      prerelease: boolean;
+      published_at: string;
+      body: string | null;
+    }[];
+    const releases = list.filter((r) => !r.draft && (channel() === 'beta' || !r.prerelease));
+    // Newer releases than the running one belong to "is available"; a version GitHub does not know shows them all.
+    const at = releases.findIndex((r) => r.tag_name === `v${current}`);
+    return releases
+      .slice(Math.max(at, 0))
+      .map((r) => ({ version: r.tag_name.replace(/^v/, ''), publishedAt: r.published_at, notes: r.body ?? '' }));
+  }
+
   let timer: ReturnType<typeof setInterval> | undefined;
   const feed = new AbortController();
   return {
@@ -178,6 +200,10 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
         router.add(ROUTES.updates, (req) => {
           requireUser(req.caller);
           return status();
+        });
+        router.add(ROUTES.changelog, (req) => {
+          requireUser(req.caller);
+          return releaseNotes();
         });
         router.add(ROUTES.updateCheck, (req) => {
           requireBrowserUser(req.caller);
