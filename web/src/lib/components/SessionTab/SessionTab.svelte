@@ -14,7 +14,8 @@
     onselect?: () => void;
     onrename?: (name: string) => void;
     onclose?: () => void;
-    onmenu?: (e: MouseEvent) => void;
+    /** Right-click or the tab's menu button; `at` is where the menu opens. */
+    onmenu?: (at: { x: number; y: number }) => void;
   }
   let {
     session,
@@ -54,7 +55,7 @@
   class:closing
   inert={closing}
   role="presentation"
-  oncontextmenu={onmenu ? (e) => (e.preventDefault(), onmenu(e)) : undefined}
+  oncontextmenu={onmenu ? (e) => (e.preventDefault(), onmenu({ x: e.clientX, y: e.clientY })) : undefined}
 >
   <StatusDot status={session.status} />
   {#if renaming}
@@ -96,8 +97,22 @@
   {#each session.links.slice(0, 1) as link (link.url)}
     <a class="chip" href={link.url} target="_blank" rel="noreferrer">{link.label}</a>
   {/each}
+  {#if onmenu}
+    <span class="reveal"
+      ><IconButton
+        label="Menu for {session.name}"
+        icon="more"
+        size="xs"
+        tone="muted"
+        onclick={(e) => {
+          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          onmenu({ x: r.left, y: r.bottom });
+        }}
+      /></span
+    >
+  {/if}
   {#if onclose}
-    <span class="close"
+    <span class="reveal"
       ><IconButton label="Close {session.name}" icon="close" size="xs" tone="muted" onclick={onclose} /></span
     >
   {/if}
@@ -173,7 +188,7 @@
     color: var(--danger);
   }
 
-  .close {
+  .reveal {
     visibility: hidden;
   }
 
@@ -189,9 +204,9 @@
     color: var(--fg-2);
   }
 
-  .tab.selected .close,
-  .tab:hover .close,
-  .tab:focus-within .close {
+  .tab.selected .reveal,
+  .tab:hover .reveal,
+  .tab:focus-within .reveal {
     visibility: visible;
   }
 </style>

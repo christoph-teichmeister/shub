@@ -285,8 +285,8 @@
     const plugin = app.plugins.flatMap((p) =>
       p.enabled ? p.sessionMenuActions.map((a) => ({ id: `plugin:${p.name}:${a.id}`, label: a.label })) : [],
     );
-    const own = app.projects.find((p) => p.id === s.projectId);
-    const buttons = (own?.buttons ?? [])
+    // Buttons start sessions in the open project, so a sidebar row of another project leaves them out.
+    const buttons = (s.projectId === project?.id ? project.buttons : [])
       .filter((b) => b.confirm)
       .map((b, i) => ({
         id: `button:${b.id}`,
@@ -304,8 +304,11 @@
   }
 
   function onMenu(s: Session, id: string) {
-    if (id === 'rename') renamingId = s.id;
-    else if (id === 'link') linkDraft = { session: s, label: '', url: '' };
+    if (id === 'rename') {
+      // Renaming happens in the tab, so a sidebar row of another session opens it first.
+      if (s.id !== active?.id) location.hash = sessionHref(s);
+      renamingId = s.id;
+    } else if (id === 'link') linkDraft = { session: s, label: '', url: '' };
     else if (id === 'pause')
       void api(s.status === 'paused' ? 'sessionResume' : 'sessionPause', { params: { id: s.id } }).catch(toastError);
     else if (id === 'close') close(s);
@@ -550,6 +553,7 @@
                     href={sessionHref(s)}
                     selected={s.id === active?.id}
                     closing={app.closing[s.id]}
+                    onmenu={(at) => (menu = { session: s, ...at })}
                   />
                 {/each}
               </ProjectRow>
@@ -586,6 +590,7 @@
                   href={sessionHref(s)}
                   selected={s.id === active?.id}
                   closing={app.closing[s.id]}
+                  onmenu={(at) => (menu = { session: s, ...at })}
                 />
               {/each}
             </ProjectRow>
@@ -703,23 +708,11 @@
             onselect={() => (location.hash = sessionHref(s))}
             onrename={(name) => rename(s, name)}
             onclose={() => close(s)}
-            onmenu={(e) => (menu = { session: s, x: e.clientX, y: e.clientY })}
+            onmenu={(at) => (menu = { session: s, ...at })}
           />
         {/each}
         {#snippet trailing()}
           <IconButton label="New session (Alt N)" icon="plus" size="md" tone="muted" onclick={() => newSession()} />
-          {#if active}
-            <IconButton
-              label="Session menu"
-              icon="more"
-              size="md"
-              tone="muted"
-              onclick={(e) => {
-                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                menu = { session: active!, x: r.left, y: r.bottom };
-              }}
-            />
-          {/if}
           <span class="tab-hint">Double-click a tab to rename</span>
         {/snippet}
       </TabBar>
