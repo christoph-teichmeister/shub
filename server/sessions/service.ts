@@ -16,6 +16,7 @@ import { HttpError } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import { hookSettings } from '../hooks/index.ts';
 import type { Services, Sessions } from '../services.ts';
+import { defaultTitler, type Titler } from './title.ts';
 import { autoName, buttonPrompt, defaultLauncher, permissionModeFor, slugify, type Launcher } from './launch.ts';
 import { claudeDir, encodeCwd, listOldSessions, summarizeTranscript } from './old.ts';
 import { Tmux } from './tmux.ts';
@@ -91,12 +92,14 @@ const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
 export interface SessionsOptions {
   launcher?: Launcher;
+  titler?: Titler;
 }
 
 export class SessionsService implements Sessions {
   #ctx: Context;
   #services: Services;
   #launcher: Launcher;
+  #titler: Titler;
   #tmux!: Tmux;
   #binDir: string;
   #restorable = new Set<string>();
@@ -106,6 +109,7 @@ export class SessionsService implements Sessions {
     this.#ctx = ctx;
     this.#services = services;
     this.#launcher = options.launcher ?? defaultLauncher;
+    this.#titler = options.titler ?? defaultTitler;
     this.#binDir = join(ctx.paths.stateDir, 'bin');
   }
 
@@ -201,11 +205,11 @@ export class SessionsService implements Sessions {
     const n = request.kind === 'global' ? 1 : this.#nextNumber(prefix);
     const id = request.kind === 'global' ? GLOBAL_ID : `${prefix}${n}`;
     const prompt = button ? buttonPrompt(button, request.input) : request.prompt?.trim() || undefined;
+    const namePrompt =
+      request.name?.trim() || request.kind !== 'claude' || button ? undefined : (prompt ?? resumed?.firstPrompt);
     const name =
       request.name?.trim() ||
-      (request.kind === 'global'
-        ? 'Global Claude'
-        : autoName({ button, input: request.input, prompt: prompt ?? resumed?.firstPrompt, n }));
+      (request.kind === 'global' ? 'Global Claude' : autoName({ button, input: request.input, prompt: namePrompt, n }));
 
     const at = now();
     this.#db
@@ -244,7 +248,21 @@ export class SessionsService implements Sessions {
     const session = this.get(id)!;
     this.#ctx.bus.emit({ type: 'session.started', session });
     this.#services.permissions.log({ actor: startedBy, action: 'session.start', detail: `${id}: ${session.name}` });
+    if (namePrompt) this.#retitle(id, namePrompt, session.name);
     return session;
+  }
+
+  nameFromPrompt(id: string, prompt: string): void {
+    const quick = autoName({ prompt, n: 0 });
+    this.rename(id, quick, 'shub');
+    this.#retitle(id, prompt, quick);
+  }
+
+  /** The quick name stays until the model's title arrives, and stays for good if the user renamed meanwhile. */
+  #retitle(id: string, prompt: string, quick: string): void {
+    void this.#titler(prompt).then((title) => {
+      if (title && this.get(id)?.name === quick) this.rename(id, title, 'shub');
+    });
   }
 
   /** An old conversation of this folder that no live shub session holds. */

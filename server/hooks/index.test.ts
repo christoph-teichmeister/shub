@@ -88,7 +88,7 @@ test('the first prompt names a "Session N" session, later prompts and given name
   const services = {
     sessions: {
       get: () => ({ id: 's1', status: 'your-turn', claudeSessionId: null, name }),
-      rename: (_id: string, n: string) => renames.push((name = n)),
+      nameFromPrompt: (_id: string, prompt: string) => renames.push((name = prompt)),
       setPermissionMode: () => {},
       setStatus: () => {},
     },
@@ -103,5 +103,5 @@ test('the first prompt names a "Session N" session, later prompts and given name
   await hook('UserPromptSubmit', { prompt: '  ' });
   await hook('UserPromptSubmit', { prompt: 'fix the login redirect after logout please now' });
   await hook('UserPromptSubmit', { prompt: 'second prompt' });
-  assert.deepEqual(renames, ['fix the login redirect after logout…']);
+  assert.deepEqual(renames, ['fix the login redirect after logout please now']);
 });
