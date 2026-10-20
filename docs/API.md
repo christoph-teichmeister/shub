@@ -74,7 +74,7 @@ All routes are in `ROUTES` in `shared/api.ts`. Notes on the ones that are not ob
 | `POST /api/updates/install`       | `{version?}` (default: `latest`) -> `{ok, version}`; browser user only; runs `shub update --to <version>` of the launcher, which restarts shub                                                                           |
 | `POST /api/updates/rollback`      | -> `{ok, version}`; browser user only; runs `shub rollback`                                                                                                                                                              |
 | `PATCH /api/updates/channel`      | `{channel: 'stable'\|'beta'}` -> `UpdateStatus`; browser user only; stored as `updateChannel` in config and checked again                                                                                                |
-| `PATCH /api/updates/mode`         | `{mode: 'auto'\|'ask'\|'off'}` -> `UpdateStatus`; browser user only; stored as `updateMode` in config; `auto` installs a newer release after each hourly check, `off` skips the hourly check                             |
+| `PATCH /api/updates/mode`         | `{mode: 'auto'\|'ask'\|'off'}` -> `UpdateStatus`; browser user only; stored as `updateMode` in config; `auto` installs a newer release after each check (every 5 min), `off` skips the check                             |
 
 ## Events
 

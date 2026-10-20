@@ -1,5 +1,5 @@
 // Updates for shub installed with the launcher (launcher/). The launcher does the real work: download, signature
-// check, version switch, service restart and the automatic rollback. This module asks it every hour whether a
+// check, version switch, service restart and the automatic rollback. This module asks it every 5 minutes whether a
 // newer release exists (cached in sqlite), shows the launcher's last result and starts an install when the user
 // clicks, or right after the check in mode "auto". Started from a git checkout (no SHUB_LAUNCHER in the environment) everything here is read-only.
 import { execFile, spawn } from 'node:child_process';
@@ -14,7 +14,8 @@ import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 
-const HOUR = 60 * 60 * 1000;
+// ponytail: polls GitHub (60 unauthenticated calls/h per IP); a webhook/push would need a public endpoint.
+const EVERY = 5 * 60 * 1000;
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const run = promisify(execFile);
 
@@ -181,8 +182,8 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
       start() {
         if (!launcher) return;
         const row = cached();
-        if (mode() !== 'off' && (!row || Date.parse(row.checked_at) < Date.now() - HOUR)) void check();
-        timer = setInterval(() => mode() !== 'off' && void check(), HOUR);
+        if (mode() !== 'off' && (!row || Date.parse(row.checked_at) < Date.now() - EVERY)) void check();
+        timer = setInterval(() => mode() !== 'off' && void check(), EVERY);
         timer.unref();
       },
       stop() {

@@ -98,7 +98,7 @@ test('from a git checkout the updates are read-only', async () => {
   await assert.rejects(call('GET /api/updates', session), HttpError);
 });
 
-test('hourly check through the launcher, cached per version and channel', async () => {
+test('periodic check through the launcher, cached per version and channel', async () => {
   const { module, call, events, services } = setup(true);
   module.start!();
   await changed(events);
