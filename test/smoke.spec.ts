@@ -420,12 +420,22 @@ test('theme editor blinks the colour you point at in the preview', async ({ page
   const side = page.locator('.p-side');
   const bg = () => side.evaluate((el) => getComputedStyle(el).backgroundColor);
   await expect.poll(bg).toBe('rgb(30, 31, 28)');
-  await page.locator('.color').filter({ hasText: 'Sidebar' }).hover();
+  await page.getByLabel('Pick Sidebar and menus', { exact: true }).hover();
   // Monokai panel #1e1f1c pulses towards its inverse, so it leaves the real colour.
   await expect.poll(bg).not.toBe('rgb(30, 31, 28)');
   await page.mouse.move(0, 0);
   await expect(page.locator('.preview')).not.toHaveClass(/flashing/);
   await expect.poll(bg).toBe('rgb(30, 31, 28)');
+  // Terminal colours are their own tokens and blink in the preview's terminal too.
+  const red = () =>
+    page
+      .locator('.t-red')
+      .first()
+      .evaluate((el) => getComputedStyle(el).color);
+  const before = await red();
+  await page.getByLabel('Pick Red', { exact: true }).hover();
+  await expect.poll(red).not.toBe(before);
+  await page.screenshot({ path: 'test-results/theme-editor.png', fullPage: true });
   expect(errors).toEqual([]);
 });
 
