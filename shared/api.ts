@@ -156,6 +156,8 @@ export interface Session {
   waitCheck?: WaitCheck | null;
   /** Place in its project's list the user dragged it to; null follows the default order. */
   position?: number | null;
+  /** Shell commands Claude asked you to run at the end of its turn (status needs-you until run or dismissed). */
+  pendingCommands?: string[] | null;
 }
 
 export interface WaitCheck {
@@ -432,6 +434,7 @@ export const ROUTES = {
   sessionClose: 'DELETE /api/sessions/:id',
   sessionPause: 'POST /api/sessions/:id/pause',
   sessionResume: 'POST /api/sessions/:id/resume',
+  sessionCommand: 'POST /api/sessions/:id/command', // { index, action: 'run' | 'dismiss', enter? } pendingCommands
   sessionKeys: 'POST /api/sessions/:id/keys', // { keys: "1" | "Escape" | ... } phone quick keys
   sessionPaste: 'POST /api/sessions/:id/paste', // text or multipart image -> path inserted
   sessionLink: 'POST /api/sessions/:id/links', // SessionLink

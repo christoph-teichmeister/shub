@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ButtonDef } from '../../shared/api.ts';
-import { autoName, buttonPrompt, defaultLauncher, isSimpleInput, permissionModeFor } from './launch.ts';
+import { autoName, buttonPrompt, defaultLauncher, RUN_HINT, isSimpleInput, permissionModeFor } from './launch.ts';
 import { encodeCwd, summarizeTranscript } from './old.ts';
 
 const button = (extra: Partial<ButtonDef>): ButtonDef => ({
@@ -59,6 +59,8 @@ test('claude argv names the mode and puts the prompt after --', () => {
     'u',
     '--settings',
     '/s.json',
+    '--append-system-prompt',
+    RUN_HINT,
     '--permission-mode',
     'default',
     '--',
@@ -80,7 +82,17 @@ test('inherit passes no --permission-mode flag', () => {
     prompt: 'hi',
     resume: false,
   });
-  assert.deepEqual(argv, ['claude', '--session-id', 'u', '--settings', '/s.json', '--', 'hi']);
+  assert.deepEqual(argv, [
+    'claude',
+    '--session-id',
+    'u',
+    '--settings',
+    '/s.json',
+    '--append-system-prompt',
+    RUN_HINT,
+    '--',
+    'hi',
+  ]);
 });
 
 test('cwd encoding matches ~/.claude/projects folder names', () => {

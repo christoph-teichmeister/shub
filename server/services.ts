@@ -79,6 +79,7 @@ export interface Sessions {
     id: string,
     status: SessionStatus,
     pendingPermission?: Session['pendingPermission'],
+    pendingCommands?: Session['pendingCommands'],
     background?: boolean,
   ): void;
   /** Claude switched conversations (/clear, compact): remember the new id for resume. */

@@ -31,6 +31,7 @@ const MIGRATIONS = [
   `ALTER TABLE sessions ADD COLUMN waiting_for TEXT`,
   `ALTER TABLE sessions ADD COLUMN wait_check TEXT`,
   'ALTER TABLE sessions ADD COLUMN position INTEGER',
+  `ALTER TABLE sessions ADD COLUMN pending_commands TEXT`,
 ];
 const WAIT_EVERY_MIN = 5;
 
@@ -73,6 +74,7 @@ interface Row {
   created_at: string;
   last_activity_at: string;
   pending_permission: string | null;
+  pending_commands: string | null;
   token: string | null;
   waiting_for: string | null;
   wait_check: string | null;
@@ -97,6 +99,7 @@ const toSession = (r: Row): Session => ({
   waitingFor: r.waiting_for,
   waitCheck: r.wait_check ? JSON.parse(r.wait_check) : null,
   position: r.position,
+  pendingCommands: r.pending_commands ? JSON.parse(r.pending_commands) : null,
 });
 
 export const tmuxName = (id: string): string => `shub-${id}`;
@@ -351,7 +354,9 @@ export class SessionsService implements Sessions {
     this.#tmux.kill(tmuxName(row.id));
     if (row.token) this.#services.auth.revokeClientToken(row.token);
     this.#db
-      .prepare(`UPDATE sessions SET status = 'exited', token = NULL, pending_permission = NULL WHERE id = ?`)
+      .prepare(
+        `UPDATE sessions SET status = 'exited', token = NULL, pending_permission = NULL, pending_commands = NULL WHERE id = ?`,
+      )
       .run(row.id);
     this.#restorable.delete(row.id);
     this.#ctx.bus.emit({ type: 'session.closed', sessionId: row.id });
@@ -416,17 +421,27 @@ export class SessionsService implements Sessions {
     id: string,
     status: SessionStatus,
     pendingPermission?: Session['pendingPermission'],
+    pendingCommands?: Session['pendingCommands'],
     background = false,
   ): void {
     const session = this.get(id);
     if (!session || session.status === 'exited') return;
     if (background) this.#background.set(id, Date.now());
     else this.#background.delete(id);
-    const pending =
-      pendingPermission !== undefined ? pendingPermission : status === 'needs-you' ? session.pendingPermission : null;
+    const keep = status === 'needs-you';
+    const pending = pendingPermission !== undefined ? pendingPermission : keep ? session.pendingPermission : null;
+    const commands = pendingCommands !== undefined ? pendingCommands : keep ? session.pendingCommands : null;
     this.#db
-      .prepare('UPDATE sessions SET status = ?, pending_permission = ?, last_activity_at = ? WHERE id = ?')
-      .run(status, pending ? JSON.stringify(pending) : null, now(), id);
+      .prepare(
+        'UPDATE sessions SET status = ?, pending_permission = ?, pending_commands = ?, last_activity_at = ? WHERE id = ?',
+      )
+      .run(
+        status,
+        pending ? JSON.stringify(pending) : null,
+        commands?.length ? JSON.stringify(commands) : null,
+        now(),
+        id,
+      );
     this.#ctx.bus.emit({ type: 'session.status', sessionId: id, status });
     this.#emitUpdated(id);
   }
@@ -506,6 +521,21 @@ export class SessionsService implements Sessions {
       if (NAMED_KEYS.has(key)) this.#tmux.sendKey(tmuxName(id), key);
       else this.#tmux.sendLiteral(tmuxName(id), key);
     }
+  }
+
+  /**
+   * A command Claude handed over: "run" types `!` (Claude's bash mode) and pastes it, Enter only when asked;
+   * both actions clear the list and hand the turn back.
+   */
+  answerCommand(id: string, index: number, action: 'run' | 'dismiss', enter = false): void {
+    const command = this.get(id)?.pendingCommands?.[index];
+    if (command === undefined) throw new HttpError(404, 'no such command waiting');
+    if (action === 'run') {
+      this.sendKeys(id, ['!']);
+      this.pasteText(id, command);
+      if (enter) this.sendKeys(id, ['Enter']);
+    }
+    this.setStatus(id, 'your-turn', null, null);
   }
 
   pasteText(id: string, text: string): void {

@@ -66,6 +66,13 @@ export interface LaunchSpec {
   resume: boolean;
 }
 
+/** Fence info word that marks a command Claude hands over (```bash shub-run); hooks/transition.ts picks it up. */
+export const RUN_MARKER = 'shub-run';
+export const RUN_HINT =
+  `When the user has to run a shell command themselves (you cannot or should not run it), put exactly that ` +
+  `command in its own fenced block opened with \`\`\`bash ${RUN_MARKER} — shub then offers to run it. ` +
+  `Use plain \`\`\`bash for every other block, examples and commands you ran included.`;
+
 /** argv run inside tmux. Tests swap this for `sleep` or `bash`. */
 export type Launcher = (spec: LaunchSpec) => string[];
 
@@ -74,6 +81,6 @@ export const defaultLauncher: Launcher = (spec) => {
   const id = spec.resume ? ['--resume', spec.claudeSessionId!] : ['--session-id', spec.claudeSessionId!];
   // Passed unless the setting says "inherit": the user's own default may be a prompt-skipping one.
   const mode = spec.permissionMode === 'inherit' ? [] : ['--permission-mode', spec.permissionMode];
-  const args = ['claude', ...id, '--settings', spec.settingsFile, ...mode];
+  const args = ['claude', ...id, '--settings', spec.settingsFile, '--append-system-prompt', RUN_HINT, ...mode];
   return spec.prompt && !spec.resume ? [...args, '--', spec.prompt] : args;
 };

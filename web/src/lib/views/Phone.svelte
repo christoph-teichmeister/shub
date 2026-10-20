@@ -1,5 +1,6 @@
 <script lang="ts">
   // Phone layout (viewport < 700 px), same routes as the desktop: #/ is the overview, #/p/<id>/<session> a terminal.
+  import CommandChip from '../components/CommandChip/CommandChip.svelte';
   import type { ServiceContainer, Session, SessionStatus } from '../../../../shared/api.ts';
   import Button from '../components/Button/Button.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
@@ -10,7 +11,7 @@
   import StatusDot from '../components/StatusDot/StatusDot.svelte';
   import TerminalView from '../components/TerminalView/TerminalView.svelte';
   import Wordmark from '../components/Wordmark/Wordmark.svelte';
-  import { STATUS_LABEL } from '../status.ts';
+  import { statusLabel } from '../status.ts';
   import { api } from '../stores/api.ts';
   import { href, router } from '../stores/router.svelte.ts';
   import { app, needsYouCount, sendKeys, sessionHref, sessionsOf, startSession, ui } from '../stores/state.svelte.ts';
@@ -88,7 +89,7 @@
       <div class="grow">
         <h1 class="name">{open.name}</h1>
         <span class="sub" class:needs={open.status === 'needs-you'}
-          >{p?.name ?? 'Global Claude'} · {STATUS_LABEL[open.status]}</span
+          >{p?.name ?? 'Global Claude'} · {statusLabel(open)}</span
         >
       </div>
       {#if open.kind === 'claude'}
@@ -117,6 +118,16 @@
     {#key open.id}
       <TerminalView sessionId={open.id} accent={p?.accent} label={open.name} compact />
     {/key}
+
+    <CommandChip
+      session={open}
+      phone
+      onterminal={async () => {
+        const shell = await startSession({ projectId: open.projectId, kind: 'shell', parentId: open.id });
+        if (shell) location.hash = sessionHref(shell);
+        return shell?.id;
+      }}
+    />
 
     {#if open.pendingPermission}
       <div class="permission" role="group" aria-label="Answer the permission question">
@@ -177,6 +188,11 @@
                     <Button onclick={() => sendKeys(s.id, ['3'])}>No</Button>
                     <a class="open" href={sessionHref(s)}>Open</a>
                   </div>
+                {:else if s.pendingCommands?.length}
+                  <p class="ask">{statusLabel(s)} · {s.pendingCommands[0]}</p>
+                  <div class="card-actions">
+                    <a class="open" href={sessionHref(s)}>Open</a>
+                  </div>
                 {:else}
                   <div class="card-actions">
                     <a class="open" href={sessionHref(s)}>Open terminal</a>
@@ -187,7 +203,7 @@
               <a class="card row" href={sessionHref(s)}>
                 <StatusDot status={s.status} />
                 <span class="grow">{title(s)}</span>
-                <span class="sub">{sec.status === 'working' ? age(s.lastActivityAt) : STATUS_LABEL[s.status]}</span>
+                <span class="sub">{sec.status === 'working' ? age(s.lastActivityAt) : statusLabel(s)}</span>
               </a>
             {/if}
           {/each}

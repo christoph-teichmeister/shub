@@ -36,7 +36,7 @@
     countdown,
     children,
   }: Props = $props();
-  const badge = $derived(projectBadge(sessions.map((s) => s.status)));
+  const badge = $derived(projectBadge(sessions));
   let over = $state(false);
 </script>
 

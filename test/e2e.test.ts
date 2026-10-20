@@ -146,7 +146,12 @@ test('health, login, project, session, terminal, hooks, close', { timeout: 60_00
   const tokenFile = join(dirs.out, `${started.id}.token`);
   const sessionToken = await waitFor(() => existsSync(tokenFile) && readFileSync(tokenFile, 'utf8'), 'fake claude');
   const args = readFileSync(join(dirs.out, `${started.id}.args`), 'utf8');
-  assert.match(args, new RegExp(`--session-id ${started.claudeSessionId} --settings \\S+ --permission-mode default`));
+  assert.match(
+    args,
+    new RegExp(
+      `--session-id ${started.claudeSessionId} --settings \\S+ --append-system-prompt .*shub-run.* --permission-mode default`,
+    ),
+  );
   const settings = JSON.parse(readFileSync(join(dirs.state, 'sessions', started.id, 'settings.json'), 'utf8'));
   assert.ok(settings.permissions.deny.includes(`Read(/${dirs.state}/token)`));
 
