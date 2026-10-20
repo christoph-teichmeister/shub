@@ -190,6 +190,8 @@
 
   /** What a folded group still shows: who needs you, else what is working. */
   const groupBadge = (projects: ProjectView[]) => projectBadge(projects.flatMap((p) => sessionsOf(p.id)));
+  /** The number in a badge like "3 merged", for the slim rail. */
+  const railCount = (text: string) => /\d+/.exec(text)?.[0] ?? '•';
   const dormantCount = $derived(app.projects.filter((p) => p.visibility === 'dormant').length);
 
   // ---------- Worktrees: cleanup section over every project's worktrees ----------
@@ -826,7 +828,13 @@
       {/if}
 
       {#snippet rail()}
-        <button type="button" class="rail-item" title="Search projects (Alt K)" onclick={() => (ui.search = true)}>
+        <a class="rail-item" title="New project" href={href('settings', 'project', 'new')}><Icon name="plus" /></a>
+        <button
+          type="button"
+          class="rail-item"
+          title={dormantCount ? `Search projects (Alt K) · ${dormantCount} dormant` : 'Search projects (Alt K)'}
+          onclick={() => (ui.search = true)}
+        >
           <Icon name="search" />
         </button>
         <button
@@ -839,22 +847,78 @@
           <span class="global-icon" aria-hidden="true"><Icon name="sparkle" size="sm" weight={2} /></span>
           {#if globalSession}<span class="rail-dot"><StatusDot status={globalSession.status} /></span>{/if}
         </button>
+        <button
+          type="button"
+          class="rail-item"
+          role="switch"
+          aria-checked={!!app.config?.activeGroup}
+          title="Active only"
+          onclick={toggleActiveGroup}
+        >
+          <span class="switch mini" aria-hidden="true"></span>
+        </button>
+        {#if pendingApprovals > 1}
+          <span class="rail-count" title="{pendingApprovals} approvals waiting">
+            <StatusBadge text={String(pendingApprovals)} tone="needs-you" />
+          </span>
+        {/if}
+        {#each pluginSections as section (section.plugin + section.id)}
+          {@const badge = section.content.badge}
+          <button
+            type="button"
+            class="rail-item"
+            title={badge ? `${section.title} · ${badge.text}` : section.title}
+            onclick={toggleSidebar}
+          >
+            <Icon name="board" />
+            {#if badge}<span class="rail-dot"><StatusBadge text={railCount(badge.text)} tone={badge.tone} /></span>{/if}
+          </button>
+        {/each}
         {#each app.config?.activeGroup ? [{ name: 'Active', projects: activeProjects }] : groups as group (group.name)}
           <hr class="rail-group" title={group.name} />
           {#each group.projects as p (p.id)}
-            {@const badge = projectBadge(sessionsOf(p.id))}
+            {@const list = sessionsOf(p.id)}
+            {@const badge = projectBadge(list)}
             <a
               class="rail-item"
               class:selected={p.id === project?.id}
               href={href('p', p.id)}
-              title={badge ? `${p.name} · ${badge.text}` : p.name}
+              title={[p.name, badge?.text, ...list.map((s) => `${s.name}: ${s.status}`)].filter(Boolean).join('\n')}
               aria-current={p.id === project?.id ? 'page' : undefined}
             >
               <ProjectIcon icon={p.resolvedIcon} name={p.name} />
               {#if badge}<span class="rail-dot"><StatusDot status={badge.tone} /></span>{/if}
+              {#if list.length}<span class="rail-sessions" aria-hidden="true">{list.length}</span>{/if}
             </a>
           {/each}
         {/each}
+        {#if worktrees.length}
+          <hr class="rail-group" title="Worktrees" />
+          <button
+            type="button"
+            class="rail-item"
+            title={`${worktrees.length} worktree${worktrees.length === 1 ? '' : 's'}` +
+              (mergedWorktrees.length ? ` · ${mergedWorktrees.length} merged` : '')}
+            onclick={toggleSidebar}
+          >
+            <Icon name="folder" />
+            {#if mergedWorktrees.length}<span class="rail-dot"
+                ><StatusBadge text={String(mergedWorktrees.length)} tone="neutral" /></span
+              >{/if}
+          </button>
+        {/if}
+        <a
+          class="rail-item rail-user"
+          href={href('settings')}
+          title="{app.me?.name ?? 'You'} · {app.connected ? 'Connected' : 'Offline, reconnecting'}{app.update?.latest
+            ? ' · update available'
+            : ''} · settings"
+        >
+          <span class="avatar" class:offline={!app.connected} aria-hidden="true"
+            >{(app.me?.name ?? 'You').slice(0, 1).toUpperCase()}{#if app.update?.latest}<span class="update-dot"
+              ></span>{/if}</span
+          >
+        </a>
       {/snippet}
 
       {#snippet footer()}
@@ -1307,6 +1371,31 @@
     top: 0;
     right: 0;
     display: flex;
+  }
+
+  .rail-sessions {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    font-size: var(--text-xs);
+    line-height: 1;
+    color: var(--muted);
+  }
+
+  .rail-user {
+    margin-top: auto;
+  }
+
+  .avatar.offline {
+    opacity: 0.5;
+  }
+
+  .switch.mini {
+    width: var(--space-6);
+  }
+
+  [aria-checked='true'] > .switch.mini::after {
+    transform: translateX(calc(var(--space-6) - var(--space-4)));
   }
 
   .rail-group {
