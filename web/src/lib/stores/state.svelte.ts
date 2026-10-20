@@ -100,7 +100,14 @@ export const loadProjects = async () => (app.projects = (await guard(api<Project
 export const loadSessions = async () => (app.sessions = (await guard(api<Session[]>('sessions'))) ?? app.sessions);
 export const loadApprovals = async () => (app.approvals = (await guard(api<Approval[]>('approvals'))) ?? app.approvals);
 export const loadPlugins = async () => (app.plugins = (await guard(api<PluginInfo[]>('plugins'))) ?? app.plugins);
-export const loadUpdate = async () => (app.update = (await guard(api<UpdateStatus>('updates'))) ?? app.update);
+/** The server version this page's code came with; another one means an update ran, so reload to get its frontend. */
+let loadedVersion: string | undefined;
+export async function loadUpdate(): Promise<void> {
+  app.update = (await guard(api<UpdateStatus>('updates'))) ?? app.update;
+  const current = app.update?.current;
+  loadedVersion ??= current;
+  if (current && current !== loadedVersion) location.reload();
+}
 
 export async function loadAll(): Promise<void> {
   await Promise.all([
