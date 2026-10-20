@@ -120,7 +120,7 @@ export class NotifyService implements Notify {
 
   yourTurn(session: Session): void {
     if (!this.#services.config.get().notifications.pushYourTurn) return;
-    const title = `${session.name}: your turn`;
+    const title = session.name;
     void this.push({ title, body: 'Claude finished.', url: sessionUrl(session), tag: `session-${session.id}` });
   }
 
