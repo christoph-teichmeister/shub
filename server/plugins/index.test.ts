@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync, existsSync, renameSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ROUTES, type Config, type PluginInfo, type ServerEvent } from '../../shared/api.ts';
@@ -203,5 +203,54 @@ test('enabling records where the plugin came from', async () => {
   await module.start!();
   await call('PATCH /api/plugins/demo', user, { enabled: false });
   assert.equal(config.plugins[0].source, 'https://example.com/demo.git');
+  await module.stop!();
+});
+
+test('upgrade pulls the newest commit and restarts the plugin; local changes block it', async () => {
+  const { module, call, config, dir } = setup();
+  const repo = mkdtempSync(join(tmpdir(), 'shub-plugin-repo-'));
+  const src = join(repo, 'demo');
+  renameSync(dir, src);
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { stdio: 'ignore' });
+  git(src, 'init', '-q');
+  git(src, 'add', '.');
+  git(src, 'commit', '-qm', 'v1');
+  execFileSync('git', ['clone', '-q', '--depth', '1', `file://${src}`, dir]);
+  config.plugins = [{ name: 'demo', enabled: true, grantedRights: [] }];
+  await module.start!();
+
+  const manifest = JSON.parse(readFileSync(join(src, 'shub-plugin.json'), 'utf8'));
+  writeFileSync(join(src, 'shub-plugin.json'), JSON.stringify({ ...manifest, version: '2.0.0' }));
+  git(src, 'commit', '-qam', 'v2');
+  writeFileSync(join(dir, 'p.mjs'), '// local edit');
+  await assert.rejects(call('POST /api/plugins/demo/upgrade', user), /local changes/);
+  git(dir, 'checkout', '-q', '--', 'p.mjs');
+  await assert.rejects(call('POST /api/plugins/demo/upgrade', session), HttpError);
+
+  const info = (await call('POST /api/plugins/demo/upgrade', user)) as PluginInfo;
+  assert.equal(info.version, '2.0.0');
+  assert.equal(info.running, true);
+  assert.equal(info.updateAvailable, false);
+  await module.stop!();
+});
+
+test('update check flags a plugin whose source has a newer commit', async () => {
+  const { module, call, config, dir } = setup();
+  const repo = mkdtempSync(join(tmpdir(), 'shub-plugin-repo-'));
+  const src = join(repo, 'demo');
+  renameSync(dir, src);
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', src, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { stdio: 'ignore' });
+  git('init', '-q');
+  git('add', '.');
+  git('commit', '-qm', 'v1');
+  execFileSync('git', ['clone', '-q', '--depth', '1', `file://${src}`, dir]);
+  git('commit', '-q', '--allow-empty', '-m', 'v2');
+  config.plugins = [{ name: 'demo', enabled: false, grantedRights: [] }];
+  await module.start!();
+  const flagged = async () => ((await call('GET /api/plugins', user)) as PluginInfo[])[0].updateAvailable;
+  for (let i = 0; i < 100 && !(await flagged()); i++) await new Promise((r) => setTimeout(r, 20));
+  assert.equal(await flagged(), true);
   await module.stop!();
 });

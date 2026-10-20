@@ -14,6 +14,7 @@ export const usage = [
   'shub plugin add <git-url>                   clone and validate a plugin (installed disabled, no rights)',
   'shub plugin list                            installed plugins with their rights',
   'shub plugin enable <name> [--grant a,b]     enable it and grant rights it requested',
+  'shub plugin update [name]                   pull the newest version of one or all plugins and restart them',
   'shub plugin remove <name>                   stop it and delete its folder (asks first)',
 ].join('\n');
 
@@ -107,6 +108,19 @@ async function enable(name: string, grant: string | true | undefined, json: bool
   );
 }
 
+async function update(name: string | undefined, json: boolean): Promise<void> {
+  const names = name
+    ? [checkName(name)]
+    : (await api<PluginInfo[]>('GET', '/api/plugins')).filter((p) => p.source).map((p) => p.name);
+  const updated: PluginInfo[] = [];
+  for (const n of names) updated.push(await api<PluginInfo>('POST', `/api/plugins/${n}/upgrade`));
+  output(updated, json, () =>
+    updated.length
+      ? updated.map((p) => `${p.name}: ${p.version}${p.running ? ' (running)' : ''}`).join('\n')
+      : 'No plugins from git.',
+  );
+}
+
 async function remove(name: string, json: boolean): Promise<void> {
   const dir = join(pluginsDir(), name);
   if (!existsSync(dir)) throw new CliError(`plugin "${name}" is not installed`);
@@ -130,6 +144,8 @@ export async function run(args: string[], opts: { json: boolean }): Promise<void
       return list(opts.json);
     case 'enable':
       return enable(checkName(arg), flags.grant, opts.json);
+    case 'update':
+      return update(arg, opts.json);
     case 'remove':
       return remove(checkName(arg), opts.json);
     default:
