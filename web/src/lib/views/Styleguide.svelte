@@ -231,6 +231,7 @@
                   selected={i === 1}
                   closing={i === SESSIONS.length - 1}
                   onmenu={() => {}}
+                  onunpin={() => {}}
                 />{/each}
             </ProjectRow>
             <ProjectRow project={PROJECTS[1]} sessions={[]} href="#/styleguide" settingsHref="#/styleguide" />

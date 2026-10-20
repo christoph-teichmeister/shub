@@ -15,8 +15,10 @@
     /** Drag and drop to reorder; `after` when dropped on the lower half. */
     ondragstart?: (e: DragEvent) => void;
     ondrop?: (after: boolean) => void;
+    /** Shows a pin on a dragged session (it keeps its place); clicking it lets the session sort by status again. */
+    onunpin?: () => void;
   }
-  let { session, href, selected = false, closing = false, onmenu, ondragstart, ondrop }: Props = $props();
+  let { session, href, selected = false, closing = false, onmenu, ondragstart, ondrop, onunpin }: Props = $props();
   let over = $state<'before' | 'after' | null>(null);
   const half = (e: DragEvent) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -51,6 +53,9 @@
     <span class="name">{session.name}</span>
     <span class="status">{closing ? 'Closing' : statusLabel(session)}</span>
   </a>
+  {#if onunpin && session.position != null && !closing}
+    <IconButton label="Unpin {session.name}" icon="pin" size="xs" tone="muted" onclick={onunpin} />
+  {/if}
   {#if onmenu && !closing}
     <span class="actions"
       ><IconButton

@@ -606,6 +606,10 @@
     for (const s of list) if (s.id in positions) s.position = positions[s.id];
     void api('sessionsReorder', { body: { positions } }).catch(toastError);
   }
+  function unpinSession(s: Session) {
+    s.position = null;
+    void api('sessionsReorder', { body: { positions: { [s.id]: null } } }).catch(toastError);
+  }
   const dragSessionStart = (s: Session) => (e: DragEvent) => {
     dragSession = s.id;
     e.dataTransfer?.setData('text/plain', s.name);
@@ -776,6 +780,7 @@
                     onmenu={(at) => (menu = { session: s, ...at })}
                     ondragstart={dragSessionStart(s)}
                     ondrop={(after) => dropSession(list, s, after)}
+                    onunpin={() => unpinSession(s)}
                   />
                 {/each}
               </ProjectRow>
@@ -814,6 +819,7 @@
                     onmenu={(at) => (menu = { session: s, ...at })}
                     ondragstart={dragSessionStart(s)}
                     ondrop={(after) => dropSession(list, s, after)}
+                    onunpin={() => unpinSession(s)}
                   />
                 {/each}
               </ProjectRow>
