@@ -1,6 +1,6 @@
 // Session records in sqlite plus their tmux sessions. One tmux session `shub-<id>` per shub session.
 import { randomUUID } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -19,7 +19,7 @@ import type { Services, Sessions } from '../services.ts';
 import { defaultTitler, type Titler } from './title.ts';
 import { defaultWaitChecker, type WaitChecker } from './waitcheck.ts';
 import { autoName, buttonPrompt, defaultLauncher, permissionModeFor, slugify, type Launcher } from './launch.ts';
-import { claudeDir, encodeCwd, listOldSessions, summarizeTranscript } from './old.ts';
+import { claudeDir, encodeCwd, findTranscript, listOldSessions, summarizeTranscript } from './old.ts';
 import { Tmux } from './tmux.ts';
 
 const MIGRATIONS = [
@@ -488,10 +488,12 @@ export class SessionsService implements Sessions {
     const session = this.require(id);
     if (this.#tmux.has(tmuxName(id))) throw new HttpError(409, 'session is already running');
     // A conversation without a prompt has no transcript, and `claude --resume` would exit at once: start it fresh.
-    const transcript =
-      session.claudeSessionId &&
-      join(claudeDir(), 'projects', encodeCwd(session.cwd), `${session.claudeSessionId}.jsonl`);
-    const hasTranscript = !!transcript && existsSync(transcript);
+    const transcript = session.claudeSessionId ? findTranscript(session.claudeSessionId, session.cwd) : null;
+    const hasTranscript = !!transcript;
+    // It moved into a worktree: resume it there, or Claude starts an empty conversation under the old id.
+    if (transcript && transcript.cwd !== session.cwd) {
+      this.#db.prepare('UPDATE sessions SET cwd = ? WHERE id = ?').run(transcript.cwd, id);
+    }
     this.#launch(this.#row(id)!, { resume: hasTranscript });
     this.#restorable.delete(id);
     this.setStatus(

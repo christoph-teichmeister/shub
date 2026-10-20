@@ -177,6 +177,19 @@ test('pause and resume', async () => {
     svc.resume(s.id, 'chris');
     assert.equal(launches.at(-1)?.resume, true);
     assert.ok(svc.tmux.has(tmuxName(s.id)));
+
+    // Claude moved into a worktree: the transcript lives under the worktree's folder, so it resumes there.
+    rmSync(join(dir, `${s.claudeSessionId}.jsonl`));
+    const worktree = join(s.cwd, '.claude', 'worktrees', 'w1');
+    mkdirSync(worktree, { recursive: true });
+    const wtDir = join(root, 'claude-resume', 'projects', encodeCwd(worktree));
+    mkdirSync(wtDir, { recursive: true });
+    const lines = [s.cwd, worktree, join(worktree, 'sub')].map((cwd) => JSON.stringify({ cwd }));
+    writeFileSync(join(wtDir, `${s.claudeSessionId}.jsonl`), lines.join('\n'));
+    svc.pause(s.id, 'chris');
+    svc.resume(s.id, 'chris');
+    assert.equal(launches.at(-1)?.resume, true);
+    assert.equal(svc.get(s.id)?.cwd, worktree);
   } finally {
     if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = before;
