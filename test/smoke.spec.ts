@@ -53,6 +53,7 @@ const config = {
 };
 
 const API: Record<string, unknown> = {
+  '/api/health': { ok: true, version: '2026.10.0', apiVersion: 1, machine: 'laptop' },
   '/api/config': config,
   '/api/projects': [project, dormant],
   '/api/sessions': [session],
@@ -108,7 +109,12 @@ interface Call {
   method: string;
   path: string;
   body: unknown;
+  /** Which machine was called: the app's own or another one a phone app knows. */
+  origin: string;
 }
+
+/** Fulfilled responses still go through the browser's CORS check when another machine is called. */
+const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' };
 
 /** Mocks /api. `overrides` keys are "METHOD /path" or "/path"; `{status, json}` values set the status. */
 async function mockApi(page: Page, overrides: Record<string, Mock> = {}): Promise<{ errors: string[]; calls: Call[] }> {
@@ -121,18 +127,22 @@ async function mockApi(page: Page, overrides: Record<string, Mock> = {}): Promis
   );
   await page.route('**/api/**', (r) => {
     const method = r.request().method();
-    const path = new URL(r.request().url()).pathname;
+    const url = new URL(r.request().url());
+    const path = url.pathname;
+    if (method === 'OPTIONS') return r.fulfill({ status: 204, headers: CORS });
     const body = r.request().postDataJSON() as unknown;
-    calls.push({ method, path, body });
+    calls.push({ method, path, body, origin: url.origin });
     const table: Record<string, Mock> = { ...API, ...overrides };
     const key = `${method} ${path}` in table ? `${method} ${path}` : path;
     if (key in table && (method === 'GET' || key.includes(' '))) {
       const hit = table[key];
-      if (hit && typeof hit === 'object' && 'status' in hit) return r.fulfill(hit as { status: number; json: unknown });
-      return r.fulfill({ json: hit });
+      if (hit && typeof hit === 'object' && 'status' in hit) {
+        return r.fulfill({ ...(hit as { status: number; json: unknown }), headers: CORS });
+      }
+      return r.fulfill({ json: hit, headers: CORS });
     }
-    if (method !== 'GET') return r.fulfill({ json: { ok: true } });
-    return r.fulfill({ status: 404, json: { error: `no mock for ${path}` } });
+    if (method !== 'GET') return r.fulfill({ json: { ok: true }, headers: CORS });
+    return r.fulfill({ status: 404, json: { error: `no mock for ${path}` }, headers: CORS });
   });
   await page.routeWebSocket('**/api/events', (ws) => ws.send(JSON.stringify({ type: 'hello', apiVersion: 1 })));
   await page.routeWebSocket('**/api/terminals/**', (ws) => ws.send('\u001b[32m●\u001b[0m mocked terminal\r\n'));
@@ -694,4 +704,34 @@ test('sessions: sidebar sorts by status, a dragged tab keeps its place in both l
   await expect(rows).toHaveText([/Working one/, /MR 2136 review/, /Paused one/]);
   expect(calls.find((c) => c.path === '/api/sessions/reorder')?.body).toEqual({ positions: { s3: 0 } });
   expect(errors).toEqual([]);
+});
+
+test('a phone app adds a second machine by address and typed code', async ({ page }) => {
+  const { calls, errors } = await mockApi(page, {
+    'POST /api/auth/pairing/redeem': { device: { id: 'phone-1', state: 'pending', level: 'prompts' } },
+    'POST /api/auth/challenge': { nonce: 'n1' },
+    'POST /api/auth/session': { token: 't1', expiresAt: '2099-01-01T00:00:00Z' },
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  // First machine: the one the app comes from, approved at once in this mock.
+  await page.goto('/pair/ABCDEFGH');
+  await page.getByRole('button', { name: 'Pair this phone' }).click();
+  await expect(page.getByText(/signed in as/)).toBeVisible();
+
+  await page.goto('/#/');
+  await page.getByRole('button', { name: 'Add a machine' }).click();
+  await page.route('https://pc.example.ts.net/api/health', (r) =>
+    r.fulfill({ json: { ok: true, version: '2026.10.0', apiVersion: 1, machine: 'pc' }, headers: CORS }),
+  );
+  // The second machine has not approved the phone yet.
+  await page.route('https://pc.example.ts.net/api/auth/challenge', (r) =>
+    r.fulfill({ status: 409, json: { error: 'waiting for approval on the machine' }, headers: CORS }),
+  );
+  await page.getByLabel('Address').fill('pc.example.ts.net');
+  await page.getByLabel('Pairing code').fill('abcd-efgh');
+  await page.getByRole('button', { name: 'Pair', exact: true }).click();
+  await expect(page.getByText(/Now approve this phone on pc/)).toBeVisible();
+  const redeem = calls.find((c) => c.origin === 'https://pc.example.ts.net' && c.path === '/api/auth/pairing/redeem');
+  expect(redeem?.body).toMatchObject({ code: 'abcd-efgh', publicKey: { kty: 'EC', crv: 'P-256' } });
+  expect(errors.filter((e) => !e.includes('409'))).toEqual([]);
 });

@@ -42,6 +42,8 @@ export interface Auth {
   /** Token for a Claude/plugin client; revoked when the client goes away. */
   issueClientToken(caller: Caller): string;
   revokeClientToken(token: string): void;
+  /** Origins of paired phones' apps: they may call this machine cross-origin. */
+  appOrigins(): string[];
 }
 
 /** server/permissions: the rights model from docs/SECURITY.md. Pure decisions + approvals + activity log. */

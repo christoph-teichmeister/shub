@@ -5,7 +5,7 @@
   import Wordmark from '../components/Wordmark/Wordmark.svelte';
   import { onMount } from 'svelte';
   import { api, ApiError } from '../stores/api.ts';
-  import { deviceId, deviceToken, newKeys, PendingError, rememberDevice } from '../stores/device.ts';
+  import { deviceId, deviceToken, here, newKeys, PendingError, rememberDevice } from '../stores/device.ts';
   import { pushSupported, subscribePush } from '../stores/push.ts';
   import type { Device } from '../../../../shared/api.ts';
 
@@ -27,7 +27,7 @@
   async function waitForApproval() {
     waiting = true;
     try {
-      await deviceToken(true);
+      await deviceToken(here, true);
       waiting = false;
       paired = true;
     } catch (err) {
@@ -63,7 +63,8 @@
         const { device } = await api<{ device: Device }>('pairingRedeem', {
           body: { code: pairCode, deviceName: deviceName.trim(), publicKey },
         });
-        await rememberDevice(device.id, keys);
+        const health = await api<{ machine?: string }>('health').catch(() => null);
+        await rememberDevice({ origin: here, deviceId: device.id, keys, name: health?.machine ?? location.hostname });
         void waitForApproval();
       } else {
         // ponytail: the server always sets a 30-day cookie; `remember` is sent for when it learns session cookies.

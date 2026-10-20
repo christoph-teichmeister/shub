@@ -41,6 +41,8 @@ const MIGRATIONS = [
   `ALTER TABLE devices ADD COLUMN public_key TEXT`,
   `ALTER TABLE devices ADD COLUMN level TEXT NOT NULL DEFAULT 'control'`,
   `ALTER TABLE devices ADD COLUMN state TEXT NOT NULL DEFAULT 'active'`,
+  // The origin of the app the phone paired from: another machine's app calls this one cross-origin (CORS).
+  `ALTER TABLE devices ADD COLUMN app_origin TEXT`,
 ];
 
 interface DeviceRow {
@@ -52,9 +54,18 @@ interface DeviceRow {
   last_seen_at: string;
   push: number;
   public_key: string | null;
+  app_origin: string | null;
   level: DeviceLevel;
   state: Device['state'];
 }
+
+/** Pairing codes are short enough to type: 8 characters without look-alikes (40 bits), single use, 5 minutes. */
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const newCode = (): string => Array.from(randomBytes(8), (b) => CODE_ALPHABET[b % 32]).join('');
+/** "abcd-efgh", "ABCD EFGH" and "ABCDEFGH" are the same code. */
+export const normalizeCode = (value: string): string => value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+/** Wrong codes allowed per pairing window before pairing locks until a new code is made. */
+const MAX_PAIRING_MISSES = 20;
 
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
 const newSecret = (): string => randomBytes(32).toString('hex');
@@ -112,6 +123,7 @@ export class AuthService implements Auth {
   #tokenHash = '';
   #clients = new Map<string, { kind: ClientKind; id: string }>();
   #pairings = new Map<string, number>(); // code -> expiresAt ms
+  #pairingMisses = 0;
   #challenges = new Map<string, { deviceId: string; expires: number }>(); // nonce -> device
   #deviceTokens = new Map<string, { deviceId: string; expires: number }>(); // token hash -> device
 
@@ -235,7 +247,11 @@ export class AuthService implements Auth {
   }
 
   /** Creates a device and returns its cookie value (unused for phones, which sign in with their key). */
-  createDevice(name: string, kind: Device['kind'], phone?: { publicKey: string }): { device: Device; session: string } {
+  createDevice(
+    name: string,
+    kind: Device['kind'],
+    phone?: { publicKey: string; appOrigin?: string | null },
+  ): { device: Device; session: string } {
     const session = newSecret();
     const now = new Date().toISOString();
     const row: DeviceRow = {
@@ -247,14 +263,16 @@ export class AuthService implements Auth {
       last_seen_at: now,
       push: 0,
       public_key: phone?.publicKey ?? null,
+      app_origin: phone?.appOrigin ?? null,
       // A new phone may answer prompts once approved; control needs a second look on the machine.
       level: phone ? 'prompts' : 'control',
       state: phone ? 'pending' : 'active',
     };
     this.#db
       .prepare(
-        `INSERT INTO devices (id, name, kind, session_hash, paired_at, last_seen_at, push, public_key, level, state)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO devices
+           (id, name, kind, session_hash, paired_at, last_seen_at, push, public_key, level, state, app_origin)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         row.id,
@@ -267,6 +285,7 @@ export class AuthService implements Auth {
         row.public_key,
         row.level,
         row.state,
+        row.app_origin,
       );
     if (phone) this.#ctx.bus.emit({ type: 'devices.changed' });
     return { device: toDevice(row), session };
@@ -280,9 +299,10 @@ export class AuthService implements Auth {
   async startPairing(): Promise<{ code: string; url: string; qrSvg: string; expiresAt: string }> {
     const now = Date.now();
     for (const [code, exp] of this.#pairings) if (exp < now) this.#pairings.delete(code);
-    const code = randomBytes(16).toString('base64url');
+    const code = newCode();
     const expires = now + PAIRING_TTL_MS;
     this.#pairings.set(code, expires);
+    this.#pairingMisses = 0;
     const base = publicUrl(this.#services.config.get()) ?? `http://127.0.0.1:${this.#ctx.port}`;
     const url = `${base}/pair/${code}`;
     const qrSvg = await QRCode.toString(url, { type: 'svg', margin: 1 });
@@ -290,13 +310,18 @@ export class AuthService implements Auth {
   }
 
   /** The phone keeps its private key; the device waits as pending until approved on this machine. */
-  redeemPairing(code: unknown, name: string, publicKey: unknown): Device {
+  redeemPairing(code: unknown, name: string, publicKey: unknown, appOrigin: string | null = null): Device {
     const key = parsePublicKey(publicKey);
-    const expires = typeof code === 'string' ? this.#pairings.get(code) : undefined;
-    if (!expires) throw new HttpError(401, 'unknown or used pairing code');
-    this.#pairings.delete(code as string);
+    if (this.#pairingMisses >= MAX_PAIRING_MISSES) throw new HttpError(429, 'too many wrong codes; make a new one');
+    const normalized = typeof code === 'string' ? normalizeCode(code) : '';
+    const expires = this.#pairings.get(normalized);
+    if (!expires) {
+      this.#pairingMisses++;
+      throw new HttpError(401, 'unknown or used pairing code');
+    }
+    this.#pairings.delete(normalized);
     if (expires < Date.now()) throw new HttpError(401, 'pairing code expired');
-    const { device } = this.createDevice(name, 'phone', { publicKey: key });
+    const { device } = this.createDevice(name, 'phone', { publicKey: key, appOrigin });
     this.#services.notify?.devicePending(device.name);
     return device;
   }
@@ -335,6 +360,14 @@ export class AuthService implements Auth {
     for (const [h, t] of this.#deviceTokens) if (t.expires < Date.now()) this.#deviceTokens.delete(h);
     this.#deviceTokens.set(sha256(token), { deviceId: row.id, expires });
     return { token, expiresAt: new Date(expires).toISOString() };
+  }
+
+  /** App origins of paired phones (pending ones too, they poll for approval): allowed to call cross-origin. */
+  appOrigins(): string[] {
+    const rows = this.#db.prepare('SELECT DISTINCT app_origin FROM devices WHERE app_origin IS NOT NULL').all() as {
+      app_origin: string;
+    }[];
+    return rows.map((r) => r.app_origin);
   }
 
   approve(id: string): Device | undefined {
@@ -461,7 +494,9 @@ function routes(auth: AuthService, router: Router): void {
     ROUTES.pairingRedeem,
     async (req, res) => {
       const body = await req.json<{ code?: unknown; deviceName?: unknown; publicKey?: unknown }>();
-      return { device: auth.redeemPairing(body.code, deviceName(body, req.raw), body.publicKey) };
+      // Another machine's app pairs cross-origin; remember its origin so it may call this machine later.
+      const origin = req.raw.headers.origin?.toLowerCase() ?? null;
+      return { device: auth.redeemPairing(body.code, deviceName(body, req.raw), body.publicKey, origin) };
     },
     { public: true },
   );

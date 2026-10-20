@@ -7,9 +7,10 @@ export interface Allowed {
   origins: Set<string>;
 }
 
-export function allowList(port: number, publicUrl?: string): Allowed {
+/** `appOrigins`: where paired phones' apps live (another machine's shub); they call this one cross-origin. */
+export function allowList(port: number, publicUrl?: string, appOrigins: string[] = []): Allowed {
   const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
-  const origins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
+  const origins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`, ...appOrigins]);
   if (publicUrl) {
     const url = new URL(publicUrl);
     hosts.add(url.host.toLowerCase());
@@ -26,10 +27,10 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  * when it changes state or upgrades to a WebSocket (browsers always send Origin there).
  * Bearer clients (CLI, sessions, plugins) send neither cookie nor Origin and pass.
  */
-export function refuse(req: IncomingMessage, allowed: Allowed, upgrade = false): string | null {
+export function refuse(req: IncomingMessage, allowed: Allowed, upgrade = false, anyOrigin = false): string | null {
   if (!allowed.hosts.has((req.headers.host ?? '').toLowerCase())) return 'unknown host';
   const origin = req.headers.origin?.toLowerCase();
-  if (origin && !allowed.origins.has(origin)) return 'foreign origin';
+  if (origin && !anyOrigin && !allowed.origins.has(origin)) return 'foreign origin';
   const changesState = upgrade || !SAFE_METHODS.has(req.method ?? 'GET');
   if (changesState && req.headers.cookie && !origin) return 'missing origin';
   return null;

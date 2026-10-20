@@ -34,7 +34,8 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Payload: { title, body, tag, url }. Same tag replaces the previous notification for that session.
+// Payload: { title, body, tag, url, origin, machine }. Same tag replaces the previous notification for that session.
+// `origin` is the machine that sent it; a tap opens the app on that machine.
 self.addEventListener('push', (event) => {
   let data = {};
   try {
@@ -43,20 +44,31 @@ self.addEventListener('push', (event) => {
     data = { body: event.data?.text() };
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || 'shub', {
+    self.registration.showNotification(machineTitle(data), {
       body: data.body || '',
-      tag: data.tag,
+      tag: data.origin ? `${data.origin} ${data.tag}` : data.tag,
       renotify: Boolean(data.tag),
       icon: '/icons/icon-192.png',
       badge: '/icons/badge-96.png',
-      data: { url: data.url || '/' },
+      data: { url: data.url || '/', origin: data.origin },
     }),
   );
 });
 
+/** "Session name · pc" when another machine sent it. */
+function machineTitle(data) {
+  const title = data.title || 'shub';
+  if (!data.origin || data.origin === location.origin) return title;
+  return `${title} · ${data.machine || new URL(data.origin).hostname.split('.')[0]}`;
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = new URL(event.notification.data?.url || '/', location.origin).href;
+  const { url, origin } = event.notification.data || {};
+  const link = new URL(url || '/', location.origin);
+  // Also for this page's own machine: the app may be showing another one right now.
+  if (origin) link.searchParams.set('machine', origin);
+  const target = link.href;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
       const win = wins.find((w) => new URL(w.url).origin === location.origin);

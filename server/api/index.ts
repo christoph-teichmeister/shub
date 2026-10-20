@@ -10,13 +10,14 @@ import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { publicUrl } from '../config/index.ts';
 import { refuseLevel } from '../auth/levels.ts';
-import { allowList, refuse } from './guard.ts';
+import { machineName } from '../notify/index.ts';
+import { allowList, refuse, type Allowed } from './guard.ts';
 import { HttpError, readBody, Router, sendJson, type Caller, type Request } from './router.ts';
 import { installUpgrades, onUpgrade } from './upgrade.ts';
 
 const SECURITY_HEADERS: Record<string, string> = {
   'content-security-policy':
-    "default-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' ws: wss:; " +
+    "default-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https: ws: wss:; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; " +
     "frame-ancestors 'none'",
   'x-content-type-options': 'nosniff',
@@ -81,7 +82,10 @@ function makeRequest(raw: IncomingMessage, path: string, params: Record<string, 
 }
 
 function eventsRoutes(ctx: Context, router: Router, version: string): void {
-  router.add(ROUTES.health, () => ({ ok: true, version, apiVersion: API_VERSION }), { public: true });
+  // `machine` names this computer in a phone app that knows several (SHUB_MACHINE_NAME overrides the hostname).
+  router.add(ROUTES.health, () => ({ ok: true, version, apiVersion: API_VERSION, machine: machineName() }), {
+    public: true,
+  });
   // Server-Sent Events twin of the /api/events WebSocket, for plugin languages without a WS client.
   router.add(ROUTES.eventsStream, (req, res) => {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
@@ -125,19 +129,40 @@ async function serveStatic(distDir: string, path: string, res: ServerResponse): 
   res.end(body);
 }
 
+/**
+ * Callable from any origin: another machine's app reads the name (health) and redeems a pairing code before this
+ * machine knows its origin. Health is public anyway; the redeem needs the code.
+ */
+const ANY_ORIGIN_PATHS = new Set([ROUTES.health, ROUTES.pairingRedeem].map((r) => r.split(' ')[1]));
+
 async function handle(
   router: Router,
   services: Services,
   distDir: string,
-  check: (req: IncomingMessage) => string | null,
+  allowed: Allowed,
   raw: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
   for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
-  const refusal = check(raw);
-  if (refusal) throw new HttpError(403, refusal);
   const method = raw.method ?? 'GET';
   const path = new URL(raw.url ?? '/', 'http://x').pathname;
+  const anyOrigin = ANY_ORIGIN_PATHS.has(path);
+  const refusal = refuse(raw, allowed, false, anyOrigin);
+  if (refusal) throw new HttpError(403, refusal);
+  // A paired phone's app on another machine calls with a Bearer token, never a cookie (no credentials in CORS).
+  const origin = raw.headers.origin?.toLowerCase();
+  if (origin && path.startsWith('/api/')) {
+    res.setHeader('access-control-allow-origin', origin);
+    res.setHeader('vary', 'origin');
+    if (method === 'OPTIONS') {
+      res.writeHead(204, {
+        'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE',
+        'access-control-allow-headers': 'authorization, content-type, accept',
+        'access-control-max-age': '600',
+      });
+      return void res.end();
+    }
+  }
   const found = router.match(method, path);
   if (!found) {
     if (path.startsWith('/api/') || (method !== 'GET' && method !== 'HEAD')) throw new HttpError(404, 'not found');
@@ -168,10 +193,10 @@ export async function listen(ctx: Context, services: Services, modules: ShubModu
   for (const m of modules) m.routes?.(router);
 
   // Per request: the phone setup can set the public URL while shub runs.
-  const allowed = () => allowList(ctx.port, publicUrl(services.config.get()));
+  const allowed = () => allowList(ctx.port, publicUrl(services.config.get()), services.auth.appOrigins());
   const distDir = join(ctx.paths.appDir, 'web', 'dist');
   const server = createServer((req, res) => {
-    handle(router, services, distDir, (r) => refuse(r, allowed()), req, res).catch((err) => sendError(res, err));
+    handle(router, services, distDir, allowed(), req, res).catch((err) => sendError(res, err));
   });
   installUpgrades(
     server,

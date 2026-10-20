@@ -25,6 +25,7 @@
   import { parseMarkdown, type Inline } from '../markdown.ts';
   import { api } from '../stores/api.ts';
   import { pushEnabled, pushSupported, subscribePush } from '../stores/push.ts';
+  import { fleet, removeMachine } from '../stores/machines.svelte.ts';
   import { href } from '../stores/router.svelte.ts';
   import {
     app,
@@ -463,7 +464,17 @@
             <ol>
               <li>Scan the code with the phone camera; shub opens and signs the phone in. No token to type.</li>
               <li>Add it to the home screen and allow notifications for push.</li>
+              <li>
+                Phone already has shub from another machine? There tap + above the sessions and scan or type this.
+              </li>
             </ol>
+            {#if pairing && left > 0}
+              <span class="code"
+                ><span class="muted small">Address</span> <code>{new URL(pairing.url).host}</code>
+                <span class="muted small">Code</span>
+                <code>{pairing.code.slice(0, 4)}-{pairing.code.slice(4)}</code></span
+              >
+            {/if}
             {#if pairing}
               <span class="muted small" aria-live="polite">
                 {left > 0 ? `Code is single-use and runs out in ${countdown}.` : 'The code ran out.'}
@@ -525,6 +536,26 @@
         <span class="muted small">This browser has no web push.</span>
       {/if}
     </Section>
+
+    {#if fleet.list.length > 1}
+      <Section title="Machines" description="The machines this app knows. Removing one signs this phone out there.">
+        <ul class="list">
+          {#each fleet.list as m (m.origin)}
+            <li class="item">
+              <span class="grow stack"
+                ><span class="strong">{m.name}</span><span class="muted small">{new URL(m.origin).host}</span></span
+              >
+              {#if m.origin !== location.origin}<Button
+                  size="sm"
+                  variant="danger"
+                  onclick={() => removeMachine(m.origin).then(() => toast(`${m.name} removed`), toastError)}
+                  >Remove</Button
+                >{/if}
+            </li>
+          {/each}
+        </ul>
+      </Section>
+    {/if}
 
     <Section
       title="Plugins"
@@ -1168,5 +1199,12 @@
   .log-list {
     max-height: 60vh;
     overflow-y: auto;
+  }
+
+  .code {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
   }
 </style>

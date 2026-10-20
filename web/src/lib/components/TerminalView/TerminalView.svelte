@@ -5,7 +5,7 @@
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import { WebglAddon } from '@xterm/addon-webgl';
   import type { TerminalControl } from '../../../../../shared/api.ts';
-  import { api, wsProtocols, wsUrl } from '../../stores/api.ts';
+  import { api, wsTarget } from '../../stores/api.ts';
   import { app, terminalSettings } from '../../stores/state.svelte.ts';
   import { toastError } from '../../stores/toasts.svelte.ts';
   import { readToken } from '../../tokens/tokens.ts';
@@ -99,9 +99,9 @@
       send('\u0000' + JSON.stringify(msg));
     };
     const connect = async () => {
-      const protocols = await wsProtocols();
+      const { url, protocols } = await wsTarget(`/api/terminals/${encodeURIComponent(sessionId)}`);
       if (closed) return;
-      ws = new WebSocket(wsUrl(`/api/terminals/${encodeURIComponent(sessionId)}`), protocols);
+      ws = new WebSocket(url, protocols);
       ws.binaryType = 'arraybuffer';
       ws.onopen = () => {
         if (opened) t.reset(); // tmux repaints the screen on re-attach
