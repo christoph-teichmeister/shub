@@ -79,6 +79,57 @@
       }))
       .filter((g) => g.projects.length);
   });
+
+  // ---------- Active group: projects with a session, kept ACTIVE_GRACE after the last one closes ----------
+  const ACTIVE_GRACE = 10 * 60_000;
+  // Kept per browser so a reload keeps the countdown; storage can be missing or throw (private window).
+  let leftAt = $state<Record<string, number>>(
+    (() => {
+      try {
+        return JSON.parse(localStorage.getItem('shub.active.leftAt') ?? '{}') as Record<string, number>;
+      } catch {
+        return {};
+      }
+    })(),
+  );
+  $effect(() => {
+    try {
+      localStorage.setItem('shub.active.leftAt', JSON.stringify(leftAt));
+    } catch {
+      // not remembered, the countdown still runs
+    }
+  });
+  let now = $state(Date.now());
+  let wasActive = new Set<string>();
+  $effect(() => {
+    const live = new Set(app.sessions.filter((s) => s.kind !== 'shell' && s.projectId).map((s) => s.projectId!));
+    for (const id of wasActive) if (!live.has(id)) leftAt[id] = Date.now();
+    for (const id of live) delete leftAt[id];
+    wasActive = live;
+  });
+  $effect(() => {
+    if (!Object.keys(leftAt).length) return;
+    const tick = setInterval(() => {
+      now = Date.now();
+      for (const [id, at] of Object.entries(leftAt)) if (now - at >= ACTIVE_GRACE) delete leftAt[id];
+    }, 1000);
+    return () => clearInterval(tick);
+  });
+  const activeProjects = $derived(
+    app.config?.activeGroup
+      ? app.projects
+          .filter((p) => sessionsOf(p.id).length || p.id in leftAt)
+          .sort((a, b) => a.name.localeCompare(b.name))
+      : [],
+  );
+  /** Time left and opacity (1 -> 0.4) for a project in its grace; null while it has sessions. */
+  function grace(id: string) {
+    if (!(id in leftAt)) return null;
+    const left = Math.max(0, ACTIVE_GRACE - (now - leftAt[id]));
+    const text = `${Math.floor(left / 60_000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`;
+    return { text, opacity: 0.4 + 0.6 * (left / ACTIVE_GRACE) };
+  }
+
   /** What a folded group still shows: who needs you, else what is working. */
   function groupBadge(projects: ProjectView[]) {
     const list = projects.flatMap((p) => sessionsOf(p.id));
@@ -472,6 +523,40 @@
           onentry={(entry) => pluginEntry(section.plugin, entry.action, entry.id)}
         />
       {/each}
+
+      {#if app.config?.activeGroup}
+        <SidebarSection
+          title="Active"
+          collapsedBadge={groupBadge(activeProjects)}
+          entries={activeProjects.length ? undefined : []}
+        >
+          {#each activeProjects as p (p.id)}
+            {@const list = sessionsOf(p.id)}
+            {@const g = grace(p.id)}
+            <div style:opacity={g?.opacity}>
+              <ProjectRow
+                project={p}
+                sessions={list}
+                href={href('p', p.id)}
+                settingsHref={href('settings', 'project', p.id)}
+                selected={p.id === project?.id}
+                countdown={g?.text}
+                onnewsession={() => newSession(p)}
+                onmenu={(e) => (projectMenu = { project: p, x: e.clientX, y: e.clientY })}
+              >
+                {#each list as s (s.id)}
+                  <SessionRow
+                    session={s}
+                    href={sessionHref(s)}
+                    selected={s.id === active?.id}
+                    closing={app.closing[s.id]}
+                  />
+                {/each}
+              </ProjectRow>
+            </div>
+          {/each}
+        </SidebarSection>
+      {/if}
 
       {#each groups as group (group.name)}
         <SidebarSection

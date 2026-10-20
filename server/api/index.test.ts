@@ -207,6 +207,8 @@ test('settings and themes', async () => {
   ).json();
   assert.equal(config.activeTheme, 'mine');
   assert.equal(config.notifications.pushYourTurn, true);
+  assert.equal((await asUser('PATCH', '/api/settings', { activeGroup: 'yes' })).status, 400);
+  assert.equal((await (await asUser('PATCH', '/api/settings', { activeGroup: true })).json()).activeGroup, true);
 });
 
 test('pairing: single use code creates a phone device', async () => {

@@ -410,3 +410,32 @@ test('closing the last terminal hides the bottom panel instead of showing Servic
   await expect(panel).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test('active group keeps a project for 10 minutes after its last session closes', async ({ page }) => {
+  const mocks: Record<string, unknown> = { '/api/config': { ...config, activeGroup: true } };
+  const { errors } = await mockApi(page, mocks);
+  let events: { send(m: string): void } | undefined;
+  await page.routeWebSocket('**/api/events', (ws) => {
+    events = ws;
+    ws.send(JSON.stringify({ type: 'hello', apiVersion: 1 }));
+  });
+  await page.clock.install();
+  await page.goto('/#/p/ai-portal/s1');
+  const activeGroup = page.getByRole('region', { name: 'Active' });
+  await expect(activeGroup.getByRole('group', { name: 'ai-portal' })).toBeVisible();
+  await expect(activeGroup.getByRole('group', { name: 'street-tours' })).toHaveCount(0);
+
+  events!.send(JSON.stringify({ type: 'session.closed', sessionId: 's1' }));
+  mocks['/api/sessions'] = [];
+  await page.clock.runFor(500); // the closing fade drops the session after 400 ms
+  await expect(activeGroup.getByTitle(/Leaves the Active group in \d+:\d\d$/)).toBeVisible();
+  await page.clock.fastForward('09:00');
+  await expect(activeGroup.getByTitle(/Leaves the Active group in [01]:\d\d$/)).toBeVisible();
+  // The fake clock may restart on reload, so only check the countdown is still there, then run past any grace.
+  await page.reload();
+  await expect(activeGroup.getByTitle(/Leaves the Active group in \d+:\d\d$/)).toBeVisible();
+  await page.clock.fastForward('10:01');
+  await expect(activeGroup.getByRole('group', { name: 'ai-portal' })).toHaveCount(0);
+  await expect(activeGroup.getByText('Nothing here')).toBeVisible();
+  expect(errors).toEqual([]);
+});
