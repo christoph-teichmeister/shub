@@ -1,5 +1,8 @@
 // Background check for a waiting session: a small model reads, never writes, whether what it waits for happened.
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 export interface CheckResult {
   done: boolean;
@@ -34,15 +37,38 @@ export function parseCheck(raw: string): CheckResult | null {
 
 // Reads only: the allow list covers look-ups, and the deny list wins over the user's own allow rules (which may
 // include MCP writes). The user's settings still load, since that is where their MCP servers come from.
-const ALLOW = [
-  'Read',
-  'Grep',
-  'Glob',
-  'WebFetch',
-  'WebSearch',
-  ...['get', 'list', 'search', 'browse', 'read', 'query', 'fetch'].map((verb) => `mcp__*__${verb}*`),
-  'mcp__*__mr_discussions',
-];
+// Allow rules need the server's real name (`mcp__*__get*` matches nothing; deny rules do take the `*`).
+const READ_VERBS = ['get', 'list', 'search', 'browse', 'read', 'query', 'fetch'];
+
+/** The MCP servers Claude loads in `cwd`: user-wide and per-project ones from ~/.claude.json, plus .mcp.json. */
+export function mcpServers(cwd: string, home = homedir()): string[] {
+  const names = (file: string, pick: (json: any) => object | undefined): string[] => {
+    try {
+      return Object.keys(pick(JSON.parse(readFileSync(file, 'utf8'))) ?? {});
+    } catch {
+      return [];
+    }
+  };
+  const user = join(process.env.CLAUDE_CONFIG_DIR ?? home, '.claude.json');
+  return [
+    ...new Set([
+      ...names(user, (j) => j.mcpServers),
+      ...names(user, (j) => j.projects?.[cwd]?.mcpServers),
+      ...names(join(cwd, '.mcp.json'), (j) => j.mcpServers),
+    ]),
+  ];
+}
+
+export function allowRules(servers: string[]): string[] {
+  return [
+    'Read',
+    'Grep',
+    'Glob',
+    'WebFetch',
+    'WebSearch',
+    ...servers.flatMap((s) => [...READ_VERBS.map((verb) => `mcp__${s}__${verb}*`), `mcp__${s}__mr_discussions`]),
+  ];
+}
 const DENY = [
   'Bash',
   'Edit',
@@ -83,7 +109,7 @@ export const defaultWaitChecker: WaitChecker = (check, cwd) =>
       '--permission-mode',
       'dontAsk',
       '--allowedTools',
-      ...ALLOW,
+      ...allowRules(mcpServers(cwd)),
       '--disallowedTools',
       ...DENY,
     ];
