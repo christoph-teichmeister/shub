@@ -47,7 +47,9 @@ test('worktreeOverview: one state per worktree; removeWorktree keeps work, prune
   git('commit', '-q', '--allow-empty', '-m', 'init');
   git('push', '-q', 'origin', 'HEAD:develop');
   const add = (name: string) => git('worktree', 'add', '-q', '-b', name, join(root, name), 'origin/develop');
-  for (const name of ['merged', 'dirty', 'local', 'squashed', 'busy', 'gone', 'pushed']) add(name);
+  for (const name of ['merged', 'fresh', 'dirty', 'local', 'squashed', 'busy', 'gone', 'pushed']) add(name);
+  at(join(root, 'merged'), 'commit', '-q', '--allow-empty', '-m', 'merged');
+  at(join(root, 'merged'), 'push', '-q', 'origin', 'HEAD:develop');
   writeFileSync(join(root, 'dirty', 'x'), 'x');
   at(join(root, 'local'), 'commit', '-q', '--allow-empty', '-m', 'local');
   for (const name of ['squashed', 'pushed']) {
@@ -63,6 +65,7 @@ test('worktreeOverview: one state per worktree; removeWorktree keeps work, prune
     );
   assert.deepEqual(await states(true), {
     merged: 'merged',
+    fresh: 'open', // no commit of its own: not merged, so "Close all merged" leaves it
     dirty: 'dirty',
     local: 'not-pushed',
     squashed: 'remote-gone',
@@ -81,6 +84,6 @@ test('worktreeOverview: one state per worktree; removeWorktree keeps work, prune
   assert.match(git('branch', '--list', 'squashed').toString(), /squashed/);
   assert.equal(git('branch', '--list', 'merged').toString(), '');
   await pruneWorktrees(repo);
-  assert.deepEqual(Object.keys(await states()).sort(), ['busy', 'dirty', 'local', 'pushed']);
+  assert.deepEqual(Object.keys(await states()).sort(), ['busy', 'dirty', 'fresh', 'local', 'pushed']);
   rmSync(root, { recursive: true, force: true });
 });

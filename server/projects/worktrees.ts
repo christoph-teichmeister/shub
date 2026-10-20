@@ -59,6 +59,8 @@ export interface Facts {
   locked: boolean;
   dirty: boolean;
   merged: boolean;
+  /** Nothing happened here since it was created: its HEAD reflog only holds the current commit. */
+  fresh: boolean;
   gone: boolean;
   unpushed: boolean;
   detached: boolean;
@@ -70,7 +72,7 @@ export function classify(f: Facts): WorktreeState {
   if (f.prunable) return 'folder-gone';
   if (f.locked) return 'locked';
   if (f.dirty) return 'dirty';
-  if (f.merged) return 'merged';
+  if (f.merged && !f.fresh) return 'merged';
   if (f.gone) return 'remote-gone';
   if (f.unpushed) return 'not-pushed';
   if (f.detached) return 'detached';
@@ -125,7 +127,7 @@ export async function worktreeOverview(
           () => false,
         );
       const live = !e.prunable;
-      const [dirty, unpushed, lastCommitAt, mergedInto] = await Promise.all([
+      const [dirty, unpushed, lastCommitAt, mergedInto, fresh] = await Promise.all([
         live
           ? git(e.path, 'status', '--porcelain').then(
               (s) => s !== '',
@@ -140,6 +142,13 @@ export async function worktreeOverview(
           : false,
         git(dir, 'log', '-1', '--format=%cI', e.head).catch(() => ''),
         Promise.all(bases.map((b) => ok('merge-base', '--is-ancestor', e.head, b))),
+        // A worktree cut from develop without a commit of its own would otherwise count as merged.
+        live
+          ? git(e.path, 'reflog', '--format=%H', 'HEAD').then(
+              (log) => log.split('\n').every((h) => h === e.head),
+              () => false,
+            )
+          : false,
       ]);
       const state = classify({
         active: activeCwds.some((c) => within(c, e.path)),
@@ -147,6 +156,7 @@ export async function worktreeOverview(
         locked: e.locked,
         dirty,
         merged: e.head !== '' && mergedInto.some(Boolean),
+        fresh,
         gone: gone.has(e.branch),
         unpushed,
         detached: !e.branch,
