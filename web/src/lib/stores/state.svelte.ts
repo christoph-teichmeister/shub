@@ -36,6 +36,8 @@ export const app = $state({
   closing: {} as Record<string, boolean>,
   /** Bumped whenever the theme is re-applied (canvas consumers re-read tokens). */
   themeVersion: 0,
+  /** Version an update just installed: the update curtain shows while the page reloads into it. */
+  reloadingTo: null as string | null,
 });
 
 /** Overlays that any view can open (search, drawer, shortcuts) and the phone layout switch. */
@@ -121,7 +123,14 @@ export async function loadUpdate(): Promise<void> {
   app.update = (await guard(api<UpdateStatus>('updates'))) ?? app.update;
   const current = app.update?.current;
   loadedVersion ??= current;
-  if (current && current !== loadedVersion) location.reload();
+  if (current && current !== loadedVersion && !app.reloadingTo) {
+    // Curtain first, so the reload reads as "updating" instead of a flicker; the new page fades it out.
+    app.reloadingTo = current;
+    try {
+      sessionStorage.setItem('shub-updated', current);
+    } catch {}
+    setTimeout(() => location.reload(), 900);
+  }
   const latest = app.update?.mode === 'ask' ? app.update.latest : undefined;
   if (latest && latest !== announced)
     toast(`shub ${latest} is available. Install it in Settings > Updates.`, 'needs-you', 15_000);

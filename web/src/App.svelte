@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Toast from './lib/components/Toast/Toast.svelte';
+  import UpdateCurtain from './lib/components/UpdateCurtain/UpdateCurtain.svelte';
   import { router } from './lib/stores/router.svelte.ts';
   import { app, connectEvents, loadAll, needsYouCount, ui } from './lib/stores/state.svelte.ts';
   import AppSettings from './lib/views/AppSettings.svelte';
@@ -56,3 +57,4 @@
 {/if}
 {#if !signIn && route.name !== 'styleguide'}<Overlays />{/if}
 <Toast />
+<UpdateCurtain version={app.reloadingTo} />
