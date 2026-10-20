@@ -2,7 +2,7 @@
 // Fixed (non-theme) brand colours, sizes, spacing, radii, type and motion live in tokens.css.
 import type { ThemeDef } from '../../../../shared/api.ts';
 
-export const TOKEN_NAMES = [
+const UI_TOKEN_NAMES = [
   'bg', // app background
   'panel', // sidebar, bottom panel, menus
   'raised', // selected rows, kbd, hover fills
@@ -29,10 +29,100 @@ export const TOKEN_NAMES = [
   'shadow',
 ] as const;
 
+type UiTokens = Record<(typeof UI_TOKEN_NAMES)[number], string>;
+
+/** Terminal colours follow these UI tokens until a theme sets them itself (keeps older themes looking the same). */
+export const TERMINAL_DEFAULTS = {
+  'term-fg': 'fg-2',
+  'term-cursor': 'pink', // a project's own colour wins
+  'term-black': 'panel',
+  'term-red': 'pink',
+  'term-green': 'status-your-turn',
+  'term-yellow': 'yellow',
+  'term-blue': 'status-working',
+  'term-magenta': 'purple',
+  'term-cyan': 'link',
+  'term-white': 'fg',
+  'term-bright-black': 'muted',
+  'term-bright-red': 'pink',
+  'term-bright-green': 'status-your-turn',
+  'term-bright-yellow': 'yellow',
+  'term-bright-blue': 'status-working',
+  'term-bright-magenta': 'purple',
+  'term-bright-cyan': 'link',
+  'term-bright-white': 'fg',
+} as const satisfies Record<string, keyof UiTokens>;
+
+type TerminalToken = keyof typeof TERMINAL_DEFAULTS;
+export const TOKEN_NAMES = [...UI_TOKEN_NAMES, ...(Object.keys(TERMINAL_DEFAULTS) as TerminalToken[])];
+
 export type TokenName = (typeof TOKEN_NAMES)[number];
 export type ThemeTokens = Record<TokenName, string>;
 
-const monokai: ThemeTokens = {
+const ansi = (bright: boolean) =>
+  ['Black', 'Red', 'Green', 'Yellow', 'Blue', 'Magenta', 'Cyan', 'White'].map((c) => ({
+    name: `term-${bright ? 'bright-' : ''}${c.toLowerCase()}` as TerminalToken,
+    label: bright ? `Bright ${c.toLowerCase()}` : c,
+  }));
+
+/** Every token with a plain label, grouped as the theme editor shows them. */
+export const TOKEN_GROUPS: { title: string; tokens: { name: TokenName; label: string }[] }[] = [
+  {
+    title: 'Surfaces',
+    tokens: [
+      { name: 'bg', label: 'Background' },
+      { name: 'panel', label: 'Sidebar and menus' },
+      { name: 'raised', label: 'Selected row, hover' },
+      { name: 'line', label: 'Divider lines' },
+      { name: 'line-strong', label: 'Menu and dialog borders' },
+      { name: 'shadow', label: 'Shadow under menus' },
+    ],
+  },
+  {
+    title: 'Text',
+    tokens: [
+      { name: 'fg', label: 'Text' },
+      { name: 'fg-2', label: 'Secondary text' },
+      { name: 'muted', label: 'Muted text' },
+      { name: 'link', label: 'Links' },
+      { name: 'danger', label: 'Errors and close' },
+    ],
+  },
+  {
+    title: 'Accents',
+    tokens: [
+      { name: 'primary', label: 'Buttons, focus ring' },
+      { name: 'primary-fg', label: 'Text on buttons' },
+      { name: 'on-accent', label: 'Text on coloured badges' },
+      { name: 'pink', label: 'Pink (logo underscore)' },
+      { name: 'yellow', label: 'Global Claude icon' },
+      { name: 'purple', label: 'Avatar, accent icons' },
+    ],
+  },
+  {
+    title: 'Status',
+    tokens: [
+      { name: 'status-needs-you', label: 'Needs you' },
+      { name: 'status-needs-you-bg', label: 'Needs-you row background' },
+      { name: 'status-needs-you-fg', label: 'Needs-you row text' },
+      { name: 'status-working', label: 'Working' },
+      { name: 'status-your-turn', label: 'Your turn' },
+    ],
+  },
+  {
+    title: 'Terminal',
+    tokens: [
+      { name: 'term-bg', label: 'Background' },
+      { name: 'term-fg', label: 'Text' },
+      { name: 'term-cursor', label: 'Cursor (if the project has no colour)' },
+      { name: 'selection', label: 'Selection' },
+      ...ansi(false),
+      ...ansi(true),
+    ],
+  },
+];
+
+const monokai: UiTokens = {
   bg: '#272822',
   panel: '#1e1f1c',
   raised: '#3e3d32',
@@ -59,7 +149,7 @@ const monokai: ThemeTokens = {
   shadow: 'rgb(0 0 0 / 50%)',
 };
 
-const dracula: ThemeTokens = {
+const dracula: UiTokens = {
   bg: '#282a36',
   panel: '#21222c',
   raised: '#44475a',
@@ -86,7 +176,7 @@ const dracula: ThemeTokens = {
   shadow: 'rgb(0 0 0 / 50%)',
 };
 
-const neutralDark: ThemeTokens = {
+const neutralDark: UiTokens = {
   bg: '#0f1115',
   panel: '#14171c',
   raised: '#262b33',
@@ -132,12 +222,15 @@ export const PROJECT_COLORS = [
 
 const isToken = (name: string): name is TokenName => (TOKEN_NAMES as readonly string[]).includes(name);
 
-/** Full token set for a theme: built-in base (or Monokai), then the theme's own tokens, then overrides. */
+/** Full token set for a theme: built-in base (or Monokai), then the theme's own tokens, then overrides.
+ *  Terminal tokens nobody set follow their UI token (TERMINAL_DEFAULTS). */
 export function resolveTokens(theme: ThemeDef, overrides: Record<string, string> = {}): ThemeTokens {
   const base = BUILT_IN_THEMES.find((t) => t.id === (theme.base ?? theme.id)) ?? BUILT_IN_THEMES[0];
-  const out = { ...(base.tokens as ThemeTokens) };
+  const out = { ...base.tokens } as Partial<ThemeTokens>;
   for (const [name, value] of Object.entries({ ...theme.tokens, ...overrides })) if (isToken(name)) out[name] = value;
-  return out;
+  for (const [term, ui] of Object.entries(TERMINAL_DEFAULTS) as [TerminalToken, keyof UiTokens][])
+    out[term] ??= out[ui];
+  return out as ThemeTokens;
 }
 
 /** Sets every theme token as a CSS custom property on :root. Unknown token names are ignored. */

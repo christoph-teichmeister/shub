@@ -11,18 +11,19 @@
   import { app, loadConfig } from '../stores/state.svelte.ts';
   import { toast, toastError } from '../stores/toasts.svelte.ts';
   import { contrastRatio } from '../tokens/contrast.ts';
-  import { BUILT_IN_THEMES, resolveTokens, TOKEN_NAMES, type TokenName } from '../tokens/tokens.ts';
+  import {
+    BUILT_IN_THEMES,
+    resolveTokens,
+    TERMINAL_DEFAULTS,
+    TOKEN_GROUPS,
+    TOKEN_NAMES,
+    type TokenName,
+  } from '../tokens/tokens.ts';
 
   /** Theme id to edit, or "new". A built-in id starts a new theme based on it. */
   let { id }: { id: string } = $props();
 
-  const MAIN: { name: TokenName; label: string }[] = [
-    { name: 'bg', label: 'Background' },
-    { name: 'panel', label: 'Sidebar' },
-    { name: 'primary', label: 'Buttons / accent' },
-    { name: 'fg', label: 'Text' },
-    { name: 'muted', label: 'Muted text' },
-  ];
+  const LABELS = new Map(TOKEN_GROUPS.flatMap((g) => g.tokens.map((t) => [t.name, t.label] as const)));
 
   const custom = (app.config?.themes ?? []).find((t) => t.id === id && !t.builtIn);
   const builtIn = BUILT_IN_THEMES.find((t) => t.id === id);
@@ -30,7 +31,6 @@
   let name = $state(custom?.name ?? (builtIn ? `${builtIn.name} copy` : ''));
   let base = $state(custom?.base ?? builtIn?.id ?? 'monokai');
   let overrides = $state<Record<string, string>>({ ...(custom?.tokens ?? {}) });
-  let showAll = $state(false);
   // Token whose row is hovered (wins) or focused; it blinks in the preview.
   let hovered = $state<TokenName | null>(null);
   let focused = $state<TokenName | null>(null);
@@ -39,19 +39,12 @@
 
   const baseTheme = $derived(BUILT_IN_THEMES.find((t) => t.id === base) ?? BUILT_IN_THEMES[0]);
   const tokens = $derived(resolveTokens(baseTheme, overrides));
-  const previewVars = $derived(
-    TOKEN_NAMES.map((n) =>
-      n === active
-        ? `--${n}: var(--flash); --flash-from: ${tokens[n]}; --flash-to: ${flashTo(tokens[n])}; --flash: ${flashTo(tokens[n])}`
-        : `--${n}: ${tokens[n]}`,
-    ).join('; '),
-  );
-  const rows = $derived(showAll ? TOKEN_NAMES.map((n) => ({ name: n, label: n })) : MAIN);
 
   const checks = $derived([
     { label: 'Text', ratio: contrastRatio(tokens.fg, tokens.bg) },
     { label: 'Muted text', ratio: contrastRatio(tokens.muted, tokens.bg) },
     { label: 'Muted text on sidebar', ratio: contrastRatio(tokens.muted, tokens.panel) },
+    { label: 'Terminal text', ratio: contrastRatio(tokens['term-fg'], tokens['term-bg']) },
   ]);
 
   const slug = (s: string) =>
@@ -73,10 +66,27 @@
     isHex(v) ? `#${(0xffffff ^ parseInt(v.slice(1), 16)).toString(16).padStart(6, '0')}` : '#ff00ff';
   /** Pulse target: part way to the opposite colour, so it's visible without glaring. */
   const flashTo = (v: string) => `color-mix(in oklab, ${v}, ${invert(v)} 60%)`;
+  const follows = (token: TokenName): TokenName | undefined => (TERMINAL_DEFAULTS as Record<string, TokenName>)[token];
+  // The active token and the terminal colours that follow it blink together.
+  const blinks = (n: TokenName) => n === active || (follows(n) === active && !(n in overrides));
+  const previewVars = $derived(
+    active
+      ? `--flash-from: ${tokens[active]}; --flash-to: ${flashTo(tokens[active])}; --flash: ${flashTo(tokens[active])}; ` +
+          TOKEN_NAMES.map((n) => `--${n}: ${blinks(n) ? 'var(--flash)' : tokens[n]}`).join('; ')
+      : TOKEN_NAMES.map((n) => `--${n}: ${tokens[n]}`).join('; '),
+  );
 
-  function set(token: string, value: string) {
-    if (value === resolveTokens(baseTheme)[token as TokenName]) delete overrides[token];
+  function set(token: TokenName, value: string) {
+    const { [token]: _, ...rest } = overrides;
+    if (value === resolveTokens(baseTheme, rest)[token]) delete overrides[token];
     else overrides[token] = value;
+  }
+
+  /** Where an unchanged colour comes from: the base theme, or the UI colour a terminal colour follows. */
+  function origin(token: TokenName) {
+    if (token in overrides) return '';
+    const ui = follows(token);
+    return ui ? ` · same as ${LABELS.get(ui)}` : ' · from base';
   }
 
   function def(): Omit<ThemeDef, 'builtIn' | 'id'> {
@@ -119,39 +129,39 @@
           hint="Everything you don't change comes from the base theme."
         />
         <p class="hint">Point at a colour to make it blink in the preview.</p>
-        <div class="colors">
-          {#each rows as r (r.name)}
-            <div
-              class="color"
-              class:active={active === r.name}
-              role="group"
-              onmouseenter={() => (hovered = r.name)}
-              onmouseleave={() => (hovered = null)}
-              onfocusin={() => (focused = r.name)}
-              onfocusout={() => (focused = null)}
-            >
-              <input
-                type="color"
-                aria-label="Pick {r.label}"
-                value={isHex(tokens[r.name]) ? tokens[r.name] : '#000000'}
-                oninput={(e) => set(r.name, e.currentTarget.value)}
-              />
-              <div class="grow">
-                <TextField
-                  label={r.name in overrides ? r.label : `${r.label} · from base`}
-                  mono
-                  value={tokens[r.name]}
-                  oninput={(e) => set(r.name, e.currentTarget.value)}
-                />
-              </div>
+        {#each TOKEN_GROUPS as g (g.title)}
+          <details class="group" open>
+            <summary>{g.title}</summary>
+            <div class="colors">
+              {#each g.tokens as r (r.name)}
+                <div
+                  class="color"
+                  class:active={active === r.name}
+                  role="group"
+                  onmouseenter={() => (hovered = r.name)}
+                  onmouseleave={() => (hovered = null)}
+                  onfocusin={() => (focused = r.name)}
+                  onfocusout={() => (focused = null)}
+                >
+                  <input
+                    type="color"
+                    aria-label="Pick {r.label}"
+                    value={isHex(tokens[r.name]) ? tokens[r.name] : '#000000'}
+                    oninput={(e) => set(r.name, e.currentTarget.value)}
+                  />
+                  <div class="grow">
+                    <TextField
+                      label="{r.label}{origin(r.name)}"
+                      mono
+                      value={tokens[r.name]}
+                      oninput={(e) => set(r.name, e.currentTarget.value)}
+                    />
+                  </div>
+                </div>
+              {/each}
             </div>
-          {/each}
-        </div>
-        <div>
-          <Button variant="ghost" onclick={() => (showAll = !showAll)}
-            >{showAll ? 'Show the main colours only' : 'Show all colours (terminal palette too)'}</Button
-          >
-        </div>
+          </details>
+        {/each}
 
         <div class="checks" aria-live="polite">
           <span class="label">Readability on this background</span>
@@ -181,22 +191,38 @@
             <Wordmark size="sm" />
             <span class="p-row selected">ai-portal</span>
             <span class="p-row">listo</span>
-            <span class="p-row">dotfiles</span>
+            <span class="p-row needs">dotfiles · Allow?</span>
             <span class="p-muted">Muted text sample</span>
           </div>
           <div class="p-main">
             <div class="p-head">
+              <span class="p-tile yellow" aria-hidden="true">✦</span>
+              <span class="p-tile purple" aria-hidden="true">C</span>
               <strong>ai-portal</strong>
               <Button variant="primary" size="sm">New session</Button>
               <StatusBadge text="1 needs you" tone="needs-you" />
               <StatusBadge text="2 working" tone="working" />
+              <StatusBadge text="done" tone="done" />
+              <span class="p-link">github.com/…</span>
             </div>
-            <pre class="p-term"><span class="p-accent">&gt;</span> /worktree-review 2136
-<span class="p-ok">●</span> Port slot 3 free · <span class="p-link">localhost:8003</span>
-1. <span class="p-yellow">core/views.py:88</span> swallows errors
-2. migration <span class="p-purple">0042</span> drops a column
-<span class="p-needs">Allow: pytest?  1 Yes  3 No</span>
-<span class="p-muted">muted status line</span></pre>
+            <pre class="p-term"><span class="t-red">&gt;</span> /worktree-review 2136
+<span class="t-green">●</span> Port slot 3 free · <span class="t-cyan">localhost:8003</span>
+1. <span class="t-yellow">core/views.py:88</span> swallows errors
+2. migration <span class="t-magenta">0042</span> drops a <span class="t-sel">column</span>
+<span class="t-blue">◆ working…</span> <span class="t-white">white</span> <span class="t-bright-black"
+                >dim status line</span
+              >
+<span class="t-red">&gt;</span> <span class="t-cursor">&nbsp;</span>
+<span class="ansi" aria-hidden="true"
+                >{#each ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'] as c (c)}<span
+                    style:background="var(--term-{c})"></span>{/each}
+{#each ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'] as c (c)}<span
+                    style:background="var(--term-bright-{c})"></span>{/each}</span
+              ></pre>
+            <div class="p-menu">
+              <span>Rename</span>
+              <span class="p-danger">Close session</span>
+            </div>
           </div>
         </div>
       </section>
@@ -254,6 +280,12 @@
     display: flex;
     align-items: flex-end;
     gap: var(--space-2-5);
+  }
+
+  .group summary {
+    margin-bottom: var(--space-3);
+    cursor: pointer;
+    font-weight: var(--weight-semibold);
   }
 
   .hint {
@@ -383,11 +415,17 @@
     color: var(--fg);
   }
 
+  .p-row.needs {
+    background: var(--status-needs-you-bg);
+    color: var(--status-needs-you-fg);
+  }
+
   .p-muted {
     color: var(--muted);
   }
 
   .p-main {
+    position: relative;
     flex: 1 1 auto;
     min-width: 0;
     display: flex;
@@ -408,33 +446,102 @@
     margin: 0;
     padding: var(--space-3);
     background: var(--term-bg);
-    color: var(--fg-2);
+    color: var(--term-fg);
     font-family: var(--font-mono);
     line-height: var(--leading-term);
     white-space: pre-wrap;
-  }
-
-  .p-accent {
-    color: var(--pink);
-  }
-
-  .p-ok {
-    color: var(--status-your-turn);
   }
 
   .p-link {
     color: var(--link);
   }
 
-  .p-yellow {
-    color: var(--yellow);
+  .p-tile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--size-tile);
+    height: var(--size-tile);
+    border-radius: var(--radius-round);
+    color: var(--on-accent);
+    font-weight: var(--weight-semibold);
   }
 
-  .p-purple {
-    color: var(--purple);
+  .p-tile.yellow {
+    background: var(--yellow);
   }
 
-  .p-needs {
-    color: var(--status-needs-you);
+  .p-tile.purple {
+    background: var(--purple);
+  }
+
+  .p-menu {
+    position: absolute;
+    right: var(--space-3);
+    bottom: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-1-5) var(--space-2-5);
+    border: var(--hairline) solid var(--line-strong);
+    border-radius: var(--radius-md);
+    background: var(--panel);
+    box-shadow: 0 var(--space-2) var(--space-6) var(--shadow);
+    color: var(--fg);
+  }
+
+  .p-danger {
+    color: var(--danger);
+  }
+
+  .t-red {
+    color: var(--term-red);
+  }
+
+  .t-green {
+    color: var(--term-green);
+  }
+
+  .t-yellow {
+    color: var(--term-yellow);
+  }
+
+  .t-blue {
+    color: var(--term-blue);
+  }
+
+  .t-magenta {
+    color: var(--term-magenta);
+  }
+
+  .t-cyan {
+    color: var(--term-cyan);
+  }
+
+  .t-white {
+    color: var(--term-white);
+  }
+
+  .t-bright-black {
+    color: var(--term-bright-black);
+  }
+
+  .t-sel {
+    background: var(--selection);
+  }
+
+  .t-cursor {
+    background: var(--term-cursor);
+  }
+
+  .ansi {
+    display: grid;
+    grid-template-columns: repeat(8, var(--space-4));
+    gap: var(--space-0-5);
+  }
+
+  .ansi span {
+    height: var(--space-3);
+    border-radius: var(--radius-xs);
   }
 </style>
