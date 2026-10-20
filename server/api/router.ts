@@ -1,6 +1,6 @@
 // Tiny router: modules register handlers for the routes in shared/api.ts.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { ClientKind, Right } from '../../shared/api.ts';
+import type { ClientKind, DeviceLevel, Right } from '../../shared/api.ts';
 
 /** Who is calling. Resolved by the auth module before a handler runs. */
 export interface Caller {
@@ -8,8 +8,10 @@ export interface Caller {
   /** "chris", "session:<id>", "plugin:<name>", "cli". */
   id: string;
   rights: Right[];
-  /** The paired device of a cookie user; absent for Bearer callers. */
+  /** The paired device of a browser user (cookie or device token); absent for clients. */
   deviceId?: string;
+  /** Set for paired phones: what the device may do (server/auth/levels.ts). Absent = everything. */
+  level?: DeviceLevel;
 }
 
 export interface Request {
@@ -40,6 +42,8 @@ interface Route {
   handler: Handler;
   /** Routes that need no login (health, login, pairing redeem, hooks with their own token). */
   public: boolean;
+  /** The ROUTES value it was added with, e.g. "GET /api/sessions/:id". */
+  spec: string;
 }
 
 export class Router {
@@ -57,7 +61,7 @@ export class Router {
         }) +
         '$',
     );
-    this.#routes.push({ method, pattern, keys, handler, public: options.public ?? false });
+    this.#routes.push({ method, pattern, keys, handler, spec, public: options.public ?? false });
   }
 
   match(method: string, path: string): { route: Route; params: Record<string, string> } | null {

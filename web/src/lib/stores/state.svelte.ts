@@ -3,6 +3,7 @@ import type {
   Approval,
   Config,
   Device,
+  DeviceLevel,
   PluginInfo,
   ProjectView,
   ServerEvent,
@@ -14,7 +15,7 @@ import type {
 } from '../../../../shared/api.ts';
 import { TERMINAL_SETTINGS_DEFAULTS, terminalSettingsError } from '../../../../shared/api.ts';
 import { applyTheme, findTheme } from '../tokens/tokens.ts';
-import { api, ApiError, wsUrl } from './api.ts';
+import { api, ApiError, wsProtocols, wsUrl } from './api.ts';
 import { href } from './router.svelte.ts';
 import { toast, toastError } from './toasts.svelte.ts';
 
@@ -30,8 +31,16 @@ export const app = $state({
   plugins: [] as PluginInfo[],
   /** GET /api/updates: the Settings notice and the dot on the user chip. */
   update: null as UpdateStatus | null,
-  /** GET /api/auth/me: `{caller, device}`; `name` if the server ever sends one. */
-  me: null as { name?: string; caller?: { kind: string; id: string }; device?: Device | null } | null,
+  /** GET /api/auth/me: `{caller, device, local}`; `name` if the server ever sends one. */
+  me: null as {
+    name?: string;
+    caller?: { kind: string; id: string; level?: DeviceLevel };
+    device?: Device | null;
+    /** shub opened on the machine itself: only here can devices be approved or raised. */
+    local?: boolean;
+  } | null,
+  /** Bumped on devices.changed so Settings > Devices refetches. */
+  devicesVersion: 0,
   /** Bumped per session on services.changed so views can refetch. */
   servicesVersion: {} as Record<string, number>,
   /** Sessions on their way out: tab and sidebar row fade and say "Closing" until they are dropped. */
@@ -222,8 +231,24 @@ export function handleEvent(e: ServerEvent): void {
     case 'updates.changed':
       void loadUpdate();
       return;
+    case 'devices.changed':
+      app.devicesVersion++;
+      if (app.me?.local) void announcePending();
+      return;
     default:
       return; // hello, activity, plugin.action: nothing to keep in state yet
+  }
+}
+
+const announcedDevices = new Set<string>();
+
+/** On the machine itself: say once per device when a phone waits for approval. */
+async function announcePending(): Promise<void> {
+  const list = await api<Device[]>('devices').catch(() => []);
+  for (const d of list) {
+    if (d.state !== 'pending' || announcedDevices.has(d.id)) continue;
+    announcedDevices.add(d.id);
+    toast(`${d.name} wants to pair. Approve it in Settings > Devices.`, 'neutral', 10_000);
   }
 }
 
@@ -235,8 +260,10 @@ export function connectEvents(): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let everOpen = false;
 
-  const open = () => {
-    ws = new WebSocket(wsUrl('/api/events'));
+  const open = async () => {
+    const protocols = await wsProtocols();
+    if (stopped) return;
+    ws = new WebSocket(wsUrl('/api/events'), protocols);
     ws.onopen = () => {
       app.connected = true;
       delay = 1000;
@@ -253,11 +280,11 @@ export function connectEvents(): () => void {
     ws.onclose = () => {
       app.connected = false;
       if (stopped || app.authRequired) return;
-      timer = setTimeout(open, delay);
+      timer = setTimeout(() => void open(), delay);
       delay = Math.min(delay * 2, 30_000);
     };
   };
-  open();
+  void open();
   return () => {
     stopped = true;
     clearTimeout(timer);

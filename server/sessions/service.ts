@@ -38,7 +38,7 @@ const WAIT_EVERY_MIN = 5;
 
 const GLOBAL_ID = 'global';
 const LIVE: SessionStatus[] = ['new', 'working', 'needs-you', 'your-turn', 'waiting'];
-const NAMED_KEYS = new Set(['Escape', 'C-c', 'Up', 'Down', 'Tab', 'Enter']);
+export const NAMED_KEYS = new Set(['Escape', 'C-c', 'Up', 'Down', 'Tab', 'Enter']);
 const LITERAL_MAX = 2000;
 const TEXT_PASTE_MAX = 1024 * 1024;
 const FILE_PASTE_MAX = 20 * 1024 * 1024;

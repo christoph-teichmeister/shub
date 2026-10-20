@@ -221,16 +221,61 @@ test('settings and themes', async () => {
   assert.deepEqual(reset, { cursorStyle: 'bar' });
 });
 
-test('pairing: single use code creates a phone device', async () => {
+test('pairing: a phone pairs with its key, waits for approval and then signs in by challenge', async () => {
+  const { generateKeyPairSync, sign } = await import('node:crypto');
+  const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
   const start = await (await asUser('POST', '/api/auth/pairing')).json();
   assert.equal(start.url, `http://127.0.0.1:${ctx.port}/pair/${start.code}`);
   assert.match(start.qrSvg, /^<svg/);
-  const redeem = await call('POST', '/api/auth/pairing/redeem', { code: start.code, deviceName: 'phone' });
+  const redeem = await call('POST', '/api/auth/pairing/redeem', {
+    code: start.code,
+    deviceName: 'phone',
+    publicKey: publicKey.export({ format: 'jwk' }),
+  });
   assert.equal(redeem.status, 200);
-  assert.equal((await redeem.json()).device.kind, 'phone');
-  assert.equal((await call('POST', '/api/auth/pairing/redeem', { code: start.code })).status, 401);
-  const devices = await (await asUser('GET', '/api/devices')).json();
-  assert.ok(devices.some((d: { kind: string }) => d.kind === 'phone'));
+  const { device } = await redeem.json();
+  assert.equal(device.kind, 'phone');
+  assert.equal(device.state, 'pending');
+  assert.equal((await call('POST', '/api/auth/pairing/redeem', { code: start.code })).status, 400);
+  assert.equal((await call('POST', '/api/auth/challenge', { deviceId: device.id })).status, 409);
+
+  // Approved in shub on the machine (loopback, signed in with the access token).
+  assert.equal((await asUser('POST', `/api/devices/${device.id}/approve`)).status, 200);
+  const signIn = async () => {
+    const { nonce } = await (await call('POST', '/api/auth/challenge', { deviceId: device.id })).json();
+    const signature = sign('sha256', Buffer.from(`shub-login:${nonce}`), {
+      key: privateKey,
+      dsaEncoding: 'ieee-p1363',
+    }).toString('base64url');
+    const res = await call('POST', '/api/auth/session', { deviceId: device.id, nonce, signature });
+    assert.equal(res.status, 200);
+    return (await res.json()).token as string;
+  };
+  const token = await signIn();
+  const asPhone = (method: string, path: string, body?: unknown) =>
+    fetch(base + path, {
+      method,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+
+  // Prompts (the level of a new phone): reads, but no settings, no new pairings and no raising itself.
+  assert.equal((await asPhone('GET', '/api/devices')).status, 200);
+  assert.equal((await asPhone('PATCH', '/api/settings', { terminal: { fontSize: 15 } })).status, 403);
+  assert.equal((await asPhone('POST', '/api/auth/pairing')).status, 403);
+  assert.equal((await asPhone('PATCH', `/api/devices/${device.id}`, { level: 'control' })).status, 403);
+  assert.equal((await asPhone('POST', `/api/devices/${device.id}/approve`)).status, 403);
+
+  // The events WebSocket takes the token as a subprotocol.
+  const ws = new WebSocket(base.replace('http', 'ws') + '/api/events', ['shub', `bearer.${token}`]);
+  const hello = await new Promise<string>((resolve) => ws.on('message', (data) => resolve(String(data))));
+  assert.match(hello, /hello/);
+  const closed = new Promise<void>((resolve) => ws.on('close', () => resolve()));
+
+  // Removing the device ends its socket and its token at once.
+  assert.equal((await asUser('DELETE', `/api/devices/${device.id}`)).status, 200);
+  await closed;
+  assert.equal((await asPhone('GET', '/api/devices')).status, 401);
 });
 
 test('a device can be renamed', async () => {

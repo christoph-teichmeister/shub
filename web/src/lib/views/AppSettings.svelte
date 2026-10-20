@@ -117,6 +117,29 @@
       () => (devices = []),
     );
 
+  // Another device paired, was approved or removed.
+  $effect(() => {
+    if (app.devicesVersion) void loadDevices();
+  });
+
+  /** Approving and changing levels only work in shub on the machine itself. */
+  const local = $derived(!!app.me?.local);
+  const LEVEL_OPTIONS = [
+    { value: 'view', label: 'View' },
+    { value: 'prompts', label: 'Prompts' },
+    { value: 'control', label: 'Control' },
+  ];
+
+  async function approve(d: Device) {
+    await api('deviceApprove', { params: { id: d.id } }).then(() => toast(`${d.name} approved`), toastError);
+    void loadDevices();
+  }
+
+  async function setLevel(d: Device, level: string) {
+    await api('deviceUpdate', { params: { id: d.id }, body: { level } }).catch(toastError);
+    void loadDevices();
+  }
+
   const ts = $derived(phone?.tailscale);
   const shared = $derived(!!ts?.served && !!phone?.publicUrl);
   const loadPhone = () => api<PhoneSetup>('phoneSetup').then((p) => (phone = p), toastError);
@@ -441,17 +464,42 @@
           </div>
         </div>{/if}
 
+      <p class="muted small">
+        A phone may View (read, push), answer Prompts (approvals, permission questions, Run chips) or take full Control
+        (type in terminals, start sessions). A new phone gets Prompts once approved; approving and changing levels only
+        work in shub on this machine (opened via localhost).
+      </p>
       <ul class="list">
         {#each devices as d (d.id)}
           <li class="item">
             <span class="grow stack">
-              <span class="strong">{d.name}{d.id === myDevice?.id ? ' · this device' : ''}</span>
+              <span class="strong"
+                >{d.name}{d.id === myDevice?.id ? ' · this device' : ''}{d.state === 'pending'
+                  ? ' · waiting for approval'
+                  : ''}</span
+              >
               <span class="muted small"
                 >{d.kind} · paired {d.pairedAt.slice(0, 10)} · last seen {when(d.lastSeenAt)} · push {d.push
                   ? 'on'
                   : 'off'}</span
               >
             </span>
+            {#if d.kind === 'phone'}
+              {#if d.state === 'pending'}
+                {#if local}<Button size="sm" variant="primary" onclick={() => approve(d)}>Approve</Button>
+                {:else}<span class="muted small">Approve on the machine</span>{/if}
+              {/if}
+              {#if local}
+                <SelectField
+                  label="What {d.name} may do"
+                  hideLabel
+                  size="sm"
+                  value={d.level}
+                  options={LEVEL_OPTIONS}
+                  onchange={(e) => setLevel(d, e.currentTarget.value)}
+                />
+              {:else}<span class="muted small">{d.level}</span>{/if}
+            {/if}
             {#if d.push}<Button
                 size="sm"
                 onclick={() => api('pushTest').then(() => toast('Test push sent'), toastError)}>Test push</Button

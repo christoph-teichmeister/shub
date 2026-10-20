@@ -37,10 +37,12 @@ export function attachTerminals(server: Server, sessions: SessionsService): void
       });
       pty.onData((data) => ws.readyState === ws.OPEN && ws.send(Buffer.from(data, 'utf8')));
       pty.onExit(() => ws.close());
+      // Phones below control watch only: their keystrokes are dropped, resizes still apply.
+      const typing = !caller.level || caller.level === 'control';
       ws.on('message', (data, isBinary) => {
         const text = (data as Buffer).toString('utf8'); // default binaryType 'nodebuffer'
         if (!isBinary && text.startsWith('\u0000')) return control(text.slice(1), pty);
-        pty.write(text);
+        if (typing) pty.write(text);
       });
       ws.on('close', () => pty.kill());
     });

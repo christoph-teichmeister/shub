@@ -9,6 +9,7 @@ import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { publicUrl } from '../config/index.ts';
+import { refuseLevel } from '../auth/levels.ts';
 import { allowList, refuse } from './guard.ts';
 import { HttpError, readBody, Router, sendJson, type Caller, type Request } from './router.ts';
 import { installUpgrades, onUpgrade } from './upgrade.ts';
@@ -144,6 +145,8 @@ async function handle(
   }
   const caller = services.auth.resolve(raw);
   if (!caller && !found.route.public) throw new HttpError(401, 'login required');
+  const tooLow = refuseLevel(caller?.level, found.route.spec);
+  if (tooLow) throw new HttpError(403, tooLow);
   const result = await found.route.handler(makeRequest(raw, path, found.params, caller ?? ANONYMOUS), res);
   if (res.headersSent) return;
   if (result === undefined) {

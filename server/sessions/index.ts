@@ -6,7 +6,7 @@ import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { buttonPrompt, isSimpleInput } from './launch.ts';
-import { SessionsService, type SessionsOptions } from './service.ts';
+import { NAMED_KEYS, SessionsService, type SessionsOptions } from './service.ts';
 import { attachTerminals } from './terminal.ts';
 
 const KINDS: SessionKind[] = ['claude', 'shell', 'global'];
@@ -157,7 +157,12 @@ function routes(sessions: SessionsService, services: Services, router: Router): 
   router.add(ROUTES.sessionKeys, async (req) => {
     requireUser(req.caller);
     const { keys } = await req.json<{ keys?: unknown }>();
-    sessions.sendKeys(req.params.id, (Array.isArray(keys) ? keys : [keys]) as string[]);
+    const list = (Array.isArray(keys) ? keys : [keys]) as string[];
+    // A prompts-level phone answers questions (1, 2, 3, Enter, Escape), it does not type text.
+    if (req.caller.level === 'prompts' && !list.every((k) => NAMED_KEYS.has(k) || /^[0-9]$/.test(k))) {
+      throw new HttpError(403, 'this device may only send named keys and single digits');
+    }
+    sessions.sendKeys(req.params.id, list);
     return { ok: true };
   });
   router.add(ROUTES.sessionPaste, async (req) => {

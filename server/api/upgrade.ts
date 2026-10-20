@@ -29,6 +29,20 @@ interface Entry {
 }
 
 const registries = new WeakMap<Server, Entry[]>();
+/** Open sockets per device, so revoking a device or changing its level cuts them at once. */
+const deviceSockets = new Map<string, Set<Duplex>>();
+
+export function closeDeviceSockets(deviceId: string): void {
+  for (const socket of deviceSockets.get(deviceId) ?? []) socket.destroy();
+  deviceSockets.delete(deviceId);
+}
+
+function track(deviceId: string, socket: Duplex): void {
+  let set = deviceSockets.get(deviceId);
+  if (!set) deviceSockets.set(deviceId, (set = new Set()));
+  set.add(socket);
+  socket.once('close', () => set.delete(socket));
+}
 
 function entries(server: Server): Entry[] {
   let list = registries.get(server);
@@ -58,6 +72,7 @@ export function installUpgrades(
       if (!match) continue;
       const caller = resolve(req);
       if (!caller) return reject(socket, 401, 'Unauthorized');
+      if (caller.deviceId) track(caller.deviceId, socket);
       return entry.handler(req, socket, head, caller, match);
     }
     reject(socket, 404, 'Not Found');

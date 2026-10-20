@@ -1,5 +1,6 @@
 // Typed HTTP client over the ROUTES table in shared/api.ts.
 import { ROUTES } from '../../../../shared/api.ts';
+import { deviceToken } from './device.ts';
 
 export type RouteName = keyof typeof ROUTES;
 
@@ -43,7 +44,7 @@ export async function api<T = unknown>(name: RouteName, options: CallOptions = {
     init.body = JSON.stringify(body);
     init.headers = { ...init.headers, 'Content-Type': 'application/json' };
   }
-  const res = await fetch(url, init);
+  const res = await send(url, init);
   const isJson = res.headers.get('content-type')?.includes('application/json');
   const data: unknown = res.status === 204 ? null : isJson ? await res.json() : await res.text();
   if (!res.ok) {
@@ -52,6 +53,26 @@ export async function api<T = unknown>(name: RouteName, options: CallOptions = {
     throw new ApiError(res.status, message);
   }
   return data as T;
+}
+
+/** A paired phone's short-lived token; null on a desktop (cookie) or when the phone cannot sign in. */
+const bearer = (fresh = false) => deviceToken(fresh).catch(() => null);
+
+/** fetch with the phone's token; a 401 gets one retry with a freshly signed token. */
+async function send(url: string, init: RequestInit): Promise<Response> {
+  const token = await bearer();
+  if (!token) return fetch(url, init);
+  const withToken = (t: string) => fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${t}` } });
+  const res = await withToken(token);
+  if (res.status !== 401) return res;
+  const again = await bearer(true);
+  return again ? withToken(again) : res;
+}
+
+/** WebSocket subprotocols carrying the phone's token (browsers cannot set headers on a WebSocket). */
+export async function wsProtocols(): Promise<string[] | undefined> {
+  const token = await bearer();
+  return token ? ['shub', `bearer.${token}`] : undefined;
 }
 
 /** ws(s):// URL for a path on this origin. */
