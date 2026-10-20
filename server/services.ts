@@ -74,7 +74,13 @@ export interface Sessions {
   /** Permission checks happen before; this just starts. */
   /** byUser: the user (web or CLI) asked, so the app's default permission mode applies. */
   start(request: StartSessionRequest, startedBy: string, byUser?: boolean): Promise<Session>;
-  setStatus(id: string, status: SessionStatus, pendingPermission?: Session['pendingPermission']): void;
+  /** `background`: the turn ended with background work still running (see BACKGROUND_FALLBACK_MS). */
+  setStatus(
+    id: string,
+    status: SessionStatus,
+    pendingPermission?: Session['pendingPermission'],
+    background?: boolean,
+  ): void;
   /** Claude switched conversations (/clear, compact): remember the new id for resume. */
   setClaudeSessionId(id: string, claudeSessionId: string): void;
   /** A hook reported the mode Claude runs in (needed for "inherit", or after Shift+Tab). */

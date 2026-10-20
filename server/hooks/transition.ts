@@ -29,6 +29,8 @@ export interface Transition {
   /** undefined = leave as is. */
   pendingPermission?: Session['pendingPermission'];
   notify?: { kind: 'yourTurn' } | { kind: 'needsYou'; text: string };
+  /** The turn ended but background work still runs; shub falls back to your-turn if nothing follows. */
+  background?: true;
 }
 
 const SUMMARY_MAX = 200;
@@ -87,7 +89,7 @@ export function transition(
     case 'Stop':
       // A background shell or agent still runs and wakes Claude when it ends: the turn is not over.
       if (Array.isArray(payload.background_tasks) && payload.background_tasks.length) {
-        return { status: 'working', pendingPermission: null };
+        return { status: 'working', pendingPermission: null, background: true };
       }
       if (waiting) return { status: 'waiting', pendingPermission: null };
       return { status: 'your-turn', pendingPermission: null, notify: { kind: 'yourTurn' } };

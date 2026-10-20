@@ -20,6 +20,7 @@ test('stop with background tasks still running keeps working, and the idle remin
   assert.deepEqual(transition('working', 'Stop', { background_tasks: [task] }), {
     status: 'working',
     pendingPermission: null,
+    background: true,
   });
   assert.equal(transition('working', 'Stop', { background_tasks: [] })?.status, 'your-turn');
   assert.equal(transition('working', 'Notification', { notification_type: 'idle_prompt' }), null);

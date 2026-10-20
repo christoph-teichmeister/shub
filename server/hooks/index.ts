@@ -100,7 +100,7 @@ export function create(_ctx: Context, services: Services): { module: ShubModule 
           }
           const change = transition(session.status, req.params.event, payload, !!session.waitingFor);
           if (!change) return { ok: true };
-          services.sessions.setStatus(session.id, change.status, change.pendingPermission);
+          services.sessions.setStatus(session.id, change.status, change.pendingPermission, change.background);
           const updated = services.sessions.get(session.id) ?? session;
           if (change.notify?.kind === 'yourTurn') services.notify.yourTurn(updated);
           if (change.notify?.kind === 'needsYou') services.notify.needsYou(updated, change.notify.text);

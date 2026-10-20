@@ -54,6 +54,8 @@ const PASTE_TYPES: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
 };
 const RECONCILE_MS = 3000;
+/** A background shell may never end (dev server, watcher): after this long without a hook, hand the session back. */
+const BACKGROUND_FALLBACK_MS = 10 * 60_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface Row {
@@ -115,6 +117,8 @@ export class SessionsService implements Sessions {
   #waitChecker: WaitChecker;
   /** Sessions whose background check is running right now. */
   #checking = new Set<string>();
+  /** Sessions whose turn ended with background work running, and since when. In memory: lost on restart. */
+  #background = new Map<string, number>();
   #tmux!: Tmux;
   #binDir: string;
   #restorable = new Set<string>();
@@ -408,9 +412,16 @@ export class SessionsService implements Sessions {
     return Object.keys(positions).map((id) => this.#emitUpdated(id));
   }
 
-  setStatus(id: string, status: SessionStatus, pendingPermission?: Session['pendingPermission']): void {
+  setStatus(
+    id: string,
+    status: SessionStatus,
+    pendingPermission?: Session['pendingPermission'],
+    background = false,
+  ): void {
     const session = this.get(id);
     if (!session || session.status === 'exited') return;
+    if (background) this.#background.set(id, Date.now());
+    else this.#background.delete(id);
     const pending =
       pendingPermission !== undefined ? pendingPermission : status === 'needs-you' ? session.pendingPermission : null;
     this.#db
@@ -546,8 +557,16 @@ export class SessionsService implements Sessions {
     this.#timer.unref();
   }
 
-  /** Claude or the shell exited on its own: the tmux session is gone. Also starts due wait checks. */
-  reconcile(): void {
+  /** Claude or the shell exited on its own: the tmux session is gone. Also starts due wait checks and hands
+   *  back sessions whose background work has run past BACKGROUND_FALLBACK_MS. */
+  reconcile(at = Date.now()): void {
+    for (const [id, since] of this.#background) {
+      if (at - since < BACKGROUND_FALLBACK_MS) continue;
+      const waiting = !!this.get(id)?.waitingFor;
+      this.setStatus(id, waiting ? 'waiting' : 'your-turn', null);
+      const session = this.get(id);
+      if (session && !waiting) this.#services.notify.yourTurn(session);
+    }
     const running = this.#tmux.sessions();
     for (const row of this.#rows()) {
       if (LIVE.includes(row.status) && !this.#restorable.has(row.id) && !running.has(tmuxName(row.id))) {
