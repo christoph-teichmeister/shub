@@ -39,7 +39,7 @@
   role="status"
   aria-label={version ? `Updating to ${version}` : undefined}
 >
-  <Wordmark size="xl" needsYou />
+  <div class="badge"><Wordmark size="xl" needsYou /></div>
 </div>
 
 <style>
@@ -63,6 +63,13 @@
     opacity: 1;
     visibility: visible;
     transition: opacity var(--duration-slow) var(--ease-standard);
+  }
+
+  .badge {
+    padding: var(--space-6) var(--space-8);
+    border-radius: var(--radius-xl);
+    background: var(--panel);
+    box-shadow: 0 var(--space-4) var(--space-8) var(--shadow);
   }
 
   .curtain.instant {
