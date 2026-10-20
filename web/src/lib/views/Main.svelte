@@ -80,8 +80,23 @@
 
   // ---------- Active group: projects with a session, kept ACTIVE_GRACE after the last one closes ----------
   const ACTIVE_GRACE = 10 * 60_000;
-  // ponytail: grace start lives in memory, a page reload drops projects that are only in their grace.
-  let leftAt = $state<Record<string, number>>({});
+  // Kept per browser so a reload keeps the countdown; storage can be missing or throw (private window).
+  let leftAt = $state<Record<string, number>>(
+    (() => {
+      try {
+        return JSON.parse(localStorage.getItem('shub.active.leftAt') ?? '{}') as Record<string, number>;
+      } catch {
+        return {};
+      }
+    })(),
+  );
+  $effect(() => {
+    try {
+      localStorage.setItem('shub.active.leftAt', JSON.stringify(leftAt));
+    } catch {
+      // not remembered, the countdown still runs
+    }
+  });
   let now = $state(Date.now());
   let wasActive = new Set<string>();
   $effect(() => {
