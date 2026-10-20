@@ -84,8 +84,11 @@ const ENDLESS_COMMANDS = [
   /\b(tail|journalctl|logs)\b.*\s(-f|--follow)\b/,
   /\bdocker[\s-]compose\s+up\b(?!.*\s(-d|--detach)\b)/,
 ];
-/** Task types that always end on their own; anything else (shells, monitors) may not. */
+/** Task types that always end on their own. */
 const ENDING_TASKS = new Set(['subagent', 'workflow']);
+/** Task types that may end (or never do): they get the fallback timer. Any other type (artifact watches,
+ *  teammates, remote agents) only listens for events, so Claude is done with the turn. */
+const OPEN_TASKS = new Set(['shell', 'monitor']);
 
 interface BackgroundTask {
   type?: unknown;
@@ -95,11 +98,11 @@ interface BackgroundTask {
 /** What a Stop's background tasks mean: nothing to wait for, work that ends, or work that may never end. */
 function backgroundWork(tasks: unknown): 'none' | 'ending' | 'open' {
   if (!Array.isArray(tasks)) return 'none';
-  const awaited = (tasks as BackgroundTask[]).filter(
-    (t) => !(t?.type === 'shell' && ENDLESS_COMMANDS.some((re) => re.test(String(t.command ?? '')))),
-  );
-  if (!awaited.length) return 'none';
-  return awaited.every((t) => ENDING_TASKS.has(String(t?.type))) ? 'ending' : 'open';
+  const types = (tasks as BackgroundTask[])
+    .filter((t) => !(t?.type === 'shell' && ENDLESS_COMMANDS.some((re) => re.test(String(t.command ?? '')))))
+    .map((t) => String(t?.type));
+  if (types.some((type) => OPEN_TASKS.has(type))) return 'open';
+  return types.some((type) => ENDING_TASKS.has(type)) ? 'ending' : 'none';
 }
 
 /** How many background shells still run, servers included. */

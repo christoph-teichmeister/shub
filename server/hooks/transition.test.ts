@@ -32,6 +32,19 @@ test('stop with background tasks still running keeps working, and the idle remin
   assert.equal(transition('working', 'Notification', { notification_type: 'idle_prompt' }), null);
 });
 
+test('watches and other listening tasks do not keep a finished turn working', () => {
+  const watch = { id: 'w1', type: 'artifact_watch', status: 'running', description: 'Settings redesign' };
+  const mate = { id: 't1', type: 'teammate', status: 'running', description: 'reviewer' };
+  assert.equal(transition('working', 'Stop', { background_tasks: [watch, mate] })?.status, 'your-turn');
+  const monitor = { id: 'm1', type: 'monitor', status: 'running', description: 'CI' };
+  assert.equal(transition('working', 'Stop', { background_tasks: [watch, monitor] })?.background, true);
+  const agent = { id: 'a1', type: 'subagent', status: 'running', description: 'code-review' };
+  assert.deepEqual(transition('working', 'Stop', { background_tasks: [watch, agent] }), {
+    status: 'working',
+    pendingPermission: null,
+  });
+});
+
 test('a closing question hands the turn over even with background shells running', () => {
   const task = { id: 'b1', type: 'shell', status: 'running', description: '', command: './run-mh.sh a' };
   const asking = (last_assistant_message: string) =>
