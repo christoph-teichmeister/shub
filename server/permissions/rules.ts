@@ -70,6 +70,8 @@ export function decide(caller: Caller, action: PermissionAction, env: DecideEnv)
       if (isHuman(caller) || caller.id === `session:${action.sessionId}`) return allow;
       return deny('only you can close another session');
     case 'session.link':
+      // A session may pin links to its own tab (e.g. its MR); other sessions' tabs still go by the right.
+      if (caller.kind === 'session' && caller.id === `session:${action.sessionId}`) return allow;
       return decideByRight(caller, 'sessions.link', 'allow');
     case 'ui.contribute':
       if (caller.kind !== 'plugin') return isHuman(caller) ? allow : deny('only plugins contribute UI');

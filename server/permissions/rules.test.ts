@@ -69,13 +69,14 @@ test('project session: reads only, every write asks, never allowed', () => {
     freePrompt,
     { kind: 'projects.write', projectId: 'p1' },
     { kind: 'buttons.write', projectId: 'p1', diff: '' },
-    { kind: 'session.link', sessionId: 's1' },
+    { kind: 'session.link', sessionId: 's9' },
   ] satisfies PermissionAction[]) {
     assert.equal(outcome(s, a), 'ask', a.kind);
   }
   assert.equal(outcome(s, { kind: 'projects.delete', projectId: 'p1' }), 'deny');
   assert.equal(outcome(s, { kind: 'session.close', sessionId: 's9' }), 'deny');
   assert.equal(outcome(s, { kind: 'session.close', sessionId: 's1' }), 'allow', 'may close itself');
+  assert.equal(outcome(s, { kind: 'session.link', sessionId: 's1' }), 'allow', 'may link its own tab');
 });
 
 test('spawned session: no write at all', () => {
