@@ -41,8 +41,8 @@ async function list(projectRef: string | true | undefined, json: boolean): Promi
   output(sessions, json, () =>
     sessions.length
       ? table([
-          ['ID', 'NAME', 'KIND', 'STATUS', 'PROJECT'],
-          ...sessions.map((s) => [s.id, s.name, s.kind, s.status, s.projectId ?? 'global']),
+          ['ID', 'NAME', 'KIND', 'STATUS', 'PROJECT', 'FOLDER'],
+          ...sessions.map((s) => [s.id, s.name, s.kind, s.status, s.projectId ?? 'global', s.cwd]),
         ])
       : 'No sessions.',
   );

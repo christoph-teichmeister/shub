@@ -1,6 +1,8 @@
 <script lang="ts">
-  import type { Session } from '../../../../../shared/api.ts';
+  import type { HandedCommand, Session } from '../../../../../shared/api.ts';
+  import { commandTarget, type CommandTarget } from '../../../../../shared/commands.ts';
   import { api } from '../../stores/api.ts';
+  import { app } from '../../stores/state.svelte.ts';
   import { toast, toastError } from '../../stores/toasts.svelte.ts';
   import Button from '../Button/Button.svelte';
   import Icon from '../Icon/Icon.svelte';
@@ -10,12 +12,15 @@
     session: Session;
     /** Phone: Run asks for a second tap, then sends Enter too (Enter on the phone keyboard is fiddly). */
     phone?: boolean;
-    /** Opens a plain terminal and returns its session id; the chip types the command in, not run (sudo, logins). */
-    onterminal: () => Promise<string | null | undefined>;
+    /** Opens a plain terminal (in `cwd` when the command names a folder) and returns its session id; the chip
+     *  types the command in, not run (sudo, logins). */
+    onterminal: (cwd?: string) => Promise<string | null | undefined>;
   }
   let { session, phone = false, onterminal }: Props = $props();
 
-  const commands = $derived(session.pendingCommands ?? []);
+  const commands = $derived(
+    (session.pendingCommands ?? []).map((c) => ({ ...c, target: commandTarget(c, app.sessions, session.id) })),
+  );
   let armed = $state<number | null>(null);
 
   function answer(index: number, action: 'run' | 'dismiss') {
@@ -31,8 +36,18 @@
     answer(index, 'run');
   }
 
-  async function openTerminal(index: number, command: string) {
-    const shell = await onterminal();
+  /** The folder a shell for this command opens in; none = next to this session. */
+  const folderOf = (t: CommandTarget) =>
+    t.kind === 'session' ? t.session.cwd : t.kind === 'folder' ? t.cwd : undefined;
+
+  function runLabel(t: CommandTarget, i: number) {
+    if (armed === i) return 'Tap again to run';
+    if (t.kind !== 'session') return 'Run in session';
+    return t.running ? `Run in ${t.session.name}` : `Resume ${t.session.name} and run`;
+  }
+
+  async function openTerminal(index: number, { command, target }: HandedCommand & { target: CommandTarget }) {
+    const shell = await onterminal(folderOf(target));
     if (!shell) return;
     answer(index, 'dismiss');
     // ponytail: fixed wait for the shell's prompt, so the paste lands bracketed instead of running line by line
@@ -57,14 +72,24 @@
       >
       <IconButton label="Dismiss" icon="close" tone="muted" onclick={() => answer(0, 'dismiss')} />
     </header>
-    {#each commands as command, i (i)}
-      <code>{command}</code>
+    {#each commands as handed, i (i)}
+      {@const t = handed.target}
+      {#if t.kind === 'session'}
+        <p class="target">Runs in {t.session.name}{t.running ? '' : ` (${t.session.status})`}</p>
+      {:else if t.kind === 'folder'}
+        <p class="target">No session in {t.cwd}: opens a terminal there</p>
+      {:else if t.kind === 'unknown'}
+        <p class="target">Meant for session "{t.ref}", which shub does not know</p>
+      {/if}
+      <code>{handed.command}</code>
       <div class="actions">
-        <Button variant="primary" icon="terminal" block={phone} onclick={() => openTerminal(i, command)}
+        <Button variant="primary" icon="terminal" block={phone} onclick={() => openTerminal(i, handed)}
           >Open in terminal</Button
         >
-        <Button onclick={() => run(i)}>{armed === i ? 'Tap again to run' : 'Run in session'}</Button>
-        <Button variant="ghost" onclick={() => copy(command)}>Copy</Button>
+        {#if t.kind === 'self' || t.kind === 'session'}
+          <Button onclick={() => run(i)}>{runLabel(t, i)}</Button>
+        {/if}
+        <Button variant="ghost" onclick={() => copy(handed.command)}>Copy</Button>
         {#if !phone}<span class="hint">Run in session suits commands without sudo or a login</span>{/if}
       </div>
     {/each}
@@ -120,6 +145,12 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
+  }
+
+  .target {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--muted);
   }
 
   .hint {

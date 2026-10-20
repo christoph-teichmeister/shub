@@ -71,7 +71,10 @@ export const RUN_MARKER = 'shub-run';
 export const RUN_HINT =
   `When the user has to run a shell command themselves (you cannot or should not run it), put exactly that ` +
   `command in its own fenced block opened with \`\`\`bash ${RUN_MARKER} — shub then offers to run it. ` +
-  `Use plain \`\`\`bash for every other block, examples and commands you ran included.`;
+  `Use plain \`\`\`bash for every other block, examples and commands you ran included. ` +
+  `When the command belongs in another shub session or folder, name it after the marker: ` +
+  `\`\`\`bash ${RUN_MARKER} session=<id> or \`\`\`bash ${RUN_MARKER} cwd=<folder>; \`shub session list\` shows ` +
+  `the sessions with their ids and folders.`;
 
 /** argv run inside tmux. Tests swap this for `sleep` or `bash`. */
 export type Launcher = (spec: LaunchSpec) => string[];

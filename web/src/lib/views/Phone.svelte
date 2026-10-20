@@ -122,8 +122,8 @@
     <CommandChip
       session={open}
       phone
-      onterminal={async () => {
-        const shell = await startSession({ projectId: open.projectId, kind: 'shell', parentId: open.id });
+      onterminal={async (cwd) => {
+        const shell = await startSession({ projectId: open.projectId, kind: 'shell', parentId: open.id, cwd });
         if (shell) location.hash = sessionHref(shell);
         return shell?.id;
       }}
@@ -189,7 +189,7 @@
                     <a class="open" href={sessionHref(s)}>Open</a>
                   </div>
                 {:else if s.pendingCommands?.length}
-                  <p class="ask">{statusLabel(s)} · {s.pendingCommands[0]}</p>
+                  <p class="ask">{statusLabel(s)} · {s.pendingCommands[0].command}</p>
                   <div class="card-actions">
                     <a class="open" href={sessionHref(s)}>Open</a>
                   </div>

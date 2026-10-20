@@ -45,7 +45,7 @@
     class="link"
     {href}
     aria-current={selected ? 'page' : undefined}
-    title={session.pendingCommands?.join('\n') ?? waitTitle(session)}
+    title={session.pendingCommands?.map((c) => c.command).join('\n') ?? waitTitle(session)}
   >
     <StatusDot status={session.status} />
     <span class="name">{session.name}</span>
