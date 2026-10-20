@@ -10,11 +10,23 @@ shub session rename <name> [--id <session id>]   (defaults to $SHUB_SESSION_ID; 
 shub session wait <what for> [--check <what to look at>] [--every <minutes>] [--id <session id>]
                                      (parks the session as "waiting"; --check lets Haiku look every --every minutes, default 30)
 shub session ready [--id <session id>]   (ends the wait: back to "your turn", with a notification when a session calls it)
+shub session link <url> [--label <label>] [--id <session id>]
+                                     (pins a link as a chip on the session's tab; defaults to $SHUB_SESSION_ID)
 shub session close [<session id>]    (defaults to $SHUB_SESSION_ID; a session may only close itself)`;
 
 export async function run(args: string[], opts: { json: boolean }): Promise<void> {
   const [sub, ...rest] = args;
-  const { positional, flags } = parse(rest, ['project', 'prompt', 'button', 'input', 'name', 'id', 'check', 'every']);
+  const { positional, flags } = parse(rest, [
+    'project',
+    'prompt',
+    'button',
+    'input',
+    'name',
+    'id',
+    'check',
+    'every',
+    'label',
+  ]);
   if (sub === 'list' || sub === undefined) return list(flags.project, opts.json);
   if (sub === 'start') return start(positional[0], flags, opts.json);
   if (sub === 'status') return status(positional[0] ?? process.env.SHUB_SESSION_ID, opts.json);
@@ -28,6 +40,7 @@ export async function run(args: string[], opts: { json: boolean }): Promise<void
   const self = typeof flags.id === 'string' ? flags.id : process.env.SHUB_SESSION_ID;
   if (sub === 'wait') return wait(self, positional.join(' '), flags, opts.json);
   if (sub === 'ready') return wait(self, null, flags, opts.json);
+  if (sub === 'link') return link(self, positional[0], flags.label, opts.json);
   if (sub === 'close') return close(positional[0] ?? process.env.SHUB_SESSION_ID, opts.json);
   throw new CliError(`unknown subcommand "${sub}"\n${usage}`);
 }
@@ -107,6 +120,14 @@ async function wait(
       ? `${result.name} waits for: ${result.waitingFor}${result.waitCheck ? ` (checked every ${result.waitCheck.everyMinutes} min)` : ''}.`
       : `${result.name} is ready again.`,
   );
+}
+
+async function link(id: string | undefined, url: string | undefined, label: string | true | undefined, json: boolean) {
+  if (!url) throw new CliError(`usage:\n${usage}`);
+  if (!id) throw new CliError('which session? Pass --id (see "shub session list").');
+  const body = { label: typeof label === 'string' ? label : new URL(url).host, url };
+  const result = await api<Session>('POST', `/api/sessions/${encodeURIComponent(id)}/links`, body);
+  output(result, json, () => `Linked ${body.label} to ${result.name}.`);
 }
 
 async function close(id: string | undefined, json: boolean): Promise<void> {
