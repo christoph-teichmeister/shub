@@ -51,8 +51,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: color-mix(in srgb, var(--bg) 40%, transparent);
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(2px);
     opacity: 0;
     visibility: hidden;
     transition:
