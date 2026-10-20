@@ -106,7 +106,7 @@
       aria-describedby="status-{session.id}"
       onclick={onselect}
       ondblclick={() => (renaming = true)}
-      title={waitTitle(session)}
+      title={[session.name, waitTitle(session)].filter(Boolean).join('\n')}
     >
       {session.name}
     </button>
@@ -185,7 +185,10 @@
   }
 
   .label {
+    max-width: var(--size-tab-label);
     height: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
     padding: 0;
     border: 0;
     background: transparent;
