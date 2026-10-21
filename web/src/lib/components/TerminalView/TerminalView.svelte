@@ -179,7 +179,8 @@
     host!.addEventListener('drop', onDrop);
 
     const refit = () => {
-      if (host!.offsetWidth && host!.offsetHeight) fit?.fit();
+      // A queued frame or fonts.ready can land after teardown, when host is already null.
+      if (!closed && host?.offsetWidth && host.offsetHeight) fit?.fit();
     };
     const observer = new ResizeObserver(() => requestAnimationFrame(refit));
     observer.observe(host!);
