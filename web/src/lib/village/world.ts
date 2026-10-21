@@ -146,7 +146,9 @@ const BAND = 8 * TILE;
 const PLAZA = 14 * TILE;
 const POND = 11 * TILE; // the pond's slot at the start of the bottom row
 const QUEUE = 10;
-const QUEUE_STEP = 48;
+/** Crabs in the queue stand this far apart; the first stands clear of your name plate. The map grows to fit the lane. */
+const QUEUE_STEP = 56;
+const QUEUE_FIRST = 184;
 /** Up to the next grid line. */
 const snap = (v: number) => Math.ceil(v / TILE) * TILE;
 
@@ -242,7 +244,11 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
   });
 
   const W = snap(Math.max(topEnd, bx - GAP, plazaCx + 280) + M);
-  const H = snap(Math.max(rowY + 448, ...bottom.map((d) => d.y + d.h)) + 2 * TILE);
+  const laneTop = bandY + BAND / 2 + TILE + 24; // the lane starts one tile below the road
+  const H = Math.max(
+    snap(Math.max(rowY + 448, ...bottom.map((d) => d.y + d.h)) + 2 * TILE),
+    snap(laneTop + QUEUE_FIRST + (QUEUE - 1) * QUEUE_STEP),
+  );
   // The plaza fills the bottom of its slot but one row; your desk stands on it, the queue lane runs up from it.
   const plaza = { x: plazaCx - PLAZA / 2, y: H - 9 * TILE, w: PLAZA, h: 8 * TILE };
   const laneX = plazaCx - TILE; // the grid line down the middle of the two lane columns
@@ -250,7 +256,7 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
   const hall = { x: plazaCx + 118, y: H - 116 };
   const mayor = { x: plazaCx + 30, y: H - 104 };
   const slots: Point[] = [];
-  for (let i = 0; i < QUEUE; i++) slots.push([laneX, H - 144 - i * QUEUE_STEP]);
+  for (let i = 0; i < QUEUE; i++) slots.push([laneX, H - QUEUE_FIRST - i * QUEUE_STEP]);
   const pond = { x: M + POND / 2 - 10, y: rowY + 150 };
   const forest = top.length > 1 ? { x: top[0].x + top[0].w + GAP / 2, y: M, w: FOREST, h: bandY - M - 30 } : null;
 
