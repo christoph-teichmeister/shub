@@ -5,6 +5,7 @@
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import { WebglAddon } from '@xterm/addon-webgl';
   import ImageViewer from '../ImageViewer/ImageViewer.svelte';
+  import { allImagePaths, imagePathsAt } from './imagePaths.ts';
   import type { TerminalControl } from '../../../../../shared/api.ts';
   import { api, wsTarget } from '../../stores/api.ts';
   import { app, terminalSettings } from '../../stores/state.svelte.ts';
@@ -70,18 +71,13 @@
     };
   }
 
-  // Image paths in the output (screenshots, pastes) open in the image viewer. Paths with spaces are not matched.
-  const IMAGE_PATH = /(?<![\w.~/-])\/[^\s'"`()<>[\]]+?\.(?:png|jpe?g|gif|webp)(?!\w)/gi;
-  const lineText = (t: Terminal, y: number) => t.buffer.active.getLine(y)?.translateToString(true) ?? '';
+  // Image paths in the output (screenshots, pastes) open in the image viewer.
   let images = $state<string[] | null>(null);
   let imageIndex = $state(0);
   let imageSrc = $state<string | null>(null);
 
   function openImage(t: Terminal, path: string) {
-    const all: string[] = [];
-    for (let y = 0; y < t.buffer.active.length; y++) {
-      for (const m of lineText(t, y).matchAll(IMAGE_PATH)) if (!all.includes(m[0])) all.push(m[0]);
-    }
+    const all = allImagePaths(t.buffer.active);
     images = all.includes(path) ? all : [path];
     imageIndex = images.indexOf(path);
   }
@@ -115,13 +111,12 @@
     fit = new FitAddon();
     t.loadAddon(fit);
     t.loadAddon(new WebLinksAddon());
-    // ponytail: string index as column, so a wide character (emoji, CJK) earlier in the line shifts the underline.
     t.registerLinkProvider({
       provideLinks(y, done) {
-        const links = [...lineText(t, y - 1).matchAll(IMAGE_PATH)].map((m) => ({
-          text: m[0],
-          range: { start: { x: m.index + 1, y }, end: { x: m.index + m[0].length, y } },
-          activate: () => openImage(t, m[0]),
+        const links = imagePathsAt(t.buffer.active, y - 1).map((p) => ({
+          text: p.path,
+          range: { start: p.start, end: p.end },
+          activate: () => openImage(t, p.path),
         }));
         done(links.length ? links : undefined);
       },
