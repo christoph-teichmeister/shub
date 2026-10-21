@@ -30,6 +30,7 @@
   --village-grass: #5a9e3c;
   --village-parchment: #f6dfaa;
   --village-parchment-line: #8a4a1f;
+  --village-paper: #fff3d6;
   --village-wood: #c48a4a;
   --village-wood-dark: #5a3518;
   --village-ink: #2a1408;
@@ -110,6 +111,7 @@
   --size-tab-min: 72px;
   --size-toast: 360px;
   --size-village-card: 290px;
+  --size-village-pop: 320px;
   --village-px: 2px; /* one sprite pixel on the village map */
 
   /* Radii */

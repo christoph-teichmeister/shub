@@ -100,6 +100,9 @@ export interface WorldInput {
 
 /** Hat per group: by name when it matches, else in turn. */
 const OUTFITS: Outfit[] = ['work', 'private', 'everyday', 'projects'];
+/** The hat of the i-th group (in district order). */
+export const outfitOf = (group: string, i: number): Outfit =>
+  OUTFITS.find((o) => o === group.toLowerCase()) ?? OUTFITS[i % OUTFITS.length];
 export const HAT_NAMES: Record<Outfit | 'mayor', string> = {
   work: 'hard hat',
   private: 'beanie',
@@ -185,7 +188,7 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
       const cells = ps.length + 1; // + the free lot
       const cols = Math.max(2, Math.ceil(Math.sqrt(cells * 1.4)));
       const rows = Math.ceil(cells / cols);
-      const outfit = OUTFITS.find((o) => o === id.toLowerCase()) ?? OUTFITS[i % OUTFITS.length];
+      const outfit = outfitOf(id, i);
       return {
         id,
         outfit,

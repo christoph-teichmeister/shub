@@ -47,9 +47,9 @@
   import {
     app,
     closeSession,
+    compact,
     loadProjects,
     needsYouCount,
-    sendKeys,
     sessionHref,
     sessionsOf,
     shellsOf,
@@ -528,8 +528,6 @@
       if (b) void runButton(b);
     }
   }
-
-  const compact = (s: Session) => void sendKeys(s.id, ['/compact', 'Enter']);
 
   function menuItems(s: Session): MenuItem[] {
     const fill = contextFill(s);

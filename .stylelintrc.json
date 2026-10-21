@@ -6,7 +6,8 @@
     "color-named": "never",
     "function-disallowed-list": ["rgb", "rgba", "hsl", "hsla"],
     "selector-class-pattern": null,
-    "custom-property-pattern": null
+    "custom-property-pattern": null,
+    "selector-pseudo-class-no-unknown": [true, { "ignorePseudoClasses": ["global"] }]
   },
   "ignoreFiles": ["web/src/lib/tokens/**", "web/dist/**"]
 }

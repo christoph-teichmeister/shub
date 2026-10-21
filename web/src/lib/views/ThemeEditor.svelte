@@ -541,6 +541,7 @@
   .v-bar {
     height: var(--space-1-5);
     border: var(--hairline) solid var(--village-parchment-line);
+    background: var(--village-paper);
   }
 
   .v-bar span {

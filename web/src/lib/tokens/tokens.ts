@@ -32,6 +32,7 @@ const UI_TOKEN_NAMES = [
   'village-grass', // map ground under the grass tiles
   'village-parchment', // cards, signs, name plates
   'village-parchment-line', // card and chip borders
+  'village-paper', // input fields on parchment
   'village-wood', // buttons, signposts
   'village-wood-dark', // button and plate borders, path edges
   'village-ink', // text on parchment and wood
@@ -128,6 +129,7 @@ export const TOKEN_GROUPS: { title: string; tokens: { name: TokenName; label: st
       { name: 'village-grass', label: 'Grass' },
       { name: 'village-parchment', label: 'Cards and signs' },
       { name: 'village-parchment-line', label: 'Card borders' },
+      { name: 'village-paper', label: 'Input fields' },
       { name: 'village-wood', label: 'Buttons' },
       { name: 'village-wood-dark', label: 'Button borders, path edges' },
       { name: 'village-ink', label: 'Text' },
@@ -155,6 +157,7 @@ const village = {
   'village-grass': '#5a9e3c',
   'village-parchment': '#f6dfaa',
   'village-parchment-line': '#8a4a1f',
+  'village-paper': '#fff3d6',
   'village-wood': '#c48a4a',
   'village-wood-dark': '#5a3518',
   'village-ink': '#2a1408',

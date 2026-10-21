@@ -1,5 +1,6 @@
 // Project, theme and settings routes on top of the config store, gated by the permission model.
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import {
@@ -9,6 +10,7 @@ import {
   type ButtonDef,
   type ChildWorktree,
   type Config,
+  type CreateProjectRequest,
   type MainCheckout,
   type Project,
   type ProjectIcon,
@@ -83,10 +85,12 @@ function str(value: unknown, field: string, max = 200): string {
   return value.trim();
 }
 
-function dirPath(value: unknown): string {
+/** `missingOk`: a path that does not exist yet passes (projectCreate with `create: true` makes it later). */
+function dirPath(value: unknown, missingOk = false): string {
   const path = str(value, 'path', 4096);
   if (!isAbsolute(path)) bad('path must be absolute');
-  if (!statSync(path, { throwIfNoEntry: false })?.isDirectory()) bad('path is not a directory');
+  const stat = statSync(path, { throwIfNoEntry: false });
+  if (stat ? !stat.isDirectory() : !missingOk) bad('path is not a directory');
   return resolve(path);
 }
 
@@ -137,10 +141,10 @@ function addGroup(config: Config, group: string): void {
 
 type ProjectInput = Partial<Omit<Project, 'id' | 'order'>>;
 
-function parseProject(body: ProjectInput, partial: boolean): ProjectInput {
+function parseProject(body: ProjectInput, partial: boolean, create = false): ProjectInput {
   const out: ProjectInput = {};
   if (!partial || body.name !== undefined) out.name = str(body.name, 'name', 80);
-  if (!partial || body.path !== undefined) out.path = dirPath(body.path);
+  if (!partial || body.path !== undefined) out.path = dirPath(body.path, create);
   if (body.group !== undefined)
     out.group = typeof body.group === 'string' ? body.group.trim() : bad('group must be a string');
   if (body.visibility !== undefined) {
@@ -171,7 +175,9 @@ function projectRoutes(services: Services, router: Router): void {
   });
 
   router.add(ROUTES.projectCreate, async (req) => {
-    const input = parseProject(await req.json<ProjectInput>(), false);
+    const body = await req.json<CreateProjectRequest>();
+    if (body.create !== undefined && typeof body.create !== 'boolean') bad('create must be a boolean');
+    const input = parseProject(body, false, body.create);
     const actions: PermissionAction[] = [{ kind: 'projects.write', projectId: null }];
     return gate(
       services,
@@ -184,6 +190,11 @@ function projectRoutes(services: Services, router: Router): void {
         detail: JSON.stringify(input, null, 2),
       },
       () => {
+        // Only once the change is allowed: a new folder with an empty git repository.
+        if (body.create && !existsSync(input.path!)) {
+          mkdirSync(input.path!, { recursive: true });
+          execFileSync('git', ['init', '-q'], { cwd: input.path, stdio: 'pipe' });
+        }
         let id = '';
         config.update((c) => {
           if (c.projects.some((p) => p.path === input.path)) throw new HttpError(409, 'project with this path exists');
