@@ -25,7 +25,7 @@
   import { clampPan, clampZoom, fitWorld, minZoom, zoomAt, type Pan } from '../../village/camera.ts';
   import { findPath, goalKey } from '../../village/path.ts';
   import { autotiles, LAYERS, TILE } from '../../village/tiles.ts';
-  import { advance, blocked, direction, SPEED, standSpot } from '../../village/walk.ts';
+  import { advance, blocked, direction, inReach, SPEED, standSpot } from '../../village/walk.ts';
   import { buildWorld, type Point, type VillageProject } from '../../village/world.ts';
   import Ambience from './Ambience.svelte';
   import Crab, { type Bubble } from './Crab.svelte';
@@ -210,7 +210,7 @@
     let last = 0;
     const frame = (ts: number) => {
       raf = requestAnimationFrame(frame);
-      const dt = last ? Math.min(ts - last, 50) : 0;
+      const dt = last ? Math.min(ts - last, 250) : 0;
       last = ts;
       const [vx, vy] = direction(held.has('left'), held.has('right'), held.has('up'), held.has('down'));
       if (vx || vy) go(vx, vy, (SPEED * dt) / 1000);
@@ -275,6 +275,26 @@
     }
     pan = { x: pan.x + dx * k, y: pan.y + dy * k };
   }
+  /** What E would do now: talk to the nearest crab in reach, or sit at your desk. Nothing while seated. */
+  const target = $derived(
+    seated
+      ? null
+      : inReach(
+          world,
+          me,
+          spots.map((c) => ({ id: c.session.id, ...at(c) })),
+        ),
+  );
+  function sit() {
+    seated = true;
+    held.clear();
+    me.moving = false;
+    [me.x, me.y] = [world.you.x, world.you.y];
+  }
+  function interact() {
+    if (target?.kind === 'crab') void pin(target.id);
+    else if (target?.kind === 'desk') sit();
+  }
   // A new map (a project came or went) keeps you where you stand unless that is now inside something.
   $effect(() => {
     const w = world;
@@ -303,8 +323,12 @@
 
   /** Minutes since the status changed: how long a queued crab has been in line. */
   const waited = (s: Session) => Math.max(0, Math.floor((now - Date.parse(s.statusSince)) / 60_000));
+  /** A queued crab turns to you and waves while you stand this close. */
+  const GREET = 150;
+  const greets = (c: CrabSpot<Session>, p: Pos) =>
+    !seated && c.queuePos >= 0 && !p.moving && Math.hypot(me.x - p.x, me.y - p.y) < GREET;
   const moodFor = (c: CrabSpot<Session>, p: Pos): Mood | null =>
-    c.queuePos < 0 || p.moving ? null : moodOf(waited(c.session));
+    c.queuePos < 0 || p.moving ? null : greets(c, p) ? 'wave' : moodOf(waited(c.session));
 
   function body(c: CrabSpot<Session>, p: Pos, i: number, mood: Mood | null): string {
     if (p.moving) return `crab-walk${t % 2}`;
@@ -560,13 +584,20 @@
       }
       return;
     }
+    if (k === 'e') {
+      e.preventDefault();
+      interact();
+      return;
+    }
     const step = WALK_KEYS[k];
-    if (step) {
+    if (step && seated) {
       e.preventDefault();
       const id = walkQueue(queue, pinned, step);
       if (id) void pin(id);
       return;
     }
+    // The queue keys are the desk's: they only work while you sit there.
+    if (!seated) return;
     const id = pinned ?? (el !== viewport ? hovered : null);
     const s = sessions.find((x) => x.id === id);
     if (!s) return;
@@ -858,6 +889,15 @@
             style:--flip={me.dir}
           />
         {/if}
+        {#if target}
+          <span
+            class="prompt"
+            aria-hidden="true"
+            style:left="{me.x}px"
+            style:top="{me.y - 78}px"
+            style:z-index={Math.round(me.y) + 2}><kbd>E</kbd> {target.kind === 'crab' ? 'talk' : 'sit'}</span
+          >
+        {/if}
         <span
           class="plate yours"
           style:left="{me.x}px"
@@ -874,7 +914,7 @@
             <Crab
               x={p.x}
               y={p.y}
-              dir={c.pose === 'sleep' ? 1 : p.dir}
+              dir={c.pose === 'sleep' ? 1 : greets(c, p) ? (me.x < p.x ? -1 : 1) : p.dir}
               body={body(c, p, i, mood)}
               sleeping={c.pose === 'sleep' && !p.moving}
               {outfit}
@@ -945,8 +985,9 @@
       >Click a crab to pin its card, drag to pan, wheel to zoom. Map keys: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd
         >D</kbd
       >
-      walk · <kbd>↑</kbd><kbd>↓</kbd> queue (seated) · <kbd>Enter</kbd> open · <kbd>Y</kbd><kbd>N</kbd> allow, deny ·
-      <kbd>R</kbd> run · <kbd>Esc</kbd> close · <kbd>Alt V</kbd> back</span
+      walk · <kbd>E</kbd> talk to a crab, sit at your desk · at your desk: <kbd>↑</kbd><kbd>↓</kbd> queue ·
+      <kbd>Enter</kbd> open · <kbd>Y</kbd><kbd>N</kbd> allow, deny · <kbd>R</kbd> run · <kbd>Esc</kbd> close ·
+      <kbd>Alt V</kbd> back</span
     >
   </footer>
   {#if building}
@@ -1331,6 +1372,23 @@
     width: calc(var(--village-px) * 16);
     height: calc(var(--village-px) * 24);
     transform: translate(-50%, -100%) scaleX(var(--flip, 1));
+  }
+
+  .prompt {
+    position: absolute;
+    transform: translate(-50%, -100%);
+    padding: var(--space-0-5) var(--space-1-5);
+    border: var(--ring) solid var(--village-gold);
+    border-radius: var(--radius-xs);
+    background: var(--village-ink);
+    color: var(--village-parchment);
+    font: var(--weight-semibold) var(--text-md) / 1 var(--font-pixel);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .prompt kbd {
+    color: var(--village-gold);
   }
 
   .world > .plate.yours {

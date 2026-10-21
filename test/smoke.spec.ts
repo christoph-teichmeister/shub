@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import type { Approval, ProjectView, Session } from '../shared/api.ts';
 import { contrastRatio } from '../web/src/lib/tokens/contrast.ts';
 
@@ -986,6 +986,7 @@ test('a phone app adds a second machine by address and typed code', async ({ pag
 test('the crab village draws every session as a crab, queues the ones that need you, acts on them, Alt V goes back', async ({
   page,
 }) => {
+  test.setTimeout(90_000);
   const groups = ['Work', 'Private', 'Everyday'];
   const colors = ['#66d9ef', '#a6e22e', '#ae81ff', '#f92672', '#4fd6be', '#b8b8a8'];
   const projects: ProjectView[] = [
@@ -1310,6 +1311,52 @@ test('the crab village draws every session as a crab, queues the ones that need 
   expect(dragged.x).toBeGreaterThan(south.x + 60); // dragging let go of you
   await page.keyboard.press('Escape'); // keeps focus on the map
   await page.screenshot({ path: shot('walk.png') });
+  await page.getByRole('button', { name: 'Fit' }).click();
+
+  // Walk up the queue lane: a crab in reach turns and waves, E talks (pins its card); back at the desk E sits.
+  const prompt = map.locator('.prompt');
+  await map.focus();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('e'); // nothing in reach where you stand
+  await expect(page.getByRole('dialog', { name: 'Export CSV fix' })).toHaveCount(0);
+  for (let i = 0; i < 6; i++) await page.getByRole('button', { name: 'Zoom in' }).click();
+  await map.focus();
+  /** Map px: where you and the first crab in line are (the elements' left and top). */
+  const mapPos = (l: Locator) => l.evaluate((e) => ({ x: parseFloat(e.style.left), y: parseFloat(e.style.top) }));
+  const desk = () => mapPos(map.locator('.obj.you'));
+  /** Walk in short taps of a key until the condition holds. */
+  const tapUntil = async (key: string, done: () => Promise<boolean>) => {
+    for (let i = 0; i < 200 && !(await done()); i++) {
+      await page.keyboard.down(key);
+      await page.waitForTimeout(50);
+      await page.keyboard.up(key);
+    }
+    expect(await done()).toBe(true);
+  };
+  const [meAt, crabAt] = [() => mapPos(map.locator('.obj.me')), () => mapPos(crab2)];
+  // The way up the lane leads round the desk's left side (a lake lies below the plaza).
+  await tapUntil('w', async () => (await meAt()).y < (await desk()).y + 30);
+  await tapUntil('a', async () => (await meAt()).x < (await crabAt()).x - 90);
+  await tapUntil('w', async () => (await meAt()).y < (await crabAt()).y + 10);
+  await tapUntil('d', async () => (await meAt()).x > (await crabAt()).x - 30);
+  await expect(prompt).toContainText('talk');
+  await page.keyboard.press('e');
+  await page.screenshot({ path: shot('talk.png') });
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  // Keys of the queue are the desk's: standing here, N sends nothing.
+  await page.keyboard.press('n');
+  expect(posted('/api/sessions/s2/keys')).toHaveLength(2);
+  await page.keyboard.press('Escape');
+  await tapUntil('a', async () => (await meAt()).x < (await desk()).x - 82);
+  await tapUntil('s', async () => (await prompt.count()) > 0 && /sit/.test(await prompt.innerText()));
+  await page.keyboard.press('e');
+  await expect(map.locator('.obj.me')).toHaveCount(0);
+  await expect(map.locator('img[alt="You, at your desk"]')).toBeVisible();
+  await expect(map.locator('img[alt="You, at your desk"]')).toHaveAttribute('src', /you-[01]\.svg/);
+  await page.screenshot({ path: shot('sit.png') });
+  await page.keyboard.press('ArrowDown'); // seated, the arrows walk the queue again
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Fit' }).click();
 
   // "+" on a house: a new session with a first prompt; the village stays.

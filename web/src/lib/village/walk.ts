@@ -88,3 +88,21 @@ export function advance(w: World, x: number, y: number, vx: number, vy: number, 
   }
   return { x: cx, y: cy, moved };
 }
+
+/** How near (map px, from your feet) a crab must be for E to talk to it; the desk is a wide thing, so it gets more. */
+export const REACH = 64;
+export const DESK_REACH = 96;
+
+export type Target = { kind: 'crab'; id: string } | { kind: 'desk' } | null;
+
+/** What E does from where you stand: the nearest crab within reach, or your desk if that is nearer (or no crab is). */
+export function inReach(w: World, me: { x: number; y: number }, crabs: { id: string; x: number; y: number }[]): Target {
+  let best: Target = null;
+  let bd = Infinity;
+  for (const c of crabs) {
+    const d = Math.hypot(c.x - me.x, c.y - me.y);
+    if (d <= REACH && d < bd) [best, bd] = [{ kind: 'crab', id: c.id }, d];
+  }
+  const desk = Math.hypot(w.you.x - me.x, w.you.y - 8 - me.y);
+  return desk <= DESK_REACH && desk < bd ? { kind: 'desk' } : best;
+}
