@@ -16,10 +16,12 @@ import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 
 const EVERY = 6 * 60 * 60 * 1000;
-/** The release workflow posts each new version here. Anyone can post, so a message only starts a check (at most
+/** The release workflow posts each new version here. Anyone can post, so a message only starts checks (at most
  * one a minute); what gets installed still comes from GitHub and must pass the signature check. */
 const FEED = 'https://ntfy.sh/christoph-teichmeister-shub-releases/json';
 const MIN_GAP = 60_000;
+/** Checks after a release message: GitHub lists a new release a moment after the workflow announces it. */
+const CHASE = 4;
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const run = promisify(execFile);
 // ponytail: first page only, plenty for reading back; page through when someone wants older notes.
@@ -134,13 +136,32 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
     closeSync(log);
   }
 
+  const gap = Number(env.SHUB_UPDATE_GAP_MS) || MIN_GAP;
   /** Checks now unless a check ran in the last minute. */
   const nudge = (): void => {
     const row = cached();
-    if (mode() !== 'off' && !(row && Date.parse(row.checked_at) > Date.now() - MIN_GAP)) void check();
+    if (mode() !== 'off' && !(row && Date.parse(row.checked_at) > Date.now() - gap)) void check();
   };
 
-  /** Keeps a stream to the ntfy topic open; a connect (it may have missed one) or a message nudges a check. */
+  /** Checks a minute apart until GitHub lists something newer: a check right after the release message can still
+   * see the old list. One chase at a time, so a flood of messages stays at one check a minute. */
+  let chasing = false;
+  async function chase(version: string, signal: AbortSignal): Promise<void> {
+    if (chasing || version === current) return;
+    chasing = true;
+    try {
+      for (let i = 0; i < CHASE && !signal.aborted && mode() !== 'off'; i++) {
+        const row = cached();
+        const wait = row ? Date.parse(row.checked_at) + gap - Date.now() : 0;
+        if (wait > 0) await sleep(wait, undefined, { signal }).catch(() => {});
+        if (signal.aborted || (await check()).latest) return;
+      }
+    } finally {
+      chasing = false;
+    }
+  }
+
+  /** Keeps a stream to the ntfy topic open; a connect (it may have missed one) nudges a check, a message chases it. */
   async function listen(url: string, signal: AbortSignal): Promise<void> {
     let delay = 5_000;
     while (!signal.aborted) {
@@ -156,9 +177,10 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
           const lines = (buf + chunk).split('\n');
           buf = lines.pop()!;
           for (const line of lines) {
-            const { event } = JSON.parse(line || '{}') as { event?: string };
+            const { event, message = '' } = JSON.parse(line || '{}') as { event?: string; message?: string };
             if (event === 'open') delay = 5_000;
-            if (event === 'open' || event === 'message') nudge();
+            if (event === 'message' && VERSION.test(message)) void chase(message, signal);
+            else if (event === 'open' || event === 'message') nudge();
           }
         }
       } catch {
