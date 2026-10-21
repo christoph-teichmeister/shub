@@ -4,6 +4,8 @@
   import { FitAddon } from '@xterm/addon-fit';
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import { WebglAddon } from '@xterm/addon-webgl';
+  import ImageViewer from '../ImageViewer/ImageViewer.svelte';
+  import { allImagePaths, imagePathsAt } from './imagePaths.ts';
   import type { TerminalControl } from '../../../../../shared/api.ts';
   import { api, wsTarget } from '../../stores/api.ts';
   import { app, terminalSettings } from '../../stores/state.svelte.ts';
@@ -69,6 +71,37 @@
     };
   }
 
+  // Image paths in the output (screenshots, pastes) open in the image viewer.
+  let images = $state<string[] | null>(null);
+  let imageIndex = $state(0);
+  let imageSrc = $state<string | null>(null);
+
+  function openImage(t: Terminal, path: string) {
+    const all = allImagePaths(t.buffer.active);
+    images = all.includes(path) ? all : [path];
+    imageIndex = images.indexOf(path);
+  }
+
+  $effect(() => {
+    const path = images?.[imageIndex];
+    if (!path) return;
+    let url = '';
+    let gone = false;
+    imageSrc = null;
+    api<Blob>('image', { query: { path }, blob: true }).then(
+      (blob) => {
+        if (gone) return;
+        url = URL.createObjectURL(blob);
+        imageSrc = url;
+      },
+      () => !gone && (imageSrc = ''),
+    );
+    return () => {
+      gone = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  });
+
   const paste = (body: Blob | string) => {
     if (body instanceof Blob || body) void api('sessionPaste', { params: { id: sessionId }, body }).catch(toastError);
   };
@@ -78,6 +111,16 @@
     fit = new FitAddon();
     t.loadAddon(fit);
     t.loadAddon(new WebLinksAddon());
+    t.registerLinkProvider({
+      provideLinks(y, done) {
+        const links = imagePathsAt(t.buffer.active, y - 1).map((p) => ({
+          text: p.path,
+          range: { start: p.start, end: p.end },
+          activate: () => openImage(t, p.path),
+        }));
+        done(links.length ? links : undefined);
+      },
+    });
     t.open(host!);
     // WebGL draws box-drawing glyphs cell-exact, so Claude's tables connect; the DOM renderer leaves gaps.
     try {
@@ -218,6 +261,16 @@
 <section class="terminal" aria-label={label}>
   <div class="host" bind:this={host}></div>
 </section>
+<ImageViewer
+  paths={images}
+  index={imageIndex}
+  src={imageSrc}
+  onstep={(i) => (imageIndex = i)}
+  onclose={() => {
+    images = null;
+    term?.focus();
+  }}
+/>
 
 <style>
   .terminal {
