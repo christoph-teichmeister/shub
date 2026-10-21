@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PROMPT_SKIPPING_MODES, type PermissionMode, type Session } from '../../../../../shared/api.ts';
+  import type { Session } from '../../../../../shared/api.ts';
   import { STATUS_LABEL, waitTitle } from '../../status.ts';
   import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
@@ -43,8 +43,6 @@
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     return e.clientX > r.left + r.width / 2 ? 'after' : 'before';
   };
-
-  const skipsPrompts = $derived(PROMPT_SKIPPING_MODES.includes(session.permissionMode as PermissionMode));
 
   let el = $state<HTMLDivElement>();
   // Keeps the active tab visible when the bar overflows; 'nearest' leaves the page itself alone.
@@ -116,11 +114,6 @@
       {session.name}
     </button>
     <span id="status-{session.id}" class="visually-hidden">{STATUS_LABEL[session.status]}</span>
-  {/if}
-  {#if skipsPrompts}
-    <span class="skips" title="Runs in {session.permissionMode} mode: Claude acts without asking"
-      >{session.permissionMode === 'auto' ? 'auto' : 'bypass'}</span
-    >
   {/if}
   {#if closing}
     <span class="badge-closing">Closing</span>
@@ -243,14 +236,6 @@
     background: var(--raised);
     color: var(--link);
     text-decoration: none;
-  }
-
-  .skips {
-    font-size: var(--text-xs);
-    padding: 0 var(--space-1-5);
-    border-radius: var(--radius-xs);
-    border: var(--hairline) solid var(--danger);
-    color: var(--danger);
   }
 
   .over-before {
