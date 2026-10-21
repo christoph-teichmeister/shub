@@ -134,6 +134,9 @@ export async function closeSession(id: string): Promise<void> {
 export const sendKeys = (id: string, keys: string[]) =>
   api('sessionKeys', { params: { id }, body: { keys } }).catch(toastError);
 
+/** Sends /compact; the sidebar menu and the village offer it from COMPACT_AT, on your turn. */
+export const compact = (s: Session) => void sendKeys(s.id, ['/compact', 'Enter']);
+
 export const needsYouCount = (sessions: Session[] = app.sessions): number =>
   sessions.filter((s) => s.status === 'needs-you').length;
 

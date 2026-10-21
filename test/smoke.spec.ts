@@ -982,7 +982,7 @@ test('a phone app adds a second machine by address and typed code', async ({ pag
   expect(errors.filter((e) => !e.includes('409'))).toEqual([]);
 });
 
-test('the crab village draws every session as a crab, queues the ones that need you, Alt V goes back', async ({
+test('the crab village draws every session as a crab, queues the ones that need you, acts on them, Alt V goes back', async ({
   page,
 }) => {
   const groups = ['Work', 'Private', 'Everyday'];
@@ -1021,11 +1021,28 @@ test('the crab village draws every session as a crab, queues the ones that need 
     crab('s6', 'listo', 'Shopping list sync', 'paused'),
     crab('s7', 'dotfiles', 'Prompt theme', 'needs-you', { pendingCommands: [{ command: 'sudo systemctl restart x' }] }),
   ];
-  const { errors } = await mockApi(page, {
+  const SCRATCH =
+    '/tmp/claude-1000/-home-chris-PycharmProjects-private-shub/614b3dc8-8ed3-4e2d-bf15-8823e62eb0ee/scratchpad';
+  const shot = (name: string) => `${process.env.VILLAGE_SHOTS ? SCRATCH : 'test-results'}/${name}`;
+  const born = crab('s9', 'ai-portal', 'Fix the export', 'new');
+  const arcade = { ...project, id: 'crab-arcade', name: 'crab-arcade', group: 'Games', buttons: [], order: 9 };
+  const { errors, calls } = await mockApi(page, {
     '/api/config': { ...config, groups, projects },
     '/api/projects': projects,
     '/api/sessions': sessions,
+    'POST /api/sessions': { status: 200, json: born },
+    'POST /api/projects': arcade,
+    '/api/projects/import': [
+      {
+        path: '/home/chris/PycharmProjects/private/listo-api',
+        name: 'listo-api',
+        sessions: 3,
+        lastUsedAt: '',
+        suggested: 'pinned',
+      },
+    ],
   });
+  const posted = (path: string) => calls.filter((c) => c.method === 'POST' && c.path === path).map((c) => c.body);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/#/p/ai-portal');
   const entry = page.getByRole('link', { name: 'Crab village, 3 in line' });
@@ -1034,7 +1051,7 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect(page.getByRole('heading', { name: 'Crab Village' })).toBeVisible();
 
   const map = page.getByRole('region', { name: 'Crab village map' });
-  await expect(map.getByRole('button')).toHaveCount(sessions.length);
+  await expect(map.locator('.crab')).toHaveCount(sessions.length);
   // Needs-you first, then your turn.
   await expect(
     map.getByRole('button', { name: 'Export CSV fix, ai-portal, needs you, number 1 in line' }),
@@ -1063,11 +1080,80 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect(page.getByText('60 %')).toBeVisible();
   await page.screenshot({ path: 'test-results/village.png' });
 
+  await page.getByRole('button', { name: 'Fit' }).click();
+
+  // A click pins the card with its actions; Allow sends the phone's "1".
+  await crab2.click();
+  const pinned = page.getByRole('dialog', { name: 'Export CSV fix' });
+  await expect(pinned.getByRole('button', { name: 'Allow A' })).toBeVisible();
+  await expect(pinned.getByRole('button', { name: 'Compact' })).toBeDisabled();
+  await expect(crab2).toHaveClass(/ring/);
+  await page.mouse.move(0, 0);
+  await page.screenshot({ path: shot('pr3-card.png') });
+  await pinned.getByRole('button', { name: 'Allow A' }).click();
+  await expect.poll(() => posted('/api/sessions/s2/keys')).toEqual([{ keys: ['1'] }]);
+
+  // Keyboard triage on the map: arrows walk the queue, D denies, R runs, Esc closes, Enter opens.
+  await page.keyboard.press('Escape');
+  await expect(pinned).toHaveCount(0);
+  await expect(map).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('dialog', { name: 'Export CSV fix' })).toBeVisible();
+  await page.keyboard.press('d');
+  await expect.poll(() => posted('/api/sessions/s2/keys')).toEqual([{ keys: ['1'] }, { keys: ['3'] }]);
+  await page.keyboard.press('j');
+  await expect(page.getByRole('dialog', { name: 'Prompt theme' }).getByRole('button', { name: 'Run R' })).toBeVisible();
+  await page.keyboard.press('r');
+  await expect.poll(() => posted('/api/sessions/s7/command')).toEqual([{ index: 0, action: 'run' }]);
+  await page.keyboard.press('ArrowUp');
+  await expect(page.getByRole('dialog', { name: 'Export CSV fix' })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // "+" on a house: a new session with a first prompt; the village stays.
+  await page.locator('.house', { hasText: 'ai-portal' }).hover();
+  await page.getByRole('button', { name: 'New session in ai-portal' }).click();
+  const popover = page.getByRole('form', { name: 'New session in ai-portal' });
+  await expect(popover.getByRole('button', { name: 'Worktree start' })).toBeVisible();
+  await popover.getByLabel('First prompt (optional)').fill('Fix the export');
+  await page.screenshot({ path: shot('pr3-popover.png') });
+  await popover.getByRole('button', { name: 'Start session' }).click();
+  await expect(popover).toHaveCount(0);
+  expect(posted('/api/sessions')).toEqual([{ projectId: 'ai-portal', kind: 'claude', prompt: 'Fix the export' }]);
+  await expect(map.locator('.crab')).toHaveCount(sessions.length + 1);
+
+  // "+ New project": a new district, a colour, the folder made with git init, then the first session.
+  await page.getByRole('button', { name: '+ New project' }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Build a new house' });
+  await dialog.getByLabel('Name').fill('crab-arcade');
+  await expect(dialog.getByRole('combobox', { name: 'Folder' })).toHaveValue('~/PycharmProjects/work/crab-arcade');
+  await dialog.getByRole('combobox', { name: 'Folder' }).fill('/home/chris/PycharmProjects/private/crab-arcade');
+  await dialog.getByRole('button', { name: '+ New district' }).click();
+  await dialog.getByLabel('New district name').fill('Games');
+  await dialog.getByRole('button', { name: 'Teal' }).click();
+  await dialog.getByLabel('First prompt (optional)').fill('Set up a Vite app');
+  await page.screenshot({ path: shot('pr3-dialog.png') });
+  await dialog.getByRole('button', { name: 'Build house and start session' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect
+    .poll(() => posted('/api/projects'))
+    .toEqual([
+      {
+        name: 'crab-arcade',
+        path: '/home/chris/PycharmProjects/private/crab-arcade',
+        group: 'Games',
+        icon: { kind: 'symbol', symbol: 'home', color: '#4fd6be' },
+        create: true,
+      },
+    ]);
+  await expect
+    .poll(() => posted('/api/sessions').at(-1))
+    .toEqual({ projectId: 'crab-arcade', kind: 'claude', prompt: 'Set up a Vite app' });
+
   await page.keyboard.press('Alt+KeyV');
   await expect(page.getByRole('heading', { name: 'ai-portal', level: 1 })).toBeVisible();
   await page.keyboard.press('Alt+KeyV');
   await expect(page.getByRole('heading', { name: 'Crab Village' })).toBeVisible();
-  await map.getByRole('button', { name: /^MR 311 review/ }).click();
+  await map.getByRole('button', { name: /^MR 311 review/ }).dblclick();
   await expect(page).toHaveURL(/#\/p\/vynce\/s3$/);
   expect(errors).toEqual([]);
 });

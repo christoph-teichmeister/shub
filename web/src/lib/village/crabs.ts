@@ -49,6 +49,16 @@ export function queueOrder(
   return { order, joined: next };
 }
 
+/**
+ * Keyboard triage: the crab `step` places on from `current` in the queue, wrapping round; from outside the
+ * queue it starts at the front (needs-you first). null for an empty queue.
+ */
+export function walkQueue(queue: readonly string[], current: string | null, step: 1 | -1): string | null {
+  if (!queue.length) return null;
+  const i = current === null ? -1 : queue.indexOf(current);
+  return i < 0 ? queue[0] : queue[(i + step + queue.length) % queue.length];
+}
+
 /** Keeps a crab that is at home inside its fence. */
 export function clampTo(d: District, x: number, y: number): [number, number] {
   return [Math.min(Math.max(x, d.x + 40), d.x + d.w - 40), Math.min(Math.max(y, d.y + 70), d.y + d.h - 12)];

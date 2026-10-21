@@ -270,6 +270,14 @@ export interface WaitCheck {
   failures?: number;
 }
 
+/** POST /api/projects. */
+export type CreateProjectRequest = Partial<Omit<Project, 'id' | 'order'>> & {
+  name: string;
+  path: string;
+  /** A missing `path` is created (mkdir -p) and gets `git init`, once the change is allowed. */
+  create?: boolean;
+};
+
 export interface StartSessionRequest {
   projectId: string | null;
   kind: SessionKind;

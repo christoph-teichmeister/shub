@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { SessionStatus } from '../shared/api.ts';
-import { crabSpots, queueOrder, type CrabSession } from '../web/src/lib/village/crabs.ts';
+import { crabSpots, queueOrder, walkQueue, type CrabSession } from '../web/src/lib/village/crabs.ts';
 import { buildWorld, inRect } from '../web/src/lib/village/world.ts';
 
 const world = buildWorld({
@@ -68,4 +68,15 @@ test('crabs at home stay inside their fence; shells and unknown projects get non
   for (const s of crabSpots(world, many, [], 0)) assert.ok(inRect(s.x, s.y, s.district!), `${s.x},${s.y}`);
   const shell = { ...crab('working'), kind: 'shell' as const };
   assert.equal(crabSpots(world, [shell, crab('working', 'gone')], [], 0).length, 0);
+});
+
+test('keyboard triage walks the queue round, starting at the front', () => {
+  const q = ['a', 'b', 'c'];
+  assert.equal(walkQueue(q, null, 1), 'a');
+  assert.equal(walkQueue(q, null, -1), 'a');
+  assert.equal(walkQueue(q, 'gone', 1), 'a');
+  assert.equal(walkQueue(q, 'a', 1), 'b');
+  assert.equal(walkQueue(q, 'c', 1), 'a');
+  assert.equal(walkQueue(q, 'a', -1), 'c');
+  assert.equal(walkQueue([], 'a', 1), null);
 });

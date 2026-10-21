@@ -2,16 +2,21 @@
   // Crab village (#/village): every session as a crab on a map of the groups and projects. Crabs walk to the spot
   // their status gives them (crabs.ts) on a 140 ms step; the map itself is laid out once per set of projects
   // (world.ts).
-  import { onMount, untrack } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import type { Session, SessionStatus } from '../../../../../shared/api.ts';
+  import { commandTarget } from '../../../../../shared/commands.ts';
+  import { api } from '../../stores/api.ts';
   import { villageBack } from '../../stores/router.svelte.ts';
-  import { app, sessionHref } from '../../stores/state.svelte.ts';
-  import { STATUS_LABEL } from '../../status.ts';
-  import { asleep, crabSessions, crabSpots, queueOrder, type CrabSpot } from '../../village/crabs.ts';
+  import { app, compact, sendKeys, sessionHref } from '../../stores/state.svelte.ts';
+  import { toastError } from '../../stores/toasts.svelte.ts';
+  import { contextFill, STATUS_LABEL } from '../../status.ts';
+  import { asleep, crabSessions, crabSpots, queueOrder, walkQueue, type CrabSpot } from '../../village/crabs.ts';
   import { buildWorld, type VillageProject } from '../../village/world.ts';
   import Crab, { type Bubble } from './Crab.svelte';
-  import CrabCard from './CrabCard.svelte';
+  import CrabCard, { type CardAction } from './CrabCard.svelte';
   import House from './House.svelte';
+  import NewProject from './NewProject.svelte';
+  import NewSession from './NewSession.svelte';
 
   const STEP_MS = 140;
   const WALK = 8; // px per step
@@ -22,6 +27,13 @@
   let zoomSet = $state<number | null>(null);
   let viewportWidth = $state(0);
   let hovered = $state<string | null>(null);
+  /** The crab whose card stays open with its actions (click, arrow keys). */
+  let pinned = $state<string | null>(null);
+  /** Project of the open new-session popover. */
+  let pop = $state<string | null>(null);
+  /** The new project dialog, with the district of the lot it came from. */
+  let building = $state<{ group: string | null } | null>(null);
+  let viewport = $state<HTMLElement>();
   let t = $state(0);
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -64,11 +76,16 @@
 
   function step() {
     if (document.hidden) return;
+    // Crabs there on the first step stand at their spot; later ones come out of their house's door.
+    const fresh = t > 0;
     t++;
     for (const c of spots) {
       const p = pos[c.session.id];
       if (!p) {
-        pos[c.session.id] = { x: c.x, y: c.y, dir: 1, moving: false };
+        const door = fresh && c.house;
+        pos[c.session.id] = door
+          ? { x: c.house!.x, y: c.house!.y + 4, dir: 1, moving: true }
+          : { x: c.x, y: c.y, dir: 1, moving: false };
         continue;
       }
       const dx = c.x - p.x;
@@ -114,22 +131,129 @@
     (c.queuePos >= 0 ? `, number ${c.queuePos + 1} in line` : '');
 
   // ---------- zoom, card ----------
-  const fit = $derived(Math.min(1, Math.max(0.35, (viewportWidth - 6) / world.W)));
+  // Fit fills the width (up to 1.6x, the sprites stay crisp); a narrow window scrolls down instead of shrinking it.
+  const fit = $derived(Math.min(1.6, Math.max(0.35, viewportWidth / world.W)));
   const zoom = $derived(zoomSet ?? fit);
   const setZoom = (z: number) => (zoomSet = Math.min(1.4, Math.max(0.4, Math.round(z * 10) / 10)));
 
-  const card = $derived.by(() => {
-    const c = spots.find((x) => x.session.id === hovered);
-    if (!c) return null;
-    const p = at(c);
-    const below = p.y * zoom < 300;
+  /** Where a card or popover hangs for a point on the map: above it, or below when it would leave the top. */
+  function hang(x: number, y: number, top = 60, under = 10) {
+    const below = y * zoom < 330;
     return {
-      c,
-      x: Math.min(Math.max(p.x * zoom, 150), world.W * zoom - 150),
-      y: below ? p.y * zoom + 10 : (p.y - 60) * zoom - 10,
+      x: Math.min(Math.max(x * zoom, 165), world.W * zoom - 165),
+      y: below ? (y + under) * zoom : (y - top) * zoom - 10,
       below,
     };
+  }
+
+  const card = $derived.by(() => {
+    const c = spots.find((x) => x.session.id === (pinned ?? hovered));
+    if (!c) return null;
+    const p = at(c);
+    return { c, ...hang(p.x, p.y) };
   });
+  const popAt = $derived.by(() => {
+    const h = pop ? world.houses[pop] : undefined;
+    const project = pop ? projectById.get(pop) : undefined;
+    return h && project ? { project, ...hang(h.x, h.y, 100, 30) } : null;
+  });
+
+  // ---------- acting on a crab ----------
+  const open = (s: Session) => (location.hash = sessionHref(s));
+  const call = (p: Promise<unknown>) => void p.catch(toastError);
+  /** Handed-over commands the session itself can run (CommandChip's Run); the rest need its terminal. */
+  const runnable = (s: Session) =>
+    (s.pendingCommands ?? []).flatMap((c, index) => {
+      const kind = commandTarget(c, app.sessions, s.id).kind;
+      return kind === 'self' || kind === 'session' ? [{ index, command: c.command }] : [];
+    });
+  const run = (s: Session, index: number) =>
+    call(api('sessionCommand', { params: { id: s.id }, body: { index, action: 'run' } }));
+
+  function actions(s: Session): CardAction[] {
+    const out: CardAction[] = [];
+    // The keys the phone sends: 1 yes, 3 no.
+    if (s.pendingPermission)
+      out.push(
+        { label: 'Allow', kbd: 'A', primary: true, run: () => void sendKeys(s.id, ['1']) },
+        { label: 'Deny', kbd: 'D', run: () => void sendKeys(s.id, ['3']) },
+      );
+    const cmds = runnable(s);
+    cmds.forEach(({ index, command }, i) =>
+      out.push({
+        label: cmds.length > 1 ? `Run ${i + 1}` : 'Run',
+        kbd: i === 0 ? 'R' : undefined,
+        primary: !s.pendingPermission,
+        title: command,
+        run: () => run(s, index),
+      }),
+    );
+    if (s.status === 'paused')
+      out.push({ label: 'Wake up', primary: true, run: () => call(api('sessionResume', { params: { id: s.id } })) });
+    else if (s.waitingFor)
+      out.push({
+        label: 'Wake up',
+        primary: true,
+        title: 'Stop waiting',
+        run: () => call(api('sessionUpdate', { params: { id: s.id }, body: { waitingFor: null } })),
+      });
+    if (contextFill(s)?.compact)
+      out.push({
+        label: 'Compact',
+        disabled: s.status !== 'your-turn',
+        title: s.status === 'your-turn' ? 'Send /compact' : 'Once it is your turn',
+        run: () => compact(s),
+      });
+    out.push({ label: 'Open', kbd: 'Enter', run: () => open(s) });
+    return out;
+  }
+
+  async function pin(id: string | null) {
+    pinned = id;
+    pop = null;
+    await tick();
+    document.getElementById('village-card')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  const WALK_KEYS: Record<string, 1 | -1> = { ArrowDown: 1, ArrowRight: 1, j: 1, ArrowUp: -1, ArrowLeft: -1, k: -1 };
+
+  /** Keyboard triage while the map (or a crab on it) has focus; typing in a popover is left alone. */
+  function onMapKey(e: KeyboardEvent) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === 'Escape') {
+      if (!pinned && !pop) return;
+      e.preventDefault();
+      pinned = pop = null;
+      viewport?.focus();
+      return;
+    }
+    const el = e.target as HTMLElement;
+    if (el !== viewport && !el.classList.contains('crab')) return;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const step = WALK_KEYS[k];
+    if (step) {
+      e.preventDefault();
+      const id = walkQueue(queue, pinned, step);
+      if (id) void pin(id);
+      return;
+    }
+    const id = pinned ?? (el !== viewport ? hovered : null);
+    const s = sessions.find((x) => x.id === id);
+    if (!s) return;
+    const first = runnable(s)[0];
+    if (k === 'Enter') open(s);
+    else if (k === 'a' && s.pendingPermission) void sendKeys(s.id, ['1']);
+    else if (k === 'd' && s.pendingPermission) void sendKeys(s.id, ['3']);
+    else if (k === 'r' && first) run(s, first.index);
+    else return;
+    e.preventDefault();
+  }
+
+  /** A click on the bare map closes the card and the popover. */
+  function onMapClick(e: MouseEvent) {
+    if ((e.target as Element).closest('button, a, input, textarea, select, [data-keep]')) return;
+    pinned = pop = null;
+  }
 
   // ---------- header ----------
   const ORDER: SessionStatus[] = ['needs-you', 'your-turn', 'working', 'waiting', 'paused', 'new'];
@@ -179,6 +303,7 @@
       {/each}
     </div>
     <span class="grow"></span>
+    <button type="button" class="btn small" onclick={() => (building = { group: null })}>+ New project</button>
     <div class="row" role="group" aria-label="Show district">
       {#each [null, ...world.districts.map((d) => d.id)] as id (id)}
         <button type="button" class="btn small" aria-pressed={only === id} onclick={() => (only = id)}
@@ -203,7 +328,18 @@
     <span class="muted">{Math.round(zoom * 100)} %</span>
   </header>
 
-  <div class="viewport" bind:clientWidth={viewportWidth} role="region" aria-label="Crab village map">
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+  <div
+    class="viewport"
+    bind:this={viewport}
+    bind:clientWidth={viewportWidth}
+    role="region"
+    aria-label="Crab village map"
+    aria-describedby="village-keys"
+    tabindex="0"
+    onkeydown={onMapKey}
+    onclick={onMapClick}
+  >
     <div class="sized" style:width="{world.W * zoom}px" style:height="{world.H * zoom}px">
       <div class="world" style:width="{world.W}px" style:height="{world.H}px" style:transform="scale({zoom})">
         {#each strips as s, i (i)}
@@ -271,7 +407,23 @@
             house={h}
             working={sessions.some((s) => s.projectId === h.project.id && s.status === 'working')}
             dim={dim(h.district.id)}
+            onplus={() => {
+              pinned = null;
+              pop = h.project.id;
+            }}
           />
+        {/each}
+        {#each world.lots as l (l.district.id)}
+          <button
+            type="button"
+            class="lot"
+            style:left="{l.x}px"
+            style:top="{l.y}px"
+            style:z-index={l.y}
+            style:opacity={dim(l.district.id)}
+            aria-label="New project in {l.district.id}"
+            onclick={() => (building = { group: l.district.id })}>+ New project</button
+          >
         {/each}
         <img
           class="obj hall"
@@ -306,7 +458,9 @@
             label={label(c)}
             describedby={hovered === c.session.id ? 'village-card' : undefined}
             dim={dim(c.district?.id)}
-            onclick={() => (location.hash = sessionHref(c.session))}
+            ring={pinned === c.session.id}
+            onclick={() => void pin(pinned === c.session.id ? null : c.session.id)}
+            ondblclick={() => open(c.session)}
             onenter={() => (hovered = c.session.id)}
             onleave={() => hovered === c.session.id && (hovered = null)}
           />
@@ -324,7 +478,23 @@
           x={card.x}
           y={card.y}
           below={card.below}
+          actions={pinned === card.c.session.id ? actions(card.c.session) : undefined}
+          onclose={() => {
+            pinned = null;
+            viewport?.focus();
+          }}
         />
+      {/if}
+      {#if popAt}
+        {#key popAt.project.id}
+          <NewSession
+            project={popAt.project}
+            x={popAt.x}
+            y={popAt.y}
+            below={popAt.below}
+            onclose={() => (pop = null)}
+          />
+        {/key}
       {/if}
     </div>
   </div>
@@ -333,8 +503,16 @@
     <span><b class="needs-you">!</b> needs you</span>
     <span><b class="your-turn">...</b> your turn</span>
     <span><b class="waiting">zZ</b> waiting · <b class="paused-tag">zZ</b> paused</span>
-    <span>Hover a crab for its card, click to open the session. <kbd>Alt V</kbd> goes back.</span>
+    <span id="village-keys"
+      >Click a crab to pin its card. Map keys: <kbd>↑</kbd><kbd>↓</kbd> queue · <kbd>Enter</kbd> open · <kbd>A</kbd><kbd
+        >D</kbd
+      >
+      allow, deny · <kbd>R</kbd> run · <kbd>Esc</kbd> close · <kbd>Alt V</kbd> back</span
+    >
   </footer>
+  {#if building}
+    <NewProject group={building.group} onclose={() => (building = null)} />
+  {/if}
 </div>
 
 <style>
@@ -421,7 +599,8 @@
     font-size: var(--text-md);
   }
 
-  .btn {
+  /* Buttons, keys and form colours of the village, also for the card, the popover and the dialog. */
+  .village :global(.btn) {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1-5);
@@ -437,23 +616,67 @@
     cursor: pointer;
   }
 
-  .btn:hover {
+  .village :global(.btn:hover:not(:disabled)) {
     filter: brightness(1.08);
   }
 
-  .btn:focus-visible {
+  .village :global(.btn:focus-visible) {
     outline: var(--ring) solid var(--village-gold);
     outline-offset: var(--ring);
   }
 
-  .btn[aria-pressed='true'] {
+  .village :global(.btn[aria-pressed='true']),
+  .village :global(.btn.primary) {
     background: var(--village-gold);
   }
 
-  .btn.small {
+  .village :global(.btn:disabled) {
+    cursor: default;
+    opacity: 0.55;
+  }
+
+  .village :global(.btn.small) {
     min-height: var(--size-control-sm);
     padding: 0 var(--space-2-5);
     font-size: var(--text-md);
+  }
+
+  .village :global(.btn kbd) {
+    border-color: var(--village-wood-dark);
+    background: var(--village-paper);
+  }
+
+  /* App components (Dialog, TextField, Checkbox) in parchment: they read these. */
+  .village :global(.parchment) {
+    --panel: var(--village-parchment);
+    --raised: var(--village-paper);
+    --fg: var(--village-ink);
+    --fg-2: var(--village-ink);
+    --muted: var(--village-ink-muted);
+    --line: var(--village-parchment-line);
+    --line-strong: var(--village-parchment-line);
+    --primary: var(--village-wood-dark);
+
+    font-family: var(--font-pixel);
+  }
+
+  .village :global(.parchment .control) {
+    border-width: var(--space-0-5);
+    border-radius: var(--radius-xs);
+    background: var(--village-paper);
+    font-family: var(--font-pixel);
+  }
+
+  .village :global(.parchment .control.mono) {
+    font-family: var(--font-mono);
+  }
+
+  .village :global(.parchment dialog) {
+    border: var(--ring) solid var(--village-parchment-line);
+    border-radius: var(--radius-xs);
+    box-shadow:
+      0 0 0 var(--ring) var(--village-ink),
+      0 var(--space-3) var(--space-8) var(--shadow);
   }
 
   .seg {
@@ -483,8 +706,33 @@
     background: var(--village-grass);
   }
 
+  .viewport:focus-visible {
+    outline: var(--ring) solid var(--village-gold);
+  }
+
+  /* Centred while the world is narrower than the window (zoomed out). */
   .sized {
     position: relative;
+    margin: 0 auto;
+  }
+
+  .lot {
+    position: absolute;
+    transform: translate(-50%, -100%);
+    padding: var(--space-3) var(--space-3-5);
+    border: var(--space-0-5) dashed var(--village-wood-dark);
+    border-radius: var(--radius-xs);
+    background: var(--village-grass);
+    color: var(--village-parchment);
+    font: var(--weight-semibold) var(--text-md) var(--font-pixel);
+    text-shadow: 0 var(--ring) 0 var(--village-ink);
+    cursor: pointer;
+  }
+
+  .lot:hover,
+  .lot:focus-visible {
+    border-color: var(--village-gold);
+    outline: none;
   }
 
   .world {
@@ -672,7 +920,8 @@
     background: var(--village-parchment);
   }
 
-  kbd {
+  .village :global(kbd) {
+    margin-left: var(--space-1);
     padding: 0 var(--space-1);
     border: var(--ring) solid var(--village-parchment-line);
     border-radius: var(--radius-xs);

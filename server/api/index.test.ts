@@ -191,6 +191,40 @@ test('projects: create, update, reorder, delete', async () => {
   assert.ok(statSync(path).isDirectory());
 });
 
+test('projects: create: true makes a missing folder with git init, after the gate', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'shub-create-'));
+  const path = join(root, 'a', 'new-repo');
+  assert.equal((await asUser('POST', '/api/projects', { name: 'Nope', path })).status, 400);
+  assert.equal((await asUser('POST', '/api/projects', { name: 'Bad', path, create: 'yes' })).status, 400);
+  const file = join(root, 'file');
+  writeFileSync(file, '');
+  assert.equal((await asUser('POST', '/api/projects', { name: 'File', path: file, create: true })).status, 400);
+  assert.equal((await asUser('POST', '/api/projects', { name: 'Rel', path: 'rel/x', create: true })).status, 400);
+
+  // A session caller only gets an approval; nothing is created before it is decided.
+  const token = services.auth.issueClientToken({ kind: 'session', id: 'session:s2', rights: [] });
+  const asked = await call(
+    'POST',
+    '/api/projects',
+    { name: 'New', path, create: true },
+    { authorization: `Bearer ${token}` },
+  );
+  assert.ok((await asked.json()).approval);
+  assert.equal(statSync(path, { throwIfNoEntry: false }), undefined);
+  services.auth.revokeClientToken(token);
+
+  const created = await asUser('POST', '/api/projects', { name: 'New', path, create: true });
+  assert.equal(created.status, 200);
+  assert.ok(statSync(join(path, '.git')).isDirectory());
+  // An existing folder is taken as it is.
+  const kept = join(root, 'kept');
+  mkdirSync(kept);
+  assert.equal((await asUser('POST', '/api/projects', { name: 'Kept', path: kept, create: true })).status, 200);
+  assert.equal(statSync(join(kept, '.git'), { throwIfNoEntry: false }), undefined);
+  for (const id of ['new', 'kept']) await asUser('DELETE', `/api/projects/${id}`);
+  rmSync(root, { recursive: true, force: true });
+});
+
 test('client tokens: sessions get read access and approvals for writes', async () => {
   const token = services.auth.issueClientToken({ kind: 'session', id: 'session:s1', rights: [] });
   const headers = { authorization: `Bearer ${token}` };

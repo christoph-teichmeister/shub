@@ -2,7 +2,7 @@
   // A project's house: roof in the project colour, lit while a crab works, boarded up without a session.
   import type { House } from '../../village/world.ts';
 
-  let { house, working, dim }: { house: House; working: boolean; dim: number } = $props();
+  let { house, working, dim, onplus }: { house: House; working: boolean; dim: number; onplus: () => void } = $props();
   const url = (name: string) => `/village/${name}.svg`;
 </script>
 
@@ -22,6 +22,13 @@
     {#if !house.active}<img class="layer" src={url('boards')} alt="" />{/if}
   </span>
   <span class="plate"><i style:background={house.project.color}></i>{house.project.name}</span>
+  <button
+    type="button"
+    class="plus"
+    aria-label="New session in {house.project.name}"
+    title="New session"
+    onclick={onplus}>+</button
+  >
 </div>
 {#if house.active}
   <img
@@ -70,6 +77,34 @@
   .roof {
     mask-image: url('/village/house-roof-mask.svg');
     mask-size: 100% 100%;
+  }
+
+  .plus {
+    position: absolute;
+    top: var(--space-1);
+    right: calc(var(--space-3) * -1);
+    width: var(--size-control-md);
+    height: var(--size-control-md);
+    padding: 0;
+    border: var(--space-0-5) solid var(--village-wood-dark);
+    border-radius: var(--radius-xs);
+    background: var(--village-gold);
+    box-shadow: 0 var(--space-0-5) 0 var(--village-ink);
+    color: var(--village-ink);
+    font: var(--weight-semibold) var(--text-xl) / 1 var(--font-pixel);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .plus:focus-visible {
+    opacity: 1;
+    outline: var(--ring) solid var(--village-gold);
+    outline-offset: var(--ring);
+  }
+
+  .house:hover .plus {
+    opacity: 1;
   }
 
   .plate {

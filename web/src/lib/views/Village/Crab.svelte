@@ -23,7 +23,10 @@
     label: string;
     describedby?: string;
     dim: number;
+    /** Its card is pinned: a ring shows which crab the keys act on. */
+    ring: boolean;
     onclick: () => void;
+    ondblclick: () => void;
     onenter: () => void;
     onleave: () => void;
   }
@@ -40,7 +43,9 @@
     label,
     describedby,
     dim,
+    ring,
     onclick,
+    ondblclick,
     onenter,
     onleave,
   }: Props = $props();
@@ -61,6 +66,7 @@
   type="button"
   class="crab"
   class:sleeping
+  class:ring
   style:left="{x}px"
   style:top="{y}px"
   style:z-index={Math.round(y)}
@@ -68,6 +74,7 @@
   aria-label={label}
   aria-describedby={describedby}
   {onclick}
+  {ondblclick}
   onmouseenter={onenter}
   onmouseleave={onleave}
   onfocus={onenter}
@@ -96,6 +103,12 @@
 
   .crab:focus-visible {
     outline: var(--ring) solid var(--village-gold);
+    outline-offset: var(--space-1);
+    border-radius: var(--radius-xs);
+  }
+
+  .ring {
+    outline: var(--space-1) solid var(--village-gold);
     outline-offset: var(--space-1);
     border-radius: var(--radius-xs);
   }

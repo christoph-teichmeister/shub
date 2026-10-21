@@ -1,5 +1,18 @@
+<script lang="ts" module>
+  export interface CardAction {
+    label: string;
+    /** Key on the focused map that does the same. */
+    kbd?: string;
+    primary?: boolean;
+    disabled?: boolean;
+    title?: string;
+    run: () => void;
+  }
+</script>
+
 <script lang="ts">
-  // What a crab is up to, shown while it is hovered or focused (the crab's aria-describedby).
+  // What a crab is up to: a preview while it is hovered or focused (the crab's aria-describedby), with its
+  // actions once a click or the arrow keys pin it.
   import type { Session } from '../../../../../shared/api.ts';
   import { contextFill, statusLabel, waitTitle } from '../../status.ts';
 
@@ -14,13 +27,26 @@
     x: number;
     y: number;
     below: boolean;
+    /** Pinned cards take the pointer and show `actions`. */
+    actions?: CardAction[];
+    onclose?: () => void;
   }
-  let { id, session: s, project, group, color, queuePos, x, y, below }: Props = $props();
+  let { id, session: s, project, group, color, queuePos, x, y, below, actions, onclose }: Props = $props();
   const fill = $derived(contextFill(s));
   const agents = $derived(s.agents ?? []);
 </script>
 
-<div {id} class="card" class:below style:left="{x}px" style:top="{y}px" role="tooltip">
+<div
+  {id}
+  class="card"
+  class:below
+  class:pinned={actions}
+  style:left="{x}px"
+  style:top="{y}px"
+  role={actions ? 'dialog' : 'tooltip'}
+  aria-label={actions ? s.name : undefined}
+  data-keep
+>
   <strong class="name"><span class="swatch {s.status}"></span>{s.name}</strong>
   <span class="meta"><span class="pill" style:background={color}>{project}</span>{group}</span>
   <span class="status">
@@ -39,7 +65,24 @@
     <span class="bar"><span class={fill.level} style:width="{fill.pct}%"></span></span>
     <span class="meta">{fill.title}{fill.compact ? ' · time to compact' : ''}</span>
   {/if}
-  <span class="meta">Click to open the session</span>
+  {#if actions}
+    <div class="actions">
+      {#each actions as a (a.label)}
+        <button
+          type="button"
+          class="btn small"
+          class:primary={a.primary}
+          disabled={a.disabled}
+          title={a.title}
+          onclick={a.run}
+          >{a.label}{#if a.kbd}<kbd>{a.kbd}</kbd>{/if}</button
+        >
+      {/each}
+      <button type="button" class="btn small" aria-label="Close card" title="Close (Esc)" onclick={onclose}>×</button>
+    </div>
+  {:else}
+    <span class="meta">Click to pin its card, double-click to open</span>
+  {/if}
 </div>
 
 <style>
@@ -61,6 +104,17 @@
     color: var(--village-ink);
     font: var(--text-base) / var(--leading-tight) var(--font-pixel);
     pointer-events: none;
+  }
+
+  .card.pinned {
+    pointer-events: auto;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1-5);
+    margin-top: var(--space-1);
   }
 
   .card.below {
