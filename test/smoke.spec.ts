@@ -1074,6 +1074,11 @@ test('the crab village draws every session as a crab, queues the ones that need 
     ],
   });
   const posted = (path: string) => calls.filter((c) => c.method === 'POST' && c.path === path).map((c) => c.body);
+  let events: { send(m: string): void } | undefined;
+  await page.routeWebSocket('**/api/events', (ws) => {
+    events = ws;
+    ws.send(JSON.stringify({ type: 'hello', apiVersion: 1 }));
+  });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/#/p/ai-portal');
   const entry = page.getByRole('link', { name: 'Crab village, 3 in line' });
@@ -1113,6 +1118,20 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await page.setViewportSize({ width: 1440, height: 1700 });
   await page.mouse.move(0, 0);
   await page.screenshot({ path: shot('pr4-signals.png'), clip: { x: 0, y: 0, width: 1440, height: 1290 } });
+
+  // Time of day, pinned: Night tints the map, lights every house with a session and lets the fireflies out.
+  const time = page.getByRole('group', { name: 'Time of day' });
+  await time.getByRole('button', { name: 'Day' }).click();
+  await expect(map.locator('.tint')).toHaveCount(0);
+  await expect(map.locator('.lantern').first()).toBeVisible();
+  await page.screenshot({ path: shot('pr5-day.png'), clip: { x: 0, y: 0, width: 1440, height: 1290 } });
+  await time.getByRole('button', { name: 'Night' }).click();
+  await expect(map.locator('.tint.night')).toHaveCount(1);
+  await expect(map.locator('.firefly')).toHaveCount(22);
+  await expect(map.locator('.house img[src="/village/house-lit.svg"]')).toHaveCount(5);
+  await page.screenshot({ path: shot('pr5-night.png'), clip: { x: 0, y: 0, width: 1440, height: 1290 } });
+  await time.getByRole('button', { name: 'Now' }).click();
+  await expect(time.getByRole('button', { name: 'Now' })).toHaveAttribute('aria-pressed', 'true');
   await page.setViewportSize({ width: 1440, height: 1000 });
 
   // Focus shows the card; Active only boards nothing up here, every project has a crab but haso.
@@ -1200,6 +1219,13 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect
     .poll(() => posted('/api/sessions').at(-1))
     .toEqual({ projectId: 'crab-arcade', kind: 'claude', prompt: 'Set up a Vite app' });
+
+  // A turn that ends hops with confetti.
+  const newbie = map.getByRole('button', { name: /^Session 3/ });
+  await expect(newbie.locator('.conf')).toHaveCount(0);
+  events!.send(JSON.stringify({ type: 'session.status', sessionId: 's5', status: 'your-turn' }));
+  await expect(newbie.locator('.conf')).toHaveCount(9);
+  await expect(newbie.locator('.conf')).toHaveCount(0, { timeout: 6000 });
 
   await page.keyboard.press('Alt+KeyV');
   await expect(page.getByRole('heading', { name: 'ai-portal', level: 1 })).toBeVisible();

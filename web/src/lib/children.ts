@@ -14,6 +14,15 @@ export function childStart(w: ChildWorktree): StartSessionRequest | null {
   return w.conversation ? { ...request, resumeClaudeSessionId: w.conversation } : request;
 }
 
+/** Sessions whose worktree turned `merged` between two lists; worktrees new in `after` do not count. */
+export function newlyMerged(before: ChildWorktree[], after: ChildWorktree[]): string[] {
+  const was = new Map(before.map((w) => [w.path, w.state]));
+  return after.flatMap((w) => {
+    const prev = was.get(w.path);
+    return w.state === 'merged' && prev && prev !== 'merged' ? [w.originSessionId] : [];
+  });
+}
+
 /** The status text of a dormant row. */
 export const childLabel = (w: ChildWorktree): string => (w.busy ? 'working' : w.state.replace('-', ' '));
 

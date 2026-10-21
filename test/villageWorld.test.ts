@@ -6,6 +6,7 @@ import {
   machineSpot,
   MAX_MACHINES,
   MAX_TENTS,
+  SIZES,
   tentSpot,
   type Point,
   type Rect,
@@ -121,6 +122,54 @@ test('tents and machines stay inside their district and off every other house', 
       assert.ok(r.x >= d.x && r.y >= d.y && r.x + r.w <= d.x + d.w && r.y + r.h <= d.y + d.h, h.project.id);
       for (const o of list)
         if (o !== h) assert.ok(!overlaps(r, box(o.x, o.y, 96, 92)), `${h.project.id} on ${o.project.id}`);
+    }
+  }
+});
+
+test('lantern posts stand beside the paths, off houses, districts, the pond and the decoration', () => {
+  for (let n = 1; n <= groups.length; n++) {
+    const w = buildWorld({
+      groups: groups.slice(0, n),
+      projects: projects.filter((p) => groups.indexOf(p.group) < n),
+      active,
+      activeOnly: false,
+    });
+    assert.ok(w.lanterns.length >= 4, `${n} groups: ${w.lanterns.length} lanterns`);
+    const pts = w.paths.flatMap((p) => samples(p.pts).map((pt) => [pt, p.width / 2] as const));
+    for (const [x, y] of w.lanterns) {
+      assert.ok(x > 0 && x < w.W && y - SIZES.lantern[1] > 0 && y < w.H, `${x},${y} off the map`);
+      for (const [[px, py], half] of pts) assert.ok(Math.hypot(x - px, y - py) >= half + 10, `${x},${y} on a path`);
+      for (const d of w.districts)
+        assert.ok(!inRect(x, y, d, 10) && !inRect(x, y - SIZES.lantern[1], d, 10), `${x},${y} in ${d.id}`);
+      assert.ok(!inRect(x, y, pondRect(w)), `${x},${y} in the pond`);
+      for (const d of w.decor) assert.ok(Math.hypot(d.x - x, d.y - y) >= 50, `${d.sprite} on a lantern`);
+    }
+  }
+  assert.deepEqual(world().lanterns, world().lanterns);
+});
+
+test('the "+ New project" lot keeps clear of the houses, tents and machines of its district', () => {
+  // Every number of houses per district, so the lot lands in every column, after houses jittered either way.
+  for (let n = 1; n <= 9; n++) {
+    const ps = Array.from({ length: n }, (_, i) => ({ id: `lot-${n}-${i}`, name: `p${i}`, group: 'g', color: '#fff' }));
+    const w = buildWorld({ groups: ['g'], projects: ps, active: new Set(ps.map((p) => p.id)), activeOnly: false });
+    const [l] = w.lots;
+    const lot = { x: l.x - SIZES.lot[0] / 2, y: l.y - SIZES.lot[1], w: SIZES.lot[0], h: SIZES.lot[1] };
+    const d = l.district;
+    assert.ok(
+      lot.x >= d.x && lot.x + lot.w <= d.x + d.w && lot.y + lot.h <= d.y + d.h,
+      `${n}: lot leaves the district`,
+    );
+    const box = (x: number, y: number, bw: number, bh: number): Rect => ({ x: x - bw / 2, y: y - bh, w: bw, h: bh });
+    for (const h of Object.values(w.houses)) {
+      const things = [
+        box(h.x, h.y, ...SIZES.house),
+        ...Array.from({ length: MAX_TENTS }, (_, i) => tentSpot(h, i)).map((p) => box(p.x, p.y, ...SIZES.tent)),
+        ...Array.from({ length: MAX_MACHINES }, (_, i) => machineSpot(h, i)).map((p) =>
+          box(p.x, p.y, ...SIZES.machine),
+        ),
+      ];
+      for (const r of things) assert.ok(!overlaps(lot, r), `${n} houses: lot on ${h.project.id} ${JSON.stringify(r)}`);
     }
   }
 });

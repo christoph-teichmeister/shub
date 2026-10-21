@@ -1,8 +1,18 @@
 <script lang="ts">
-  // A project's house: roof in the project colour, lit while a crab works, boarded up without a session.
+  // A project's house: roof in the project colour, lit and smoking while a crab works (lit after dark while it has a
+  // session), boarded up without one.
   import type { House } from '../../village/world.ts';
 
-  let { house, working, dim, onplus }: { house: House; working: boolean; dim: number; onplus: () => void } = $props();
+  interface Props {
+    house: House;
+    working: boolean;
+    lit: boolean;
+    /** The view's step counter, for the chimney smoke. */
+    t: number;
+    dim: number;
+    onplus: () => void;
+  }
+  let { house, working, lit, t, dim, onplus }: Props = $props();
   const url = (name: string) => `/village/${name}.svg`;
 </script>
 
@@ -16,10 +26,23 @@
 >
   <span class="sprite">
     <img class="layer" src={url('house-base')} alt="" />
-    {#if working}<img class="layer" src={url('house-lit')} alt="" />{/if}
+    {#if lit}<img class="layer" src={url('house-lit')} alt="" />{/if}
     <span class="layer roof" style:background={house.project.color}></span>
     <img class="layer" src={url('house-roof-detail')} alt="" />
     {#if !house.active}<img class="layer" src={url('boards')} alt="" />{/if}
+    {#if working}
+      {#each [0, 1, 2] as j (j)}
+        {@const ph = (t + j * 8) % 24}
+        <span
+          class="puff"
+          style:left="{68 + Math.round(ph * 0.7 + Math.sin(ph * 0.5) * 2)}px"
+          style:top="{-4 - ph * 3}px"
+          style:width="{6 + Math.floor(ph / 5) * 2}px"
+          style:height="{6 + Math.floor(ph / 5) * 2}px"
+          style:opacity={(1 - ph / 24) * 0.75}
+        ></span>
+      {/each}
+    {/if}
   </span>
   <span class="plate"><i style:background={house.project.color}></i>{house.project.name}</span>
   <button
@@ -72,6 +95,13 @@
     width: 100%;
     height: 100%;
     image-rendering: pixelated;
+  }
+
+  .puff {
+    position: absolute;
+    background: var(--village-paper);
+    box-shadow: 0 0 0 var(--village-px) var(--village-parchment-line);
+    pointer-events: none;
   }
 
   .roof {
