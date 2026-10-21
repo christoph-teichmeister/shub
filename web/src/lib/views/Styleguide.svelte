@@ -358,7 +358,12 @@
           label="Session menu demo"
           items={[
             { id: 'rename', label: 'Rename' },
-            { id: 'link', label: 'Link to card…', hint: '#202' },
+            { id: 'link', label: 'Link to card…', hint: 'MR !3445 review threads and the long title of its ticket' },
+            {
+              id: 'ready',
+              label: 'Stop waiting',
+              description: '@peter.bergen to answer review threads on MR !3445 and assign the MR back',
+            },
             { id: 'pause', label: 'Pause session' },
             {
               id: 'wt',

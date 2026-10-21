@@ -503,7 +503,7 @@
           : [{ id: 'claude-here', label: 'Start Claude here' }]
         : [
             s.waitingFor
-              ? { id: 'ready', label: 'Stop waiting', hint: s.waitingFor }
+              ? { id: 'ready', label: 'Stop waiting', description: s.waitingFor }
               : { id: 'wait', label: 'Wait for…' },
           ]),
       ...(hiddenTabs.includes(s.id) ? [] : [{ id: 'hide', label: 'Hide tab' }]),

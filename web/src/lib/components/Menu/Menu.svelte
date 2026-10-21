@@ -72,7 +72,7 @@
       onclick={() => (onselect(item.id), onclose())}
     >
       {item.label}
-      {#if item.hint}<span class="hint">{item.hint}</span>{/if}
+      {#if item.hint}<span class="hint" title={item.hint}>{item.hint}</span>{/if}
     </button>
     {#if item.description}<span class="description">{item.description}</span>{/if}
   {/each}
@@ -107,6 +107,7 @@
     background: transparent;
     color: var(--fg);
     text-align: left;
+    white-space: nowrap;
     cursor: pointer;
   }
 
@@ -126,6 +127,9 @@
   }
 
   .hint {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--muted);
   }
 
