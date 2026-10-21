@@ -4,12 +4,16 @@
 //   top row:     district · forest · district · district …
 //   band:        the main road, with a straight spur up or down to every district gate
 //   bottom row:  pond · districts · plaza (your desk, the queue, the town hall) · districts
+//   outskirts:   a wide margin round it all: meadow, flower fields, rocks, lakes and forest from seeded noise, and a
+//                dense forest and shore along the rim, so the world ends in trees and water, never in a cut.
 //
 // Everything sits on the tile grid of tiles.ts (district rects, gates, roads, the queue lane and the plaza); the
 // ground is a material per cell, drawn as autotiles. Lantern posts stand along the paths and round the plaza; the other extras (ducks, tents, machines) attach to the
 // spots this returns and are not laid out here.
 
-import { COBBLE, DIRT, GRASS, TILE, type Ground } from './tiles.ts';
+import { hash2 } from './noise.ts';
+import { edgeDistance, material, meadow, rimWidth, SEED } from './terrain.ts';
+import { COBBLE, DIRT, FOREST, GRASS, isPath, TILE, type Ground } from './tiles.ts';
 
 export type Point = [number, number];
 export type Outfit = 'work' | 'private' | 'everyday' | 'projects';
@@ -56,6 +60,8 @@ export interface Decor {
   /** Bottom centre. */
   x: number;
   y: number;
+  /** Far from every road and building: painted into the ground canvas instead of standing as an element. */
+  far: boolean;
 }
 
 export interface Rect {
@@ -143,12 +149,12 @@ export const machineSpot = (h: House, i: number) => ({ x: h.x - 72, y: h.y - 8 -
 const CW = 184; // house cell: the house, machines on its left, tents on its right
 const CH = 176;
 // Every layout length below is a whole number of tiles, so district fences, gates and roads share the grid.
-const M = TILE; // map margin
-const GAP = 2 * TILE; // between districts
-const FOREST = 7 * TILE;
-const BAND = 8 * TILE;
+const M = 18 * TILE; // the outskirts: map margin on every side
+const GAP = 12 * TILE; // between districts
+const GROVE = 14 * TILE; // the forest between the first two districts of the top row
+const BAND = 22 * TILE;
 const PLAZA = 14 * TILE;
-const POND = 11 * TILE; // the pond's slot at the start of the bottom row
+const POND = 14 * TILE; // the pond's slot at the start of the bottom row
 const QUEUE = 10;
 /** Crabs in the queue stand this far apart; the first stands clear of your name plate. The map grows to fit the lane. */
 const QUEUE_STEP = 56;
@@ -178,6 +184,15 @@ export function rng(seed: number): () => number {
 export const inRect = (px: number, py: number, r: Rect, margin = 0) =>
   px > r.x - margin && px < r.x + r.w + margin && py > r.y - margin && py < r.y + r.h + margin;
 
+/** What a flower field is made of: sprite, width, height. */
+const FIELD: [string, number, number][] = [
+  ['flowers', 28, 18],
+  ['flowers', 28, 18],
+  ['sunflower', 22, 40],
+  ['bush-pink', 44, 30],
+  ['bush-yellow', 44, 30],
+  ['tallgrass', 28, 22],
+];
 const DECOR: [number, string, number, number][] = [
   // cumulative chance, sprite, width, height
   [0.1, 'tree-oak', 68, 88],
@@ -229,7 +244,7 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
   top.forEach((d, i) => {
     d.x = x;
     d.y = M + (i % 2) * TILE;
-    x += d.w + GAP + (i === 0 && top.length > 1 ? FOREST : 0);
+    x += d.w + GAP + (i === 0 && top.length > 1 ? GROVE : 0);
   });
   const topEnd = x - GAP;
   const bandY = Math.max(M, ...top.map((d) => d.y + d.h)) + TILE;
@@ -250,20 +265,22 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
 
   const W = snap(Math.max(topEnd, bx - GAP, plazaCx + 280) + M);
   const laneTop = bandY + BAND / 2 + TILE + 24; // the lane starts one tile below the road
-  const H = Math.max(
+  // Hc: the bottom of the village proper; the outskirts add M below it.
+  const Hc = Math.max(
     snap(Math.max(rowY + 448, ...bottom.map((d) => d.y + d.h)) + 2 * TILE),
     snap(laneTop + QUEUE_FIRST + (QUEUE - 1) * QUEUE_STEP),
   );
   // The plaza fills the bottom of its slot but one row; your desk stands on it, the queue lane runs up from it.
-  const plaza = { x: plazaCx - PLAZA / 2, y: H - 9 * TILE, w: PLAZA, h: 8 * TILE };
+  const H = snap(Hc + M);
+  const plaza = { x: plazaCx - PLAZA / 2, y: Hc - 9 * TILE, w: PLAZA, h: 8 * TILE };
   const laneX = plazaCx - TILE; // the grid line down the middle of the two lane columns
-  const you = { x: laneX, y: H - 40 };
-  const hall = { x: plazaCx + 118, y: H - 116 };
-  const mayor = { x: plazaCx + 30, y: H - 104 };
+  const you = { x: laneX, y: Hc - 40 };
+  const hall = { x: plazaCx + 118, y: Hc - 116 };
+  const mayor = { x: plazaCx + 30, y: Hc - 104 };
   const slots: Point[] = [];
-  for (let i = 0; i < QUEUE; i++) slots.push([laneX, H - QUEUE_FIRST - i * QUEUE_STEP]);
+  for (let i = 0; i < QUEUE; i++) slots.push([laneX, Hc - QUEUE_FIRST - i * QUEUE_STEP]);
   const pond = { x: M + POND / 2 - 10, y: rowY + 150 };
-  const forest = top.length > 1 ? { x: top[0].x + top[0].w + GAP / 2, y: M, w: FOREST, h: bandY - M - 30 } : null;
+  const forest = top.length > 1 ? { x: top[0].x + top[0].w + GAP / 2, y: M, w: GROVE, h: bandY - M - 30 } : null;
 
   const key = shown.map((p) => p.id + (active.has(p.id) ? '*' : '')).join(',');
   const R = rng(hash(key));
@@ -351,7 +368,7 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
   const nearPath = (px: number, py: number, m: number) => {
     for (let r = Math.floor((py - m) / TILE); r <= Math.floor((py + m) / TILE); r++)
       for (let c = Math.floor((px - m) / TILE); c <= Math.floor((px + m) / TILE); c++)
-        if (c >= 0 && r >= 0 && c < cols && r < rows && cells[r * cols + c]) return true;
+        if (c >= 0 && r >= 0 && c < cols && r < rows && isPath(cells[r * cols + c])) return true;
     return false;
   };
 
@@ -392,28 +409,80 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
   ])
     if (!nearPath(x, y, 8)) lanterns.push([x, y]);
 
-  // Decoration on every free spot of a loose grid; a forest between the first two districts.
+  // Outskirts: ground for every cell the roads and districts leave over. Cells within two tiles of a road, a fence,
+  // the plaza or the pond stay meadow; the rim is forest with lakes along the shore.
+  const keep = new Uint8Array(cols * rows);
+  const hold = (x0: number, y0: number, x1: number, y1: number, m: number) => {
+    for (let r = Math.max(0, Math.floor((y0 - m) / TILE)); r < Math.min(rows, Math.ceil((y1 + m) / TILE)); r++)
+      for (let c = Math.max(0, Math.floor((x0 - m) / TILE)); c < Math.min(cols, Math.ceil((x1 + m) / TILE)); c++)
+        keep[r * cols + c] = 1;
+  };
+  for (const d of districts) hold(d.x, d.y, d.x + d.w, d.y + d.h, 2 * TILE);
+  hold(plaza.x, plaza.y, plaza.x + plaza.w, plaza.y + plaza.h, 2 * TILE);
+  hold(
+    pond.x - SIZES.pond[0] / 2,
+    pond.y - SIZES.pond[1] / 2,
+    pond.x + SIZES.pond[0] / 2,
+    pond.y + SIZES.pond[1] / 2,
+    2 * TILE,
+  );
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      if (isPath(cells[r * cols + c])) hold(c * TILE, r * TILE, (c + 1) * TILE, (r + 1) * TILE, 2 * TILE);
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      if (cells[i]) continue;
+      const grove = !!forest && inRect((c + 0.5) * TILE, (r + 0.5) * TILE, forest);
+      cells[i] = material(c, r, cols, rows, !!keep[i], grove);
+    }
+
+  // Decoration: trees on the forest floor, a loose grid of meadow plants (flower fields and rocky patches where the
+  // noise says so), never on a path, in a district, the pond or the plaza. What stands far from every road and building
+  // is `far`: the view paints it into the ground canvas; the rest stays an element, so it sorts with the crabs.
   const decor: Decor[] = [];
-  const add = (sprite: string, w: number, h: number, px: number, py: number) =>
-    decor.push({ sprite, w, h, x: Math.round(px), y: Math.round(py) });
+  const near = (px: number, py: number) =>
+    nearPath(px, py, 110) ||
+    districts.some((d) => inRect(px, py, d, 150)) ||
+    inRect(px, py, plaza, 150) ||
+    inRect(px, py, hallBox, 150);
+  const add = (sprite: string, w: number, h: number, px: number, py: number) => {
+    const [x, y] = [Math.round(px), Math.round(py)];
+    decor.push({ sprite, w, h, x, y, far: !near(x, y) });
+  };
+  const matAt = (px: number, py: number) => cells[Math.floor(py / TILE) * cols + Math.floor(px / TILE)];
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
+      if (cells[r * cols + c] !== FOREST) continue;
+      // Thick in the rim, patchy inside.
+      const dens = edgeDistance(c, r, cols, rows) < rimWidth(c, r) + 3 ? 0.9 : 0.5;
+      for (let k = 0; k < 2; k++) {
+        if (hash2(SEED + 10 + k, c, r) > dens - k * 0.4) continue;
+        const px = (c + 0.05 + 0.9 * hash2(SEED + 20 + k, c, r)) * TILE;
+        const py = (r + 0.35 + 0.55 * hash2(SEED + 30 + k, c, r)) * TILE;
+        if (!free(px, py)) continue;
+        if (hash2(SEED + 40 + k, c, r) < 0.45) add('tree-pine', 52, 92, px, py);
+        else add('tree-oak', 68, 88, px, py);
+      }
+      const u = hash2(SEED + 50, c, r);
+      const [ux, uy] = [(c + 0.05 + 0.9 * hash2(SEED + 51, c, r)) * TILE, (r + 0.9) * TILE];
+      if (u < 0.05 && free(ux, uy)) add(u < 0.02 ? 'mushroom' : u < 0.035 ? 'stump' : 'bush-yellow', 32, 24, ux, uy);
+    }
   for (let gy = 40; gy < H + 40; gy += 78) {
     for (let gx = 24; gx < W; gx += 84) {
       const px = gx + (R() - 0.5) * 40;
       const py = gy + (R() - 0.5) * 34;
       const k = R();
-      const kind = DECOR.find((d) => k < d[0]);
-      if (!kind || !free(px, py) || (forest && inRect(px, py, forest))) continue;
-      add(kind[1], kind[2], kind[3], px, py);
-    }
-  }
-  if (forest) {
-    for (let fy = forest.y + 90; fy < forest.y + forest.h; fy += 58) {
-      for (let fx = forest.x + 30; fx < forest.x + forest.w; fx += 56) {
-        const px = fx + (R() - 0.5) * 30;
-        const py = fy + (R() - 0.5) * 24;
-        if (!free(px, py)) continue;
-        if (R() < 0.5) add('tree-pine', 52, 92, px, py);
-        else add('tree-oak', 68, 88, px, py);
+      if (px < 0 || py < 0 || px >= W || py >= H || matAt(px, py) !== GRASS || !free(px, py)) continue;
+      const m = meadow(px / TILE, py / TILE);
+      if (m.flowers > 0.62 && k < 0.85) {
+        const f = FIELD[Math.floor(R() * FIELD.length)];
+        add(f[0], f[1], f[2], px, py);
+      } else if (m.rocks > 0.66 && k < 0.5)
+        add(k < 0.4 ? 'rock' : 'stump', k < 0.4 ? 28 : 32, k < 0.4 ? 20 : 22, px, py);
+      else {
+        const kind = DECOR.find((d) => k < d[0]);
+        if (kind) add(kind[1], kind[2], kind[3], px, py);
       }
     }
   }

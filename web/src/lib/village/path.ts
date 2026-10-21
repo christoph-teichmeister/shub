@@ -2,7 +2,7 @@
 // inside of every district (grass between the houses); a district is entered and left only through its gate, and the
 // grass outside the districts is off limits. Houses, workbenches, the town hall and your desk are blocked.
 // The route is the list of tile centres, ending at the exact target.
-import { cellAt, GRASS, TILE } from './tiles.ts';
+import { cellAt, isPath, TILE } from './tiles.ts';
 import type { Point, Rect, World } from './world.ts';
 
 interface Mask {
@@ -51,7 +51,7 @@ function maskOf(w: World): Mask {
       const i = r * cols + c;
       m.zone[i] = w.districts.findIndex((d) => x > d.x && x < d.x + d.w && y > d.y && y < d.y + d.h);
       const inside = (b: Rect) => x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h;
-      m.ok[i] = +((m.zone[i] >= 0 || cellAt(w.ground, c, r) !== GRASS) && !blocked.some(inside));
+      m.ok[i] = +((m.zone[i] >= 0 || isPath(cellAt(w.ground, c, r))) && !blocked.some(inside));
     }
   for (const d of w.districts) {
     const [gx, gy] = d.gate;

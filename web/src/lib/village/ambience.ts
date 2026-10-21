@@ -11,22 +11,21 @@ export const timeOfDay = (hour: number): TimeOfDay =>
 /** Lanterns, lit windows and fireflies. */
 export const isDark = (tod: TimeOfDay) => tod === 'evening' || tod === 'night';
 
+/** About one of these per this many map px², so a big world is as lively as a small one. */
+const PER_AREA = 160_000;
+
 /** Where the fireflies and the dew hang about: seeded, so the same map gets the same ones. */
 export function ambientSpots(w: World): { fireflies: Point[]; dew: Point[] } {
   const R = rng(7);
+  const n = Math.max(22, Math.round((w.W * w.H) / PER_AREA));
   const spread = (n: number): Point[] =>
     Array.from({ length: n }, () => [Math.round(R() * w.W), Math.round(R() * w.H)]);
-  return { fireflies: spread(22), dew: spread(26) };
+  return { fireflies: spread(n), dew: spread(n + 4) };
 }
 
-const FLY_AT: Point[] = [
-  [0.6, 0.85],
-  [0.25, 0.5],
-  [0.7, 0.45],
-  [0.15, 0.75],
-  [0.45, 0.2],
-  [0.85, 0.6],
-];
+/** Butterflies flutter round points spread over the map (golden-ratio steps: even, and the same every time). */
+const flyAt = (i: number): Point => [(0.1 + i * 0.618034) % 1, (0.2 + i * 0.381966 * 1.7) % 1];
+const FLIES = (w: World) => Math.max(6, Math.round((w.W * w.H) / 1_000_000));
 const POND_SPARKLES: Point[] = [
   [-60, -40],
   [40, -20],
@@ -45,18 +44,21 @@ export interface Mover {
 
 /** Butterflies flutter around fixed points of the map. */
 export const butterflies = (w: World, t: number): Mover[] =>
-  FLY_AT.map(([fx, fy], i) => ({
-    x: Math.round(fx * w.W + Math.sin(t * 0.05 + i * 2) * 60 + Math.sin(t * 0.13 + i) * 14),
-    y: Math.round(fy * w.H + Math.sin(t * 0.08 + i * 3) * 36 + Math.sin(t * 0.21 + i) * 8),
-    src: `fly-${i % 2 ? 'blue' : 'orange'}${(t + i) % 2}`,
-    dir: 1,
-  }));
+  Array.from({ length: FLIES(w) }, (_, i) => {
+    const [fx, fy] = flyAt(i);
+    return {
+      x: Math.round(fx * w.W + Math.sin(t * 0.05 + i * 2) * 60 + Math.sin(t * 0.13 + i) * 14),
+      y: Math.round(fy * w.H + Math.sin(t * 0.08 + i * 3) * 36 + Math.sin(t * 0.21 + i) * 8),
+      src: `fly-${i % 2 ? 'blue' : 'orange'}${(t + i) % 2}`,
+      dir: 1,
+    };
+  });
 
-/** Two birds cross the top of the map, left to right, and come round again. */
+/** Birds cross the map at different heights, left to right, and come round again; a few more on a bigger map. */
 export const birds = (w: World, t: number): Mover[] =>
-  [0, 1].map((i) => ({
+  Array.from({ length: 2 + Math.round((w.W * w.H) / 3_000_000) }, (_, i) => ({
     x: Math.round(((t * 7 + i * 1400) % (w.W + 1000)) - 500),
-    y: Math.round(70 + i * 40 + Math.sin(t * 0.1 + i) * 14),
+    y: Math.round(w.H * (0.06 + ((i * 0.37) % 0.8)) + Math.sin(t * 0.1 + i) * 14),
     src: `bird${Math.floor(t / 2 + i) % 2}`,
     dir: 1,
   }));
@@ -74,13 +76,13 @@ export const ducks = (w: World, t: number): Mover[] =>
     };
   });
 
-/** Three cloud shadows drift across, left to right. */
+/** Cloud shadows drift across, left to right; more of them on a bigger map. */
 export const clouds = (w: World, t: number) =>
-  [0, 1, 2].map((i) => ({
+  Array.from({ length: 3 + Math.round((w.W * w.H) / 3_000_000) }, (_, i) => ({
     x: Math.round(((t * 1.1 + i * 900) % (w.W + 900)) - 500),
-    y: Math.round(w.H * (0.12 + i * 0.3)),
-    w: 420 - i * 60,
-    h: 170 - i * 20,
+    y: Math.round(w.H * (0.12 + ((i * 0.3) % 0.8))),
+    w: 420 - (i % 3) * 60,
+    h: 170 - (i % 3) * 20,
   }));
 
 /** Sparkles on the pond, blinking in turn. */

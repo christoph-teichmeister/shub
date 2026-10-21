@@ -12,7 +12,19 @@ import {
   type VillageProject,
   type World,
 } from '../web/src/lib/village/world.ts';
-import { autotiles, cellAt, COBBLE, cornerMask, DIRT, GRASS, groundAt, TILE } from '../web/src/lib/village/tiles.ts';
+import {
+  autotiles,
+  cellAt,
+  COBBLE,
+  cornerMask,
+  DIRT,
+  FOREST,
+  GRASS,
+  groundAt,
+  isPath,
+  TILE,
+  WATER,
+} from '../web/src/lib/village/tiles.ts';
 
 const groups = ['Projects', 'private', 'work', 'everyday', 'Extra'];
 const counts: Record<string, number> = { Projects: 7, private: 4, work: 6, everyday: 4, Extra: 2 };
@@ -30,7 +42,7 @@ const pathCells = (w: World) => {
   for (let r = 0; r < w.ground.rows; r++)
     for (let c = 0; c < w.ground.cols; c++) {
       const m = cellAt(w.ground, c, r);
-      if (m) out.push({ x: c * TILE, y: r * TILE, w: TILE, h: TILE, m });
+      if (isPath(m)) out.push({ x: c * TILE, y: r * TILE, w: TILE, h: TILE, m });
     }
   return out;
 };
@@ -140,7 +152,8 @@ test('paths keep out of districts, the pond, houses, the town hall and your desk
       if (p.m === COBBLE) assert.ok(overlaps(p, w.plaza) || !overlaps(p, hall), `${at}: lane under the hall`);
     }
     for (const d of w.decor) {
-      assert.equal(groundAt(w.ground, d.x, d.y), GRASS, `${d.sprite} on a path`);
+      const under = groundAt(w.ground, d.x, d.y);
+      assert.ok(under === GRASS || under === FOREST, `${d.sprite} on a path or in the water`);
       for (const z of w.districts) assert.ok(!inRect(d.x, d.y, z), `${d.sprite} in ${z.id}`);
     }
   });
@@ -275,4 +288,73 @@ test('every spur ends in a gate: an opening in the fence, inside the fence span,
         if (cellAt(w.ground, c, out)) assert.ok(c === gx / TILE - 1 || c === gx / TILE, `${n} groups: stray path ${c}`);
     }
   });
+});
+
+test('the world is big, bounded, and grows with the number of projects', () => {
+  const sizes: number[] = [];
+  each((w, n) => {
+    sizes.push(w.W * w.H);
+    assert.ok(w.W >= 2000 && w.H >= 1800 && w.W * w.H >= 6_000_000, `${n} groups: ${w.W} x ${w.H} is too small`);
+    assert.ok(w.W <= 8000 && w.H <= 5000, `${n} groups: ${w.W} x ${w.H} is too big`);
+  });
+  assert.deepEqual(
+    sizes,
+    [...sizes].sort((a, b) => a - b),
+  );
+  assert.ok(sizes.at(-1)! > sizes[0] * 1.3);
+});
+
+test('the outskirts: forest and water at the rim, meadow in between, nothing on or beside a path or district', () => {
+  each((w, n) => {
+    const g = w.ground;
+    const kinds = { [GRASS]: 0, [FOREST]: 0, [WATER]: 0 } as Record<number, number>;
+    for (let r = 0; r < g.rows; r++)
+      for (let c = 0; c < g.cols; c++) {
+        const m = cellAt(g, c, r);
+        if (isPath(m)) continue;
+        kinds[m]++;
+        const edge = Math.min(c, r, g.cols - 1 - c, g.rows - 1 - r);
+        if (edge < 5) assert.ok(m === FOREST || m === WATER, `${n} groups: bare rim at ${c},${r}`);
+        if (m === FOREST || m === WATER) {
+          for (const [dc, dr] of [
+            [1, 0],
+            [-1, 0],
+            [0, 1],
+            [0, -1],
+            [1, 1],
+            [-1, -1],
+          ])
+            assert.ok(!isPath(cellAt(g, c + dc, r + dr)), `${n} groups: terrain against a path at ${c},${r}`);
+          const [x, y] = [(c + 0.5) * TILE, (r + 0.5) * TILE];
+          for (const d of w.districts) assert.ok(!inRect(x, y, d, TILE), `${n} groups: terrain in ${d.id}`);
+          assert.ok(
+            !inRect(x, y, w.plaza, TILE) && !inRect(x, y, pondRect(w)),
+            `${n} groups: terrain on the plaza or pond`,
+          );
+        }
+      }
+    const total = g.cols * g.rows;
+    assert.ok(
+      kinds[FOREST] > total * 0.1 && kinds[WATER] > total * 0.01 && kinds[GRASS] > total * 0.25,
+      JSON.stringify(kinds),
+    );
+  });
+});
+
+test('decoration is deterministic, dense, and far from every road and building when painted into the ground', () => {
+  assert.deepEqual(world().decor, world().decor);
+  const w = world();
+  assert.ok(w.decor.length > 2000);
+  assert.ok(w.decor.some((d) => !d.far) && w.decor.some((d) => d.far));
+  for (const d of w.decor) {
+    if (!d.far) continue;
+    for (const z of w.districts) assert.ok(!inRect(d.x, d.y, z, 140), `${d.sprite} painted beside ${z.id}`);
+    assert.ok(!inRect(d.x, d.y, w.plaza, 140), `${d.sprite} painted beside the plaza`);
+  }
+  // Nothing stands in a gate.
+  for (const [gx, gy] of w.gates)
+    for (const d of w.decor) assert.ok(Math.hypot(d.x - gx, d.y - gy) > 50, `${d.sprite} in a gate`);
+  // Two flower fields and a lake at least: the noise shows more than one kind of meadow.
+  assert.ok(w.decor.filter((d) => d.sprite === 'flowers').length > 20);
+  assert.ok(w.decor.filter((d) => d.sprite === 'rock').length > 3);
 });

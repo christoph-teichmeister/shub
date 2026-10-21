@@ -96,3 +96,30 @@ test('a point nowhere near a path falls back to the straight line', () => {
   const route = findPath(w, [5, 5], [6, 6]);
   assert.deepEqual(route.at(-1), [6, 6]);
 });
+
+test('on the big five-district world every house, queue slot and the mayor are reachable by a real route', () => {
+  const g5 = ['Projects', 'private', 'work', 'everyday', 'Extra'];
+  const ps: VillageProject[] = g5.flatMap((group, k) =>
+    Array.from({ length: 3 + k }, (_, i) => ({ id: `${group}-${i}`, name: `${group} ${i}`, group, color: '#fff' })),
+  );
+  const big = buildWorld({ groups: g5, projects: ps, active: new Set(ps.map((p) => p.id)), activeOnly: false });
+  assert.ok(big.W > 4000);
+  const goals = [...big.slots, [big.mayor.x, big.mayor.y] as Point];
+  for (const h of Object.values(big.houses))
+    for (const to of goals) {
+      const from: Point = [h.x, h.y + 4];
+      const route = findPath(big, from, to);
+      assert.deepEqual(route.at(-1), to);
+      assert.ok(route.length > 2, `a real route from ${h.project.id}, not the fallback`);
+      // Every hop stays short: the route follows tiles, it never jumps over the outskirts.
+      let prev = from;
+      for (const p of route.slice(0, -1)) {
+        assert.ok(Math.hypot(p[0] - prev[0], p[1] - prev[1]) < TILE * 2.5, `jump ${prev} -> ${p}`);
+        prev = p;
+      }
+    }
+  // And between districts: door to door.
+  const doors = Object.values(big.houses).map((h): Point => [h.x, h.y + 4]);
+  for (const a of doors.filter((_, i) => i % 4 === 0))
+    for (const b of doors.filter((_, i) => i % 5 === 1)) assert.ok(findPath(big, a, b).length > 1);
+});
