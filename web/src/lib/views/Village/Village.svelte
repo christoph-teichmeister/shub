@@ -22,6 +22,7 @@
     type Mood,
   } from '../../village/crabs.ts';
   import { CHEER_STEPS, cheerFrame, isDark, timeOfDay, TIMES, type TimeOfDay } from '../../village/ambience.ts';
+  import { autotiles, LAYERS } from '../../village/tiles.ts';
   import { buildWorld, type Point, type VillageProject } from '../../village/world.ts';
   import Ambience from './Ambience.svelte';
   import Crab, { type Bubble } from './Crab.svelte';
@@ -388,25 +389,33 @@
     ORDER.map((status) => ({ status, n: sessions.filter((s) => s.status === status).length })).filter((c) => c.n),
   );
 
-  /** Map paths as rotated strips, one per segment, a little longer so the joints overlap. */
-  const strips = $derived(
-    world.paths.flatMap((p) =>
-      p.pts.slice(1).map((b, i) => {
-        const a = p.pts[i];
-        const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
-        const len = Math.hypot(dx, dy) || 1;
-        const ext = p.width * 0.55;
-        return {
-          kind: p.kind,
-          h: p.width,
-          x: a[0] - (dx / len) * ext,
-          y: a[1] - (dy / len) * ext - p.width / 2,
-          len: len + ext * 2,
-          deg: (Math.atan2(dy, dx) * 180) / Math.PI,
-        };
+  // ---------- ground ----------
+  // Roads, lane and plaza: autotiles drawn once per map into a canvas with one pixel per sprite pixel, scaled up
+  // with the map (crisp, no seams, one node; the 140 ms step never touches it).
+  let ground = $state<HTMLCanvasElement>();
+  $effect(() => {
+    const canvas = ground;
+    const g = world.ground;
+    if (!canvas) return;
+    let gone = false;
+    void Promise.all(
+      LAYERS.map(async (l) => {
+        const img = new Image();
+        img.src = `/village/${l.sprite}.svg`;
+        await img.decode();
+        return { img, tiles: autotiles(g, l.is) };
       }),
-    ),
-  );
+    ).then((layers) => {
+      const ctx = canvas.getContext('2d');
+      if (gone || !ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const { img, tiles } of layers)
+        for (const { x, y, mask } of tiles)
+          ctx.drawImage(img, (mask % 4) * 16, (mask >> 2) * 16, 16, 16, x / 2, y / 2, 16, 16);
+      canvas.dataset.drawn = '';
+    });
+    return () => (gone = true);
+  });
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const crabsIn = (id: string) => spots.filter((c) => c.district?.id === id).length;
 
@@ -492,23 +501,7 @@
     >
       <div class="sized" style:width="{world.W * zoom}px" style:height="{world.H * zoom}px">
         <div class="world" style:width="{world.W}px" style:height="{world.H}px" style:transform="scale({zoom})">
-          {#each strips as s, i (i)}
-            <span
-              class="strip {s.kind}"
-              style:left="{s.x}px"
-              style:top="{s.y}px"
-              style:width="{s.len}px"
-              style:height="{s.h}px"
-              style:transform="rotate({s.deg}deg)"
-            ></span>
-          {/each}
-          <span
-            class="plaza"
-            style:left="{world.plaza.x}px"
-            style:top="{world.plaza.y}px"
-            style:width="{world.plaza.w}px"
-            style:height="{world.plaza.h}px"
-          ></span>
+          <canvas class="ground" bind:this={ground} width={world.W / 2} height={world.H / 2}></canvas>
           {#each world.districts as d (d.id)}
             <div
               class="zone"
@@ -927,29 +920,15 @@
     image-rendering: pixelated;
   }
 
-  .strip {
+  /* Half the map's size in pixels: one canvas pixel per sprite pixel. */
+  .ground {
     position: absolute;
+    inset: 0;
     z-index: 1;
-    transform-origin: 0 50%;
-    border-radius: var(--radius-pill);
-    background: var(--village-wood) url('/village/tile-dirt.svg');
-    background-size: calc(var(--village-px) * 32);
-    box-shadow: inset 0 0 0 var(--ring) var(--village-wood-dark);
-  }
-
-  .strip.cobble,
-  .plaza {
-    z-index: 2;
-    background: var(--village-wood) url('/village/tile-cobble.svg');
-    background-size: calc(var(--village-px) * 16);
-  }
-
-  .plaza {
-    position: absolute;
-    z-index: 1;
-    transform: translate(-50%, -50%);
-    border-radius: var(--radius-round);
-    box-shadow: inset 0 0 0 var(--space-1) var(--village-wood-dark);
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    pointer-events: none;
   }
 
   .zone {
