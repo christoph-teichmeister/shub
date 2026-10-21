@@ -139,12 +139,18 @@ test('login needs the right token and sets a strict cookie', async () => {
   const res = await call('POST', '/api/auth/login', { token: accessToken, deviceName: 'desk' }, { origin: base });
   assert.equal(res.status, 200);
   const setCookie = res.headers.get('set-cookie')!;
-  assert.match(setCookie, /^shub_session=[0-9a-f]{64}; HttpOnly; SameSite=Strict; Path=\/; Max-Age=2592000$/);
+  assert.ok(setCookie.startsWith(`shub_session_${ctx.port}=`), 'a test port gets its own cookie name');
+  assert.match(setCookie, /^shub_session_\d+=[0-9a-f]{64}; HttpOnly; SameSite=Strict; Path=\/; Max-Age=2592000$/);
   cookie = setCookie.split(';')[0];
   const https = await call('POST', '/api/auth/login', { token: accessToken }, { 'x-forwarded-proto': 'https' });
   assert.match(https.headers.get('set-cookie')!, /; Secure$/);
   const once = await call('POST', '/api/auth/login', { token: accessToken, remember: false });
-  assert.match(once.headers.get('set-cookie')!, /^shub_session=[0-9a-f]{64}; HttpOnly; SameSite=Strict; Path=\/$/);
+  assert.match(once.headers.get('set-cookie')!, /^shub_session_\d+=[0-9a-f]{64}; HttpOnly; SameSite=Strict; Path=\/$/);
+});
+
+test('the default port keeps the plain cookie name, others get their own', () => {
+  assert.equal(auth.cookieName(4780), 'shub_session');
+  assert.equal(auth.cookieName(4799), 'shub_session_4799');
 });
 
 test('cookie requests that change state need an Origin', async () => {
