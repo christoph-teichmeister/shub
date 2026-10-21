@@ -23,6 +23,7 @@
   } from '../../village/crabs.ts';
   import { CHEER_STEPS, cheerFrame, isDark, timeOfDay, TIMES, type TimeOfDay } from '../../village/ambience.ts';
   import { autotiles, LAYERS } from '../../village/tiles.ts';
+  import { clampPan, clampZoom, fitWorld, zoomAt, type Pan } from '../../village/camera.ts';
   import { buildWorld, type Point, type VillageProject } from '../../village/world.ts';
   import Ambience from './Ambience.svelte';
   import Crab, { type Bubble } from './Crab.svelte';
@@ -37,12 +38,12 @@
 
   let activeOnly = $state(false);
   let only = $state<string | null>(null);
-  /** null: fit the map to the window. */
-  let zoomSet = $state<number | null>(null);
-  /** The room the map frame may take, and the viewport's own border + scrollbar (offset minus client width). */
-  let frameWidth = $state(0);
-  let viewportOuter = $state(0);
-  let viewportInner = $state(0);
+  /** The camera: the world sits at translate(pan) scale(zoom) in the clipped viewport. Fitted follows the window. */
+  let zoom = $state(1);
+  let pan = $state<Pan>({ x: 0, y: 0 });
+  let fitted = $state(true);
+  let vw = $state(0);
+  let vh = $state(0);
   let hovered = $state<string | null>(null);
   /** The crab whose card stays open with its actions (click, arrow keys). */
   let pinned = $state<string | null>(null);
@@ -257,19 +258,88 @@
     `${c.session.name}, ${c.house?.project.name ?? 'global Claude'}, ${STATUS_LABEL[c.session.status]}` +
     (c.queuePos >= 0 ? `, number ${c.queuePos + 1} in line` : '');
 
-  // ---------- zoom, card ----------
-  // Fit fills the width (up to 1.6x, the sprites stay crisp); a narrow window scrolls down instead of shrinking it.
-  // Measured on the frame: the viewport itself shrinks to the scaled map, so nothing unpainted shows beside or below it.
-  const fit = $derived(Math.min(1.6, Math.max(0.35, (frameWidth - (viewportOuter - viewportInner)) / world.W)));
-  const zoom = $derived(zoomSet ?? fit);
-  const setZoom = (z: number) => (zoomSet = Math.min(1.4, Math.max(0.4, Math.round(z * 10) / 10)));
+  // ---------- camera, card ----------
+  function fit() {
+    ({ zoom, pan } = fitWorld(world, vw, vh));
+    fitted = true;
+  }
+  /** Zoom around a screen point of the viewport (its centre for the buttons). */
+  function zoomTo(next: number, cx = vw / 2, cy = vh / 2) {
+    const r = zoomAt(pan, zoom, next, cx, cy);
+    zoom = r.zoom;
+    pan = clampPan(r.pan, zoom, world, vw, vh);
+    fitted = false;
+  }
+  const nudge = (d: number) => zoomTo(Math.round((zoom + d) * 10) / 10);
+  // Fitted follows the window and the map; a free camera only keeps the map in view.
+  $effect(() => {
+    if (!vw || !vh) return;
+    if (fitted) untrack(fit);
+    else
+      pan = clampPan(
+        untrack(() => pan),
+        untrack(() => zoom),
+        world,
+        vw,
+        vh,
+      );
+  });
 
-  /** Where a card or popover hangs for a point on the map: above it, or below when it would leave the top. */
+  let drag: { id: number; x: number; y: number; px: number; py: number; on: boolean } | null = null;
+  let dragged = false;
+  function onDown(e: PointerEvent) {
+    if (e.button !== 0 || (e.target as Element).closest('input, textarea, select, [data-keep]')) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, px: pan.x, py: pan.y, on: false };
+  }
+  function onMove(e: PointerEvent) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x;
+    const dy = e.clientY - drag.y;
+    if (!drag.on) {
+      if (Math.hypot(dx, dy) < 4) return; // still a click
+      drag.on = true;
+      // Captured only now, so a click on a crab or button keeps its own target.
+      viewport?.setPointerCapture(e.pointerId);
+    }
+    pan = clampPan({ x: drag.px + dx, y: drag.py + dy }, zoom, world, vw, vh);
+    fitted = false;
+  }
+  function onUp() {
+    if (drag?.on) {
+      dragged = true;
+      setTimeout(() => (dragged = false), 0);
+    }
+    drag = null;
+  }
+  /** The click that ends a drag is no click. */
+  function onClickCapture(e: MouseEvent) {
+    if (!dragged) return;
+    e.stopPropagation();
+    e.preventDefault();
+  }
+  /** Wheel zoom needs a non-passive listener to keep the page from scrolling. */
+  function wheel(node: HTMLElement) {
+    const on = (e: WheelEvent) => {
+      e.preventDefault();
+      const r = node.getBoundingClientRect();
+      zoomTo(
+        zoom * Math.exp(-e.deltaY * 0.0015),
+        e.clientX - r.left - node.clientLeft,
+        e.clientY - r.top - node.clientTop,
+      );
+    };
+    node.addEventListener('wheel', on, { passive: false });
+    return { destroy: () => node.removeEventListener('wheel', on) };
+  }
+
+  /** Where a card or popover hangs for a map point, in viewport px: above it, or below near the top edge. */
   function hang(x: number, y: number, top = 60, under = 10) {
-    const below = y * zoom < 330;
+    const sx = x * zoom + pan.x;
+    const sy = y * zoom + pan.y;
+    const below = sy < 330;
     return {
-      x: Math.min(Math.max(x * zoom, 165), world.W * zoom - 165),
-      y: below ? (y + under) * zoom : (y - top) * zoom - 10,
+      x: Math.min(Math.max(sx, 165), Math.max(165, vw - 165)),
+      y: below ? sy + under * zoom : sy - top * zoom - 10,
       below,
     };
   }
@@ -340,7 +410,6 @@
     pinned = id;
     pop = null;
     await tick();
-    document.getElementById('village-card')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
   const WALK_KEYS: Record<string, 1 | -1> = { ArrowDown: 1, ArrowRight: 1, j: 1, ArrowUp: -1, ArrowLeft: -1, k: -1 };
@@ -476,192 +545,200 @@
       onclick={toggleChime}>Chime</button
     >
     <div class="row seg" role="group" aria-label="Zoom">
-      <button type="button" class="btn small" aria-pressed={zoomSet === null} onclick={() => (zoomSet = null)}
-        >Fit</button
-      >
-      <button type="button" class="btn small" aria-label="Zoom out" onclick={() => setZoom(zoom - 0.1)}>−</button>
-      <button type="button" class="btn small" aria-label="Zoom in" onclick={() => setZoom(zoom + 0.1)}>+</button>
+      <button type="button" class="btn small" aria-pressed={fitted} onclick={fit}>Fit</button>
+      <button type="button" class="btn small" aria-label="Zoom out" onclick={() => nudge(-0.1)}>−</button>
+      <button type="button" class="btn small" aria-label="Zoom in" onclick={() => nudge(0.1)}>+</button>
     </div>
     <span class="muted">{Math.round(zoom * 100)} %</span>
   </header>
 
   <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
-  <div class="frame" bind:clientWidth={frameWidth}>
+  <div class="frame">
     <div
       class="viewport"
       bind:this={viewport}
-      bind:offsetWidth={viewportOuter}
-      bind:clientWidth={viewportInner}
+      bind:clientWidth={vw}
+      bind:clientHeight={vh}
+      use:wheel
       role="region"
       aria-label="Crab village map"
       aria-describedby="village-keys"
       tabindex="0"
       onkeydown={onMapKey}
       onclick={onMapClick}
+      onclickcapture={onClickCapture}
+      onpointerdown={onDown}
+      onpointermove={onMove}
+      onpointerup={onUp}
+      onpointercancel={onUp}
+      onscroll={() => viewport?.scrollTo(0, 0)}
     >
-      <div class="sized" style:width="{world.W * zoom}px" style:height="{world.H * zoom}px">
-        <div class="world" style:width="{world.W}px" style:height="{world.H}px" style:transform="scale({zoom})">
-          <canvas class="ground" bind:this={ground} width={world.W / 2} height={world.H / 2}></canvas>
-          {#each world.districts as d (d.id)}
-            <div
-              class="zone"
-              style:left="{d.x}px"
-              style:top="{d.y}px"
-              style:width="{d.w}px"
-              style:height="{d.h}px"
-              style:opacity={dim(d.id)}
-            >
-              <span class="fence h top"></span>
-              <span class="fence h bottom"></span>
-              <span class="fence v left"></span>
-              <span class="fence v right"></span>
-              <div class="sign">
-                <span class="hat">
-                  <img src="/village/crab-idle0.svg" alt="" />
-                  <span style:mask-image="url(/village/hat-{d.outfit}-mask.svg)"></span>
-                  <img src="/village/hat-{d.outfit}-detail.svg" alt="" />
-                </span>
-                <span>{d.id}</span>
-                <small>{d.hatName} · {plural(crabsIn(d.id), 'crab')} · {plural(d.projects.length, 'house')}</small>
-              </div>
-            </div>
-          {/each}
-          <img
-            class="obj pond"
-            src="/village/pond.svg"
-            alt=""
-            style:left="{world.pond.x}px"
-            style:top="{world.pond.y}px"
-          />
-          {#each world.decor as d, i (i)}
-            <img
-              class="obj"
-              src="/village/{d.sprite}.svg"
-              alt=""
-              width={d.w}
-              height={d.h}
-              style:left="{d.x}px"
-              style:top="{d.y}px"
-              style:z-index={d.y}
-            />
-          {/each}
-          {#each Object.values(world.houses) as h (h.project.id)}
-            {@const working = workingIn.has(h.project.id)}
-            <House
-              house={h}
-              {working}
-              lit={working || (dark && h.active)}
-              {t}
-              dim={dim(h.district.id)}
-              onplus={() => {
-                pinned = null;
-                pop = h.project.id;
-              }}
-            />
-            <Yard
-              house={h}
-              worktrees={worktreesOf.get(h.project.id) ?? []}
-              sessionId={servicesFrom.get(h.project.id) ?? null}
-              {t}
-              dim={dim(h.district.id)}
-            />
-          {/each}
-          {#each world.lots as l (l.district.id)}
-            <button
-              type="button"
-              class="lot"
-              style:left="{l.x}px"
-              style:top="{l.y}px"
-              style:z-index={l.y}
-              style:opacity={dim(l.district.id)}
-              aria-label="New project in {l.district.id}"
-              onclick={() => (building = { group: l.district.id })}>+ New project</button
-            >
-          {/each}
-          <img
-            class="obj hall"
-            src="/village/townhall.svg"
-            alt="Town hall"
-            style:left="{world.hall.x}px"
-            style:top="{world.hall.y}px"
-            style:z-index={world.hall.y}
-          />
-          <span class="plate" style:left="{world.hall.x}px" style:top="{world.hall.y}px" style:z-index={world.hall.y}
-            >Town hall · global Claude</span
+      <div
+        class="world"
+        style:width="{world.W}px"
+        style:height="{world.H}px"
+        style:transform="translate({pan.x}px, {pan.y}px) scale({zoom})"
+      >
+        <canvas class="ground" bind:this={ground} width={world.W / 2} height={world.H / 2}></canvas>
+        {#each world.districts as d (d.id)}
+          <div
+            class="zone"
+            style:left="{d.x}px"
+            style:top="{d.y}px"
+            style:width="{d.w}px"
+            style:height="{d.h}px"
+            style:opacity={dim(d.id)}
           >
-          <div class="obj you" style:left="{world.you.x}px" style:top="{world.you.y}px" style:z-index={world.you.y}>
-            <span class="plate">You · {queue.length} in line</span>
-            <img src="/village/you-{still ? 0 : Math.floor(t / 3) % 2}.svg" alt="You, at your desk" />
+            <span class="fence h top"></span>
+            <span class="fence h bottom"></span>
+            <span class="fence v left"></span>
+            <span class="fence v right"></span>
+            <div class="sign">
+              <span class="hat">
+                <img src="/village/crab-idle0.svg" alt="" />
+                <span style:mask-image="url(/village/hat-{d.outfit}-mask.svg)"></span>
+                <img src="/village/hat-{d.outfit}-detail.svg" alt="" />
+              </span>
+              <span>{d.id}</span>
+              <small>{d.hatName} · {plural(crabsIn(d.id), 'crab')} · {plural(d.projects.length, 'house')}</small>
+            </div>
           </div>
-          {#each spots as c, i (c.session.id)}
-            {@const p = at(c)}
-            {@const outfit = c.district?.outfit ?? 'mayor'}
-            {@const mood = moodFor(c, p)}
-            {@const bag = c.pose === 'sleep' ? null : backpack(c.session.context?.tokens)}
-            {@const party = cheer(c.session.id)}
-            <Crab
-              x={p.x}
-              y={p.y}
-              dir={c.pose === 'sleep' ? 1 : p.dir}
-              body={body(c, p, i, mood)}
-              sleeping={c.pose === 'sleep' && !p.moving}
-              {outfit}
-              color={c.house?.project.color ?? 'transparent'}
-              bubble={bubble(c.session.status, mood)}
-              babies={c.pose === 'work' && !p.moving && c.session.status === 'working'
-                ? (c.session.agents ?? []).map((_, j) => `crab-walk${(t + j) % 2}`)
-                : []}
-              pack={bag?.size ?? null}
-              sweat={!!bag?.sweat}
-              pant={!!bag?.pant}
-              lift={party?.hop || lift(mood, i)}
-              dust={mood === 'tap'}
-              confetti={party?.confetti ?? []}
-              {t}
-              label={label(c)}
-              describedby={hovered === c.session.id ? 'village-card' : undefined}
-              dim={dim(c.district?.id)}
-              ring={pinned === c.session.id}
-              onclick={() => void pin(pinned === c.session.id ? null : c.session.id)}
-              ondblclick={() => open(c.session)}
-              onenter={() => (hovered = c.session.id)}
-              onleave={() => hovered === c.session.id && (hovered = null)}
-            />
-          {/each}
-          <Ambience {world} {tod} {t} {lights} />
-        </div>
-        {#if card}
-          {@const project = card.c.session.projectId ? projectById.get(card.c.session.projectId) : undefined}
-          <CrabCard
-            id="village-card"
-            session={card.c.session}
-            project={project?.name ?? 'global Claude'}
-            group={project?.group ?? 'town hall'}
-            color={project?.accent ?? 'transparent'}
-            queuePos={card.c.queuePos}
-            waited={waited(card.c.session)}
-            x={card.x}
-            y={card.y}
-            below={card.below}
-            actions={pinned === card.c.session.id ? actions(card.c.session) : undefined}
-            onclose={() => {
+        {/each}
+        <img
+          class="obj pond"
+          src="/village/pond.svg"
+          alt=""
+          style:left="{world.pond.x}px"
+          style:top="{world.pond.y}px"
+        />
+        {#each world.decor as d, i (i)}
+          <img
+            class="obj"
+            src="/village/{d.sprite}.svg"
+            alt=""
+            width={d.w}
+            height={d.h}
+            style:left="{d.x}px"
+            style:top="{d.y}px"
+            style:z-index={d.y}
+          />
+        {/each}
+        {#each Object.values(world.houses) as h (h.project.id)}
+          {@const working = workingIn.has(h.project.id)}
+          <House
+            house={h}
+            {working}
+            lit={working || (dark && h.active)}
+            {t}
+            dim={dim(h.district.id)}
+            onplus={() => {
               pinned = null;
-              viewport?.focus();
+              pop = h.project.id;
             }}
           />
-        {/if}
-        {#if popAt}
-          {#key popAt.project.id}
-            <NewSession
-              project={popAt.project}
-              x={popAt.x}
-              y={popAt.y}
-              below={popAt.below}
-              onclose={() => (pop = null)}
-            />
-          {/key}
-        {/if}
+          <Yard
+            house={h}
+            worktrees={worktreesOf.get(h.project.id) ?? []}
+            sessionId={servicesFrom.get(h.project.id) ?? null}
+            {t}
+            dim={dim(h.district.id)}
+          />
+        {/each}
+        {#each world.lots as l (l.district.id)}
+          <button
+            type="button"
+            class="lot"
+            style:left="{l.x}px"
+            style:top="{l.y}px"
+            style:z-index={l.y}
+            style:opacity={dim(l.district.id)}
+            aria-label="New project in {l.district.id}"
+            onclick={() => (building = { group: l.district.id })}>+ New project</button
+          >
+        {/each}
+        <img
+          class="obj hall"
+          src="/village/townhall.svg"
+          alt="Town hall"
+          style:left="{world.hall.x}px"
+          style:top="{world.hall.y}px"
+          style:z-index={world.hall.y}
+        />
+        <span class="plate" style:left="{world.hall.x}px" style:top="{world.hall.y}px" style:z-index={world.hall.y}
+          >Town hall · global Claude</span
+        >
+        <div class="obj you" style:left="{world.you.x}px" style:top="{world.you.y}px" style:z-index={world.you.y}>
+          <span class="plate">You · {queue.length} in line</span>
+          <img src="/village/you-{still ? 0 : Math.floor(t / 3) % 2}.svg" alt="You, at your desk" />
+        </div>
+        {#each spots as c, i (c.session.id)}
+          {@const p = at(c)}
+          {@const outfit = c.district?.outfit ?? 'mayor'}
+          {@const mood = moodFor(c, p)}
+          {@const bag = c.pose === 'sleep' ? null : backpack(c.session.context?.tokens)}
+          {@const party = cheer(c.session.id)}
+          <Crab
+            x={p.x}
+            y={p.y}
+            dir={c.pose === 'sleep' ? 1 : p.dir}
+            body={body(c, p, i, mood)}
+            sleeping={c.pose === 'sleep' && !p.moving}
+            {outfit}
+            color={c.house?.project.color ?? 'transparent'}
+            bubble={bubble(c.session.status, mood)}
+            babies={c.pose === 'work' && !p.moving && c.session.status === 'working'
+              ? (c.session.agents ?? []).map((_, j) => `crab-walk${(t + j) % 2}`)
+              : []}
+            pack={bag?.size ?? null}
+            sweat={!!bag?.sweat}
+            pant={!!bag?.pant}
+            lift={party?.hop || lift(mood, i)}
+            dust={mood === 'tap'}
+            confetti={party?.confetti ?? []}
+            {t}
+            label={label(c)}
+            describedby={hovered === c.session.id ? 'village-card' : undefined}
+            dim={dim(c.district?.id)}
+            ring={pinned === c.session.id}
+            onclick={() => void pin(pinned === c.session.id ? null : c.session.id)}
+            ondblclick={() => open(c.session)}
+            onenter={() => (hovered = c.session.id)}
+            onleave={() => hovered === c.session.id && (hovered = null)}
+          />
+        {/each}
+        <Ambience {world} {tod} {t} {lights} />
       </div>
+      {#if card}
+        {@const project = card.c.session.projectId ? projectById.get(card.c.session.projectId) : undefined}
+        <CrabCard
+          id="village-card"
+          session={card.c.session}
+          project={project?.name ?? 'global Claude'}
+          group={project?.group ?? 'town hall'}
+          color={project?.accent ?? 'transparent'}
+          queuePos={card.c.queuePos}
+          waited={waited(card.c.session)}
+          x={card.x}
+          y={card.y}
+          below={card.below}
+          actions={pinned === card.c.session.id ? actions(card.c.session) : undefined}
+          onclose={() => {
+            pinned = null;
+            viewport?.focus();
+          }}
+        />
+      {/if}
+      {#if popAt}
+        {#key popAt.project.id}
+          <NewSession
+            project={popAt.project}
+            x={popAt.x}
+            y={popAt.y}
+            below={popAt.below}
+            onclose={() => (pop = null)}
+          />
+        {/key}
+      {/if}
     </div>
   </div>
 
@@ -670,9 +747,9 @@
     <span><b class="your-turn">...</b> your turn</span>
     <span><b class="waiting">zZ</b> waiting · <b class="paused-tag">zZ</b> paused</span>
     <span id="village-keys"
-      >Click a crab to pin its card. Map keys: <kbd>↑</kbd><kbd>↓</kbd> queue · <kbd>Enter</kbd> open · <kbd>A</kbd><kbd
-        >D</kbd
-      >
+      >Click a crab to pin its card, drag to pan, wheel to zoom. Map keys: <kbd>↑</kbd><kbd>↓</kbd> queue ·
+      <kbd>Enter</kbd>
+      open · <kbd>A</kbd><kbd>D</kbd>
       allow, deny · <kbd>R</kbd> run · <kbd>Esc</kbd> close · <kbd>Alt V</kbd> back</span
     >
   </footer>
@@ -861,21 +938,20 @@
     border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
   }
 
-  /* The viewport takes the scaled map's size, capped by the window (then it scrolls). */
+  /* The viewport fills the window; the world moves inside it (pan, zoom), nothing scrolls. */
   .frame {
     display: flex;
-    flex: 0 1 auto;
-    flex-direction: column;
-    align-items: center;
+    flex: 1 1 0;
     min-height: 0;
   }
 
   .viewport {
     position: relative;
-    flex: 0 1 auto;
-    max-width: 100%;
-    min-height: 0;
-    overflow: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    cursor: grab;
+    touch-action: none;
     border: var(--space-1-5) solid var(--village-wood-dark);
     border-radius: var(--radius-sm);
     box-shadow: 0 0 0 var(--ring) var(--village-ink);
@@ -884,10 +960,6 @@
 
   .viewport:focus-visible {
     outline: var(--ring) solid var(--village-gold);
-  }
-
-  .sized {
-    position: relative;
   }
 
   .lot {
@@ -915,6 +987,7 @@
     left: 0;
     overflow: hidden;
     transform-origin: 0 0;
+    user-select: none;
     background: var(--village-grass) url('/village/tile-grass.svg');
     background-size: calc(var(--village-px) * 32);
     image-rendering: pixelated;
