@@ -10,6 +10,7 @@
   import SelectField from '../components/SelectField/SelectField.svelte';
   import TextField from '../components/TextField/TextField.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
+  import ImageViewer from '../components/ImageViewer/ImageViewer.svelte';
   import EmptyState from '../components/EmptyState/EmptyState.svelte';
   import Icon from '../components/Icon/Icon.svelte';
   import { ICONS, type IconName } from '../components/Icon/icons.ts';
@@ -43,6 +44,16 @@
   let dialogOpen = $state(false);
   let drawerOpen = $state(false);
   let approvalOpen = $state(false);
+  let viewerPaths = $state<string[] | null>(null);
+  let viewerIndex = $state(0);
+  const viewerSrc = (i: number) =>
+    i === 2
+      ? null
+      : i === 3
+        ? ''
+        : `data:image/svg+xml,${encodeURIComponent(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#3a3f4b"/><text x="320" y="190" font-family="sans-serif" font-size="32" fill="#e8e6df" text-anchor="middle">Screenshot ${i + 1}</text></svg>`,
+          )}`;
   let text = $state('ai-portal');
   let select = $state('text');
   let checked = $state(true);
@@ -399,6 +410,19 @@
         {/snippet}
       </Dialog>
       <Button onclick={() => (approvalOpen = true)}>Approval dialog</Button>
+      <Button
+        onclick={() => {
+          viewerPaths = [1, 2, 3, 4].map((n) => `/tmp/claude-chrome-screenshots-Eyk3ux/screenshot-${n}.png`);
+          viewerIndex = 0;
+        }}>Image viewer (image 3 loads, 4 fails)</Button
+      >
+      <ImageViewer
+        paths={viewerPaths}
+        index={viewerIndex}
+        src={viewerSrc(viewerIndex)}
+        onstep={(i) => (viewerIndex = i)}
+        onclose={() => (viewerPaths = null)}
+      />
       <Dialog
         open={approvalOpen}
         tone="needs-you"

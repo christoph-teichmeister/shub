@@ -1,4 +1,5 @@
 // Sessions module: HTTP routes, terminal WebSockets and startup restore around SessionsService.
+import { createReadStream } from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import { ROUTES, type SessionKind, type SessionLink, type StartSessionRequest } from '../../shared/api.ts';
 import { HttpError, requireRight, requireUser, sendJson, type Caller, type Router } from '../api/router.ts';
@@ -6,6 +7,7 @@ import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
+import { viewableImage } from './image.ts';
 import { buttonPrompt, isSimpleInput } from './launch.ts';
 import { FILE_PASTE_MAX, NAMED_KEYS, SessionsService, type SessionsOptions } from './service.ts';
 import { attachTerminals } from './terminal.ts';
@@ -84,7 +86,7 @@ async function startRoute(
   sendJson(res, 202, { approval });
 }
 
-function routes(sessions: SessionsService, services: Services, router: Router): void {
+function routes(sessions: SessionsService, services: Services, router: Router, stateDir: string): void {
   router.add(ROUTES.sessions, (req) => {
     requireRight(req.caller, 'read');
     return sessions.list();
@@ -216,6 +218,13 @@ function routes(sessions: SessionsService, services: Services, router: Router): 
     }
     return sessions.addLink(req.params.id, { source: req.caller.id, label: link.label.slice(0, 100), url: link.url });
   });
+  router.add(ROUTES.image, (req, res) => {
+    requireRight(req.caller, 'read');
+    const image = viewableImage(req.query.get('path') ?? '', stateDir);
+    if (!image) throw new HttpError(404, 'no image shub may show');
+    res.writeHead(200, { 'content-type': image.type, 'cache-control': 'no-store' });
+    createReadStream(image.file).pipe(res);
+  });
   router.add(ROUTES.oldSessions, (req) => {
     requireRight(req.caller, 'read');
     return sessions.oldSessions(req.params.id);
@@ -232,7 +241,7 @@ export function create(
   return {
     module: {
       name: 'sessions',
-      routes: (router) => routes(sessions, services, router),
+      routes: (router) => routes(sessions, services, router, ctx.paths.stateDir),
       attach: (server) => attachTerminals(server, sessions),
       start: () => sessions.startup(),
       stop: () => sessions.stop(),

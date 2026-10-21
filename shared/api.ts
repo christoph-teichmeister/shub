@@ -607,6 +607,7 @@ export const ROUTES = {
   sessionKeys: 'POST /api/sessions/:id/keys', // { keys: "1" | "Escape" | ... } phone quick keys
   sessionPaste: 'POST /api/sessions/:id/paste', // text or multipart image -> path inserted
   sessionLink: 'POST /api/sessions/:id/links', // SessionLink
+  image: 'GET /api/image', // ?path= an image under /tmp/claude-* or the pastes folder -> the file (terminal image viewer)
   oldSessions: 'GET /api/projects/:id/old-sessions',
   restorable: 'GET /api/sessions/restorable', // after reboot
   restore: 'POST /api/sessions/restore',

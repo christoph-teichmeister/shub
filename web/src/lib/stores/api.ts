@@ -19,6 +19,8 @@ export interface CallOptions {
   body?: unknown;
   /** Another machine than the one the app shows (e.g. pushing the subscription to every machine). */
   origin?: string;
+  /** Return the body as a Blob (images) instead of JSON or text. */
+  blob?: boolean;
 }
 
 /** Method and path for a route, with `:params` filled in (URL-encoded). */
@@ -54,6 +56,7 @@ export async function api<T = unknown>(name: RouteName, options: CallOptions = {
   }
   const res = await send(origin, url, init);
   const isJson = res.headers.get('content-type')?.includes('application/json');
+  if (options.blob && res.ok) return (await res.blob()) as T;
   const data: unknown = res.status === 204 ? null : isJson ? await res.json() : await res.text();
   if (!res.ok) {
     const error = data && typeof data === 'object' ? (data as { error?: unknown }).error : data;

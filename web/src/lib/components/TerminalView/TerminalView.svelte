@@ -4,6 +4,7 @@
   import { FitAddon } from '@xterm/addon-fit';
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import { WebglAddon } from '@xterm/addon-webgl';
+  import ImageViewer from '../ImageViewer/ImageViewer.svelte';
   import type { TerminalControl } from '../../../../../shared/api.ts';
   import { api, wsTarget } from '../../stores/api.ts';
   import { app, terminalSettings } from '../../stores/state.svelte.ts';
@@ -69,6 +70,42 @@
     };
   }
 
+  // Image paths in the output (screenshots, pastes) open in the image viewer. Paths with spaces are not matched.
+  const IMAGE_PATH = /(?<![\w.~/-])\/[^\s'"`()<>[\]]+?\.(?:png|jpe?g|gif|webp)(?!\w)/gi;
+  const lineText = (t: Terminal, y: number) => t.buffer.active.getLine(y)?.translateToString(true) ?? '';
+  let images = $state<string[] | null>(null);
+  let imageIndex = $state(0);
+  let imageSrc = $state<string | null>(null);
+
+  function openImage(t: Terminal, path: string) {
+    const all: string[] = [];
+    for (let y = 0; y < t.buffer.active.length; y++) {
+      for (const m of lineText(t, y).matchAll(IMAGE_PATH)) if (!all.includes(m[0])) all.push(m[0]);
+    }
+    images = all.includes(path) ? all : [path];
+    imageIndex = images.indexOf(path);
+  }
+
+  $effect(() => {
+    const path = images?.[imageIndex];
+    if (!path) return;
+    let url = '';
+    let gone = false;
+    imageSrc = null;
+    api<Blob>('image', { query: { path }, blob: true }).then(
+      (blob) => {
+        if (gone) return;
+        url = URL.createObjectURL(blob);
+        imageSrc = url;
+      },
+      () => !gone && (imageSrc = ''),
+    );
+    return () => {
+      gone = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  });
+
   const paste = (body: Blob | string) => {
     if (body instanceof Blob || body) void api('sessionPaste', { params: { id: sessionId }, body }).catch(toastError);
   };
@@ -78,6 +115,17 @@
     fit = new FitAddon();
     t.loadAddon(fit);
     t.loadAddon(new WebLinksAddon());
+    // ponytail: string index as column, so a wide character (emoji, CJK) earlier in the line shifts the underline.
+    t.registerLinkProvider({
+      provideLinks(y, done) {
+        const links = [...lineText(t, y - 1).matchAll(IMAGE_PATH)].map((m) => ({
+          text: m[0],
+          range: { start: { x: m.index + 1, y }, end: { x: m.index + m[0].length, y } },
+          activate: () => openImage(t, m[0]),
+        }));
+        done(links.length ? links : undefined);
+      },
+    });
     t.open(host!);
     // WebGL draws box-drawing glyphs cell-exact, so Claude's tables connect; the DOM renderer leaves gaps.
     try {
@@ -218,6 +266,16 @@
 <section class="terminal" aria-label={label}>
   <div class="host" bind:this={host}></div>
 </section>
+<ImageViewer
+  paths={images}
+  index={imageIndex}
+  src={imageSrc}
+  onstep={(i) => (imageIndex = i)}
+  onclose={() => {
+    images = null;
+    term?.focus();
+  }}
+/>
 
 <style>
   .terminal {
