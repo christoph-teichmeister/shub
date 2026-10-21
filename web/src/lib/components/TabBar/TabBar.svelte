@@ -8,58 +8,77 @@
     children?: Snippet;
     /** Content before the tabs (the project name). */
     leading?: Snippet;
-    /** Content after the tabs (new-tab button, view toggles). */
+    /** Content after the tabs (new-tab button, view toggles); never scrolls away. */
     trailing?: Snippet;
   }
   let { label, children, leading, trailing }: Props = $props();
+
+  // The tabs' width settles after the tab itself scrolled into view (and changes with the window): follow it.
+  let tabs = $state<HTMLDivElement>();
+  $effect(() => {
+    if (!tabs) return;
+    const el = tabs;
+    const keep = new ResizeObserver(() =>
+      el
+        .querySelector('[aria-selected="true"]')
+        ?.closest('[role="tablist"] > *')
+        ?.scrollIntoView({ block: 'nearest', inline: 'nearest' }),
+    );
+    keep.observe(el);
+    return () => keep.disconnect();
+  });
+
+  // Only the tabs scroll, and without a scrollbar (it sat on the line): a plain wheel scrolls them sideways.
+  function onwheel(e: WheelEvent) {
+    const el = e.currentTarget as HTMLElement;
+    if (!e.deltaY || el.scrollWidth <= el.clientWidth) return;
+    el.scrollLeft += e.deltaY;
+    e.preventDefault();
+  }
 </script>
 
 <div class="bar">
   {#if leading}<div class="leading">{@render leading()}</div>{/if}
   {#if children}
-    <div class="tabs" role="tablist" tabindex="-1" aria-label={label} onkeydown={tabKeys}>{@render children()}</div>
+    <div bind:this={tabs} class="tabs" role="tablist" tabindex="-1" aria-label={label} onkeydown={tabKeys} {onwheel}>
+      {@render children()}
+    </div>
   {/if}
   {#if trailing}<div class="trailing">{@render trailing()}</div>{/if}
 </div>
 
 <style>
-  /* Mirrored vertically, children flipped back, so the scrollbar sits above the tabs, not over the line.
-     Everything below is written upside down: top here is the bottom on screen. */
   .bar {
+    container: tabbar / inline-size;
     display: flex;
-    align-items: flex-start;
+    align-items: flex-end;
     gap: var(--space-0-5);
-    padding: 0 var(--space-3) var(--space-2);
+    padding: var(--space-2) var(--space-3) 0;
 
-    /* Inset shadow, not a border: the bar scrolls, which would clip a selected tab overlapping a border. */
-    box-shadow: inset 0 var(--hairline) 0 var(--line);
-    overflow-x: auto;
-    transform: scaleY(-1);
-  }
-
-  .bar > * {
-    transform: scaleY(-1);
+    /* Inset shadow, not a border, so the selected tab can cover the line. */
+    box-shadow: inset 0 calc(-1 * var(--hairline)) 0 var(--line);
   }
 
   /* As tall as a tab and centred in it: aligned to the bottom, the buttons sat on the line. */
   .leading,
   .trailing {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
     gap: var(--space-0-5);
     height: var(--size-tab);
   }
 
-  .leading {
-    flex: 0 0 auto;
-  }
-
   .trailing {
-    flex: 1 0 auto;
+    flex-grow: 1;
   }
 
   .tabs {
     display: flex;
+    flex: 0 1 auto;
+    min-width: 0;
     gap: var(--space-0-5);
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 </style>

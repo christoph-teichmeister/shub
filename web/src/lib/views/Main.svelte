@@ -1023,7 +1023,7 @@
       {#snippet leading()}
         <span class="project" title={[project.path, project.resolvedIcon.host].filter(Boolean).join(' · ')}>
           <ProjectIcon icon={project.resolvedIcon} name={project.name} size="sm" />
-          <h1>{project.name}</h1>
+          <h1 class="label">{project.name}</h1>
         </span>
       {/snippet}
       {#if !split}
@@ -1059,14 +1059,16 @@
           <Button size="sm" icon="sparkle" onclick={() => claudeHere(active)}>Start Claude here</Button>
         {/if}
         <span class="views">
-          <Button size="sm" variant="ghost" icon="folder" onclick={openWorktrees}>Worktrees</Button>
+          <Button size="sm" variant="ghost" icon="folder" title="Worktrees" onclick={openWorktrees}
+            ><span class="label">Worktrees</span></Button
+          >
           <Button
             size="sm"
             variant="ghost"
             icon="split"
             pressed={split}
             title="Split view (Alt S)"
-            onclick={() => (split = !split)}>Split</Button
+            onclick={() => (split = !split)}><span class="label">Split</span></Button
           >
           <Button
             size="sm"
@@ -1075,7 +1077,8 @@
             pressed={panelOpen}
             title="Services and terminals (Alt D)"
             onclick={() => (panelOpen = !panelOpen)}
-            >Services{#if services.length}<span class="count">{services.length}</span>{/if}</Button
+            ><span class="label">Services</span>{#if services.length}<span class="count">{services.length}</span
+              >{/if}</Button
           >
           <span class="divider" aria-hidden="true"></span>
           <IconButton
@@ -1652,6 +1655,7 @@
     white-space: nowrap;
   }
 
+  /* Looks like the icon buttons next to it; the chevron says it opens a menu. */
   .new {
     display: inline-flex;
     align-items: center;
@@ -1659,17 +1663,33 @@
     height: var(--size-control-sm);
     margin-left: var(--space-1);
     padding: 0 var(--space-1-5);
-    border: var(--hairline) solid var(--line);
+    border: 0;
     border-radius: var(--radius-md);
     background: transparent;
-    color: var(--fg);
+    color: var(--muted);
     cursor: pointer;
   }
 
   .new:hover,
   .new[aria-expanded='true'] {
-    border-color: var(--primary);
     background: var(--raised);
+    color: var(--fg);
+  }
+
+  /* Narrow pane: the project shows as its icon, buttons as icons; the words stay for screen readers. */
+  @container tabbar (width < 960px) {
+    .label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .project {
+      gap: 0;
+    }
   }
 
   .views {
