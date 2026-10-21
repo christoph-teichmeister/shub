@@ -26,7 +26,8 @@ export function stableAppDir(appDir: string): string {
 
 /**
  * Content of `--settings <file>`: shub's hooks, so the user's own settings stay untouched, plus deny rules
- * that keep Claude's file tools out of stateDir (access token, client tokens, VAPID key).
+ * that keep Claude's file tools out of stateDir (access token, client tokens, VAPID key). An Edit rule covers
+ * Write too; a separate Write rule never matches and Claude Code warns about it at startup.
  */
 export function hookSettings(appDir: string, stateDir: string): object {
   appDir = stableAppDir(appDir);
@@ -48,11 +49,7 @@ export function hookSettings(appDir: string, stateDir: string): object {
   // "//" marks an absolute path in Claude's permission rules. Reading stays allowed for the rest of
   // stateDir, because pasted images live in <stateDir>/pastes and Claude reads them from there.
   const dir = `/${stateDir.replace(/\/+$/, '')}`;
-  const deny = [
-    ...['token', 'shub.db*', 'vapid.json'].map((file) => `Read(${dir}/${file})`),
-    `Edit(${dir}/**)`,
-    `Write(${dir}/**)`,
-  ];
+  const deny = [...['token', 'shub.db*', 'vapid.json'].map((file) => `Read(${dir}/${file})`), `Edit(${dir}/**)`];
   return { hooks, permissions: { deny } };
 }
 
