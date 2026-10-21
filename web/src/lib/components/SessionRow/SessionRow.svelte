@@ -15,7 +15,7 @@
     /** Drag and drop to reorder; `after` when dropped on the lower half. */
     ondragstart?: (e: DragEvent) => void;
     ondrop?: (after: boolean) => void;
-    /** Shows a pin on a dragged session (it keeps its place); clicking it lets the session sort by status again. */
+    /** Shows a pin on a pinned session (dragged or pinned via the menu, it stays on top); clicking it lets the session sort by status again. */
     onunpin?: () => void;
   }
   let { session, href, selected = false, closing = false, onmenu, ondragstart, ondrop, onunpin }: Props = $props();

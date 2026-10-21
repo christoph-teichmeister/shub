@@ -148,13 +148,13 @@ function routes(sessions: SessionsService, services: Services, router: Router): 
   });
   router.add(ROUTES.sessionsReorder, async (req) => {
     requireUser(req.caller);
-    const { positions } = await req.json<{ positions?: unknown }>();
+    const { positions, tabs } = await req.json<{ positions?: unknown; tabs?: unknown }>();
     const ok =
       positions &&
       typeof positions === 'object' &&
       Object.values(positions).every((v) => v === null || (Number.isInteger(v) && (v as number) >= 0));
     if (!ok) throw new HttpError(400, 'positions: { [id]: number | null }');
-    return sessions.reorder(positions as Record<string, number | null>);
+    return sessions.reorder(positions as Record<string, number | null>, tabs === true);
   });
   router.add(ROUTES.sessionClose, (req) => {
     // You close any session; a session only itself (also from inside it, e.g. `shub session close`).

@@ -44,6 +44,7 @@ const MIGRATIONS = [
   `ALTER TABLE sessions ADD COLUMN pending_commands TEXT`,
   'ALTER TABLE sessions ADD COLUMN shells INTEGER NOT NULL DEFAULT 0',
   'ALTER TABLE sessions ADD COLUMN background_until INTEGER',
+  'ALTER TABLE sessions ADD COLUMN tab_position INTEGER',
 ];
 const WAIT_EVERY_MIN = 5;
 /** Failed checks in a row before the user hears the check does not work. */
@@ -98,6 +99,7 @@ interface Row {
   waiting_for: string | null;
   wait_check: string | null;
   position: number | null;
+  tab_position: number | null;
 }
 
 const toSession = (r: Row): Session => ({
@@ -118,6 +120,7 @@ const toSession = (r: Row): Session => ({
   waitingFor: r.waiting_for,
   waitCheck: r.wait_check ? JSON.parse(r.wait_check) : null,
   position: r.position,
+  tabPosition: r.tab_position,
   // Rows from before targets stored plain strings.
   pendingCommands: r.pending_commands
     ? (JSON.parse(r.pending_commands) as (string | HandedCommand)[]).map((c) =>
@@ -460,11 +463,13 @@ export class SessionsService implements Sessions {
     return this.#emitUpdated(id);
   }
 
-  /** Pins sessions to a place in their project's list (set by drag and drop); null hands one back to the default order. */
-  reorder(positions: Record<string, number | null>): Session[] {
+  /** Pins sessions to a place in their project's sidebar list, or with `tabs` sets their tab order (drag and drop);
+   *  null hands one back to the default order. */
+  reorder(positions: Record<string, number | null>, tabs = false): Session[] {
+    const column = tabs ? 'tab_position' : 'position';
     for (const [id, position] of Object.entries(positions)) {
       this.require(id);
-      this.#db.prepare('UPDATE sessions SET position = ? WHERE id = ?').run(position, id);
+      this.#db.prepare(`UPDATE sessions SET ${column} = ? WHERE id = ?`).run(position, id);
     }
     return Object.keys(positions).map((id) => this.#emitUpdated(id));
   }
