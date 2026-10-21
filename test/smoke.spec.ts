@@ -981,3 +981,93 @@ test('a phone app adds a second machine by address and typed code', async ({ pag
   expect(redeem?.body).toMatchObject({ code: 'abcd-efgh', publicKey: { kty: 'EC', crv: 'P-256' } });
   expect(errors.filter((e) => !e.includes('409'))).toEqual([]);
 });
+
+test('the crab village draws every session as a crab, queues the ones that need you, Alt V goes back', async ({
+  page,
+}) => {
+  const groups = ['Work', 'Private', 'Everyday'];
+  const colors = ['#66d9ef', '#a6e22e', '#ae81ff', '#f92672', '#4fd6be', '#b8b8a8'];
+  const projects: ProjectView[] = [
+    ['ai-portal', 'Work'],
+    ['vynce', 'Work'],
+    ['haso', 'Work'],
+    ['shub', 'Private'],
+    ['listo', 'Private'],
+    ['dotfiles', 'Everyday'],
+  ].map(([id, group], i) => ({ ...project, id, name: id, group, order: i, accent: colors[i] }));
+  const crab = (id: string, projectId: string | null, name: string, status: Session['status'], extra = {}) => ({
+    ...session,
+    id,
+    projectId,
+    kind: projectId ? 'claude' : 'global',
+    name,
+    status,
+    lastActivityAt: `2026-10-21T10:0${id.length}:00Z`,
+    ...extra,
+  });
+  const sessions = [
+    crab('g1', null, 'Global Claude', 'working'),
+    crab('s1', 'ai-portal', 'Ticket filters #482', 'working', {
+      agents: [{ id: 'a1', type: 'Explore' }],
+      context: { tokens: 84_000, window: 200_000 },
+    }),
+    crab('s2', 'ai-portal', 'Export CSV fix', 'needs-you', {
+      pendingPermission: { tool: 'Bash', summary: 'git push origin' },
+      context: { tokens: 170_000, window: 200_000 },
+    }),
+    crab('s3', 'vynce', 'MR 311 review', 'waiting', { waitingFor: "Kai's answer on the MR" }),
+    crab('s4', 'shub', 'Image viewer review', 'your-turn'),
+    crab('s5', 'shub', 'Session 3', 'new'),
+    crab('s6', 'listo', 'Shopping list sync', 'paused'),
+    crab('s7', 'dotfiles', 'Prompt theme', 'needs-you', { pendingCommands: [{ command: 'sudo systemctl restart x' }] }),
+  ];
+  const { errors } = await mockApi(page, {
+    '/api/config': { ...config, groups, projects },
+    '/api/projects': projects,
+    '/api/sessions': sessions,
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/#/p/ai-portal');
+  const entry = page.getByRole('link', { name: 'Crab village, 3 in line' });
+  await expect(entry).toBeVisible();
+  await entry.click();
+  await expect(page.getByRole('heading', { name: 'Crab Village' })).toBeVisible();
+
+  const map = page.getByRole('region', { name: 'Crab village map' });
+  await expect(map.getByRole('button')).toHaveCount(sessions.length);
+  // Needs-you first, then your turn.
+  await expect(
+    map.getByRole('button', { name: 'Export CSV fix, ai-portal, needs you, number 1 in line' }),
+  ).toBeVisible();
+  await expect(map.getByRole('button', { name: 'Prompt theme, dotfiles, needs you, number 2 in line' })).toBeVisible();
+  await expect(
+    map.getByRole('button', { name: 'Image viewer review, shub, your turn, number 3 in line' }),
+  ).toBeVisible();
+  await expect(map.getByRole('button', { name: 'Global Claude, global Claude, working' })).toBeVisible();
+  await expect(page.getByText('You · 3 in line')).toBeVisible();
+
+  // Focus shows the card; Active only boards nothing up here, every project has a crab but haso.
+  const crab2 = map.getByRole('button', { name: /^Export CSV fix/ });
+  await crab2.focus();
+  const card = page.getByRole('tooltip');
+  await expect(card).toContainText('Asks: git push origin');
+  await expect(card).toContainText('Context 170k / 200k');
+  await expect(crab2).toHaveAttribute('aria-describedby', 'village-card');
+  await page.screenshot({ path: 'test-results/village-card.png' });
+  await expect(page.locator('.house')).toHaveCount(6);
+  await page.getByRole('button', { name: 'Active only' }).click();
+  await expect(page.locator('.house')).toHaveCount(5);
+  await page.getByRole('button', { name: 'Active only' }).click();
+  await page.mouse.move(0, 0);
+  for (let i = 0; i < 4; i++) await page.getByRole('button', { name: 'Zoom out' }).click();
+  await expect(page.getByText('60 %')).toBeVisible();
+  await page.screenshot({ path: 'test-results/village.png' });
+
+  await page.keyboard.press('Alt+KeyV');
+  await expect(page.getByRole('heading', { name: 'ai-portal', level: 1 })).toBeVisible();
+  await page.keyboard.press('Alt+KeyV');
+  await expect(page.getByRole('heading', { name: 'Crab Village' })).toBeVisible();
+  await map.getByRole('button', { name: /^MR 311 review/ }).click();
+  await expect(page).toHaveURL(/#\/p\/vynce\/s3$/);
+  expect(errors).toEqual([]);
+});

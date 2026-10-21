@@ -27,6 +27,18 @@ const UI_TOKEN_NAMES = [
   'status-working',
   'status-your-turn',
   'shadow',
+  // Crab village: a parchment-and-wood look of its own, the same in every built-in theme
+  'village-bg', // around the map
+  'village-grass', // map ground under the grass tiles
+  'village-parchment', // cards, signs, name plates
+  'village-parchment-line', // card and chip borders
+  'village-wood', // buttons, signposts
+  'village-wood-dark', // button and plate borders, path edges
+  'village-ink', // text on parchment and wood
+  'village-ink-muted', // secondary text on parchment
+  'village-gold', // pressed buttons, focus ring
+  'village-sky', // "waiting" dream bubble
+  'village-alarm', // context from 160k
 ] as const;
 
 type UiTokens = Record<(typeof UI_TOKEN_NAMES)[number], string>;
@@ -110,6 +122,22 @@ export const TOKEN_GROUPS: { title: string; tokens: { name: TokenName; label: st
     ],
   },
   {
+    title: 'Village',
+    tokens: [
+      { name: 'village-bg', label: 'Around the map' },
+      { name: 'village-grass', label: 'Grass' },
+      { name: 'village-parchment', label: 'Cards and signs' },
+      { name: 'village-parchment-line', label: 'Card borders' },
+      { name: 'village-wood', label: 'Buttons' },
+      { name: 'village-wood-dark', label: 'Button borders, path edges' },
+      { name: 'village-ink', label: 'Text' },
+      { name: 'village-ink-muted', label: 'Secondary text' },
+      { name: 'village-gold', label: 'Pressed button, focus ring' },
+      { name: 'village-sky', label: 'Waiting bubble' },
+      { name: 'village-alarm', label: 'Context from 160k' },
+    ],
+  },
+  {
     title: 'Terminal',
     tokens: [
       { name: 'term-bg', label: 'Background' },
@@ -121,6 +149,20 @@ export const TOKEN_GROUPS: { title: string; tokens: { name: TokenName; label: st
     ],
   },
 ];
+
+const village = {
+  'village-bg': '#3b2414',
+  'village-grass': '#5a9e3c',
+  'village-parchment': '#f6dfaa',
+  'village-parchment-line': '#8a4a1f',
+  'village-wood': '#c48a4a',
+  'village-wood-dark': '#5a3518',
+  'village-ink': '#2a1408',
+  'village-ink-muted': '#6b4a2a',
+  'village-gold': '#e8b04a',
+  'village-sky': '#bfe4f6',
+  'village-alarm': '#d0342c',
+};
 
 const monokai: UiTokens = {
   bg: '#272822',
@@ -147,6 +189,7 @@ const monokai: UiTokens = {
   'status-working': '#66d9ef',
   'status-your-turn': '#a6e22e',
   shadow: 'rgb(0 0 0 / 50%)',
+  ...village,
 };
 
 const dracula: UiTokens = {
@@ -174,6 +217,7 @@ const dracula: UiTokens = {
   'status-working': '#8be9fd',
   'status-your-turn': '#50fa7b',
   shadow: 'rgb(0 0 0 / 50%)',
+  ...village,
 };
 
 const neutralDark: UiTokens = {
@@ -201,6 +245,7 @@ const neutralDark: UiTokens = {
   'status-working': '#5b9cf5',
   'status-your-turn': '#7fb89a',
   shadow: 'rgb(0 0 0 / 55%)',
+  ...village,
 };
 
 export const BUILT_IN_THEMES: ThemeDef[] = [
