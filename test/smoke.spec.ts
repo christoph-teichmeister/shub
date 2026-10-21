@@ -1129,12 +1129,19 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await time.getByRole('button', { name: 'Day' }).click();
   await expect(map.locator('.tint')).toHaveCount(0);
   await expect(map.locator('.lantern').first()).toBeVisible();
-  await page.screenshot({ path: shot('pr5-day.png'), clip: { x: 0, y: 0, width: 1440, height: 1290 } });
+  // The ground: roads, lane and plaza as autotiles in one canvas.
+  await expect(map.locator('canvas.ground')).toHaveAttribute('data-drawn', '');
+  await page.screenshot({ path: shot('tiles-day.png'), clip: { x: 0, y: 0, width: 1440, height: 1290 } });
+  for (let i = 0; i < 6; i++) await page.getByRole('button', { name: 'Zoom in' }).click();
+  await expect(page.getByText('140 %')).toBeVisible();
+  await map.evaluate((el) => el.scrollTo(700, 850));
+  await page.screenshot({ path: shot('tiles-detail.png'), clip: { x: 0, y: 100, width: 1440, height: 1100 } });
+  await page.getByRole('button', { name: 'Fit' }).click();
   await time.getByRole('button', { name: 'Night' }).click();
   await expect(map.locator('.tint.night')).toHaveCount(1);
   await expect(map.locator('.firefly')).toHaveCount(22);
   await expect(map.locator('.house img[src="/village/house-lit.svg"]')).toHaveCount(5);
-  await page.screenshot({ path: shot('pr5-night.png'), clip: { x: 0, y: 0, width: 1440, height: 1290 } });
+  await page.screenshot({ path: shot('tiles-night.png'), clip: { x: 0, y: 0, width: 1440, height: 1290 } });
   // A window taller than the map: the viewport ends with the map, no untinted grass below or beside it.
   await page.setViewportSize({ width: 1440, height: 1400 });
   const spare = () =>

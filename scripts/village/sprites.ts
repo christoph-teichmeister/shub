@@ -587,27 +587,109 @@ function grass() {
   return g;
 }
 
-function dirt() {
-  const g = new Px(32, 32);
-  const r = rng(5);
-  for (let y = 0; y < 32; y++)
-    for (let x = 0; x < 32; x++) {
-      const v = r.random();
-      g.set(x, y, v < 0.6 ? '#b98a58' : v < 0.82 ? '#a87a4a' : '#c99a64');
-    }
-  for (let i = 0; i < 7; i++) {
-    const x = r.randint(1, 29);
-    const y = r.randint(1, 30);
-    g.set(x, y, '#7a5a36');
-    g.set(x + 1, y, '#8a6a44');
-    g.set(x, y - 1, '#d8b484');
+// Autotiles for the ground (see web/src/lib/village/tiles.ts): a 4 × 4 atlas of 16 × 16 tiles, tile i for corner
+// mask i (bit 1 NW, 2 NE, 4 SW, 8 SE: the quadrants that are material). Each tile is worked out on a 48 × 48
+// window round it, so the rounding and the edge rings see the neighbouring tiles' material. Outside the material
+// stays transparent: the grass (or, for cobble, the dirt) shows through.
+type Ground = {
+  /** Fill of a material pixel at (x, y) of the 16-pixel repeat. */
+  tex: (x: number, y: number) => string;
+  /** Colour of a material pixel by its distance to the edge (1, 2, …); null keeps the fill. */
+  ring: (d: number, up: boolean, x: number, y: number) => string | null;
+  /** Colour and alpha just outside the edge: south of the material (shadow) or else. */
+  lip: (south: boolean, x: number, y: number) => Pixel;
+};
+
+function autotiles(g: Ground) {
+  const atlas = new Px(64, 64);
+  const N = 48;
+  const disk: Pt[] = [];
+  for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) if (dx * dx + dy * dy <= 26) disk.push([dx, dy]);
+  const morph = (m: boolean[][], all: boolean, raw: (x: number, y: number) => boolean) =>
+    m.map((row, y) =>
+      row.map((_, x) => {
+        const at = ([dx, dy]: Pt) => m[y + dy]?.[x + dx] ?? raw(x + dx, y + dy);
+        return all ? disk.every(at) : disk.some(at);
+      }),
+    );
+  for (let mask = 1; mask < 16; mask++) {
+    const raw = (x: number, y: number) => !!((mask >> (+(x >= N / 2) + 2 * +(y >= N / 2))) & 1);
+    let m = Array.from({ length: N }, (_, y) => Array.from({ length: N }, (_, x) => raw(x, y)));
+    // Closing rounds the inner corners, opening the outer ones.
+    m = morph(morph(m, false, raw), true, raw);
+    m = morph(morph(m, true, raw), false, raw);
+    const on = (x: number, y: number) => m[y]?.[x] ?? raw(x, y);
+    /** Steps to the nearest pixel off the material (up to 4). */
+    const dist = (x: number, y: number) => {
+      for (let d = 1; d < 4; d++)
+        for (let k = -d; k <= d; k++)
+          if (!on(x + k, y - d) || !on(x + k, y + d) || !on(x - d, y + k) || !on(x + d, y + k)) return d;
+      return 4;
+    };
+    const ox = (mask % 4) * 16;
+    const oy = Math.floor(mask / 4) * 16;
+    for (let y = 16; y < 32; y++)
+      for (let x = 16; x < 32; x++) {
+        const [tx, ty] = [x - 16, y - 16];
+        if (on(x, y)) {
+          const d = dist(x, y);
+          const up = !on(x, y - d) || !on(x - d, y);
+          const [gx, gy] = [mod(tx + 8, 16), mod(ty + 8, 16)];
+          atlas.set(ox + tx, oy + ty, g.ring(d, up, gx, gy) ?? g.tex(gx, gy));
+        } else if (on(x + 1, y) || on(x - 1, y) || on(x, y + 1) || on(x, y - 1)) {
+          const px = g.lip(on(x, y - 1), mod(tx + 8, 16), mod(ty + 8, 16));
+          if (px) atlas.set(ox + tx, oy + ty, ...px);
+        }
+      }
   }
-  return g;
+  return atlas;
 }
 
-function cobble() {
-  const g = new Px(16, 16);
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) g.set(x, y, '#6a6458');
+/** A 16 × 16 repeat of seeded noise from a palette of [colour, cumulative chance]. */
+function noise(seed: number, pal: [string, number][]) {
+  const r = rng(seed);
+  return Array.from({ length: 16 }, () =>
+    Array.from({ length: 16 }, () => {
+      const v = r.random();
+      return pal.find(([, p]) => v < p)![0];
+    }),
+  );
+}
+
+function dirtTiles() {
+  const t = noise(5, [
+    ['#b98a58', 0.6],
+    ['#a87a4a', 0.82],
+    ['#c99a64', 1],
+  ]);
+  const r = rng(6);
+  for (let i = 0; i < 2; i++) {
+    const [x, y] = [r.randint(1, 13), r.randint(1, 14)];
+    t[y][x] = '#7a5a36';
+    t[y][x + 1] = '#8a6a44';
+    t[y - 1][x] = '#d8b484';
+  }
+  return autotiles({
+    tex: (x, y) => t[y][x],
+    // The rim: now and then a grass blade over the edge, else a dark line; a shadow under the grass above.
+    ring: (d, up, x, y) =>
+      d === 1
+        ? (x * 5 + y * 3) % 7 === 0
+          ? '#4f8f32'
+          : '#5a3c22'
+        : d === 2
+          ? up
+            ? '#8a6040'
+            : '#9e7046'
+          : d === 3 && up
+            ? '#a87a4a'
+            : null,
+    lip: (_s, x, y) => [(x * 5 + y * 3) % 7 === 0 ? '#7cc04a' : '#3a7024', 1],
+  });
+}
+
+function cobbleTiles() {
+  const t = Array.from({ length: 16 }, () => Array<string>(16).fill('#5e584c'));
   for (const [x0, y0, x1, y1] of [
     [1, 1, 7, 6],
     [9, 1, 14, 5],
@@ -615,10 +697,15 @@ function cobble() {
     [7, 7, 14, 14],
   ])
     for (const [x, y] of rrectPts(x0, y0, x1, y1, 2)) {
-      const t = 0.8 - ((y - y0) / (y1 - y0 + 1)) * 0.5;
-      g.set(x, y, rampPick(['#8a8478', '#a8a294', '#c4bcaa', '#d8d0bc'], t));
+      const v = 0.8 - ((y - y0) / (y1 - y0 + 1)) * 0.5;
+      t[y][x] = rampPick(['#8a8478', '#a8a294', '#c4bcaa', '#d8d0bc'], v);
     }
-  return g;
+  return autotiles({
+    tex: (x, y) => t[y][x],
+    // A curb: dark outline, a light kerb stone, its shadow.
+    ring: (d, up) => (d === 1 ? '#34302a' : d === 2 ? (up ? '#d8d0bc' : '#b4ad9c') : d === 3 ? '#7a7468' : null),
+    lip: (south) => (south ? ['#000000', 0.3] : null),
+  });
 }
 
 function fenceH() {
@@ -1147,8 +1234,8 @@ export function sprites(): Map<string, Px> {
   out.set('rock', rock());
   out.set('flowers', flowers());
   out.set('tile-grass', grass());
-  out.set('tile-dirt', dirt());
-  out.set('tile-cobble', cobble());
+  out.set('tiles-dirt', dirtTiles());
+  out.set('tiles-cobble', cobbleTiles());
   out.set('fence-h', fenceH());
   out.set('fence-v', fenceV());
   out.set('pond', pond());
