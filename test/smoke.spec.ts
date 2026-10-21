@@ -859,7 +859,9 @@ test('a tab menu parks the session with a background check', async ({ page }) =>
   expect(errors).toEqual([]);
 });
 
-test('sessions: sidebar sorts by status, a dragged tab keeps its place in both lists', async ({ page }) => {
+test('sessions: sidebar sorts by status, a dragged tab moves only in the tab bar, a dragged row is pinned on top', async ({
+  page,
+}) => {
   const paused: Session = { ...session, id: 's2', name: 'Paused one', status: 'paused' };
   const working: Session = { ...session, id: 's3', name: 'Working one', status: 'working' };
   const { errors, calls } = await mockApi(page, { '/api/sessions': [session, paused, working] });
@@ -871,8 +873,14 @@ test('sessions: sidebar sorts by status, a dragged tab keeps its place in both l
 
   await tabs.nth(2).dragTo(tabs.nth(0), { targetPosition: { x: 4, y: 8 } });
   await expect(tabs).toHaveText(['Working one', 'MR 2136 review', 'Paused one']);
-  await expect(rows).toHaveText([/Working one/, /MR 2136 review/, /Paused one/]);
-  expect(calls.find((c) => c.path === '/api/sessions/reorder')?.body).toEqual({ positions: { s3: 0 } });
+  await expect(rows).toHaveText([/MR 2136 review/, /Working one/, /Paused one/]);
+  const reorders = () => calls.filter((c) => c.path === '/api/sessions/reorder').map((c) => c.body);
+  expect(reorders()).toEqual([{ positions: { s3: 0, s1: 1, s2: 2 }, tabs: true }]);
+
+  await rows.nth(2).dragTo(rows.nth(0), { targetPosition: { x: 4, y: 2 } });
+  await expect(rows).toHaveText([/Paused one/, /MR 2136 review/, /Working one/]);
+  await expect(tabs).toHaveText(['Working one', 'MR 2136 review', 'Paused one']);
+  expect(reorders()[1]).toEqual({ positions: { s2: 0 }, tabs: false });
   expect(errors).toEqual([]);
 });
 
