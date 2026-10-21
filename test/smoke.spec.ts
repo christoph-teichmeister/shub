@@ -643,6 +643,9 @@ test('worktrees a session created sit under it; a click resumes the conversation
     '/api/sessions/s2/services': [],
   });
   await page.goto('/#/p/ai-portal/s1');
+  // Folded under the session until opened.
+  await expect(page.getByRole('button', { name: /review-3445/ })).toBeHidden();
+  await page.getByRole('button', { name: '3 worktrees' }).click();
   await expect(page.getByRole('button', { name: /review-3445/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /review-3548/ })).toBeDisabled();
   await expect(page.getByRole('button', { name: /review-3511/ })).toContainText('merged');
