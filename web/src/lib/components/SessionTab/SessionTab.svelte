@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Session } from '../../../../../shared/api.ts';
-  import { COMPACT_AT, contextFill, STATUS_LABEL, waitTitle } from '../../status.ts';
+  import { contextFill, STATUS_LABEL, waitTitle } from '../../status.ts';
   import Icon from '../Icon/Icon.svelte';
   import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
@@ -18,7 +18,7 @@
     onhide?: () => void;
     /** The ✕: ends the session. */
     onclose?: () => void;
-    /** The compact chip, shown from COMPACT_AT % context: sends /compact. */
+    /** The compact chip, shown from 160k tokens of context: sends /compact. */
     oncompact?: () => void;
     /** Right-click or the tab's menu button; `at` is where the menu opens. */
     onmenu?: (at: { x: number; y: number }) => void;
@@ -125,7 +125,7 @@
   {#if closing}
     <span class="badge-closing">Closing</span>
   {/if}
-  {#if fill && fill.pct >= COMPACT_AT && oncompact && !closing}
+  {#if fill?.compact && oncompact && !closing}
     <button
       type="button"
       class="compact"
@@ -251,7 +251,7 @@
     color: var(--fg);
   }
 
-  /* Context fill along the bottom edge: quiet until 60 %, then yellow, from 80 % danger. */
+  /* Context fill along the bottom edge: quiet until 120k tokens, then yellow, from 160k danger. */
   .fill {
     position: absolute;
     inset: auto 0 0;

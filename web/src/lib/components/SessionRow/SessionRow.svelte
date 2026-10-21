@@ -91,7 +91,7 @@
     transition: opacity var(--duration-slow) var(--ease-standard);
   }
 
-  /* Context fill along the bottom edge: quiet until 60 %, then yellow, from 80 % danger. */
+  /* Context fill along the bottom edge: quiet until 120k tokens, then yellow, from 160k danger. */
   .fill {
     position: absolute;
     inset: auto 0 0;

@@ -85,7 +85,7 @@ export const TOKEN_GROUPS: { title: string; tokens: { name: TokenName; label: st
       { name: 'fg-2', label: 'Secondary text' },
       { name: 'muted', label: 'Muted text' },
       { name: 'link', label: 'Links' },
-      { name: 'danger', label: 'Errors, close, context from 80 %' },
+      { name: 'danger', label: 'Errors, close, context from 160k' },
     ],
   },
   {
@@ -95,7 +95,7 @@ export const TOKEN_GROUPS: { title: string; tokens: { name: TokenName; label: st
       { name: 'primary-fg', label: 'Text on buttons' },
       { name: 'on-accent', label: 'Text on coloured badges' },
       { name: 'pink', label: 'Pink (logo underscore)' },
-      { name: 'yellow', label: 'Global Claude icon, context from 60 %' },
+      { name: 'yellow', label: 'Global Claude icon, context from 120k' },
       { name: 'purple', label: 'Avatar, accent icons' },
     ],
   },

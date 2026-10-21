@@ -34,7 +34,7 @@
   import SplitView from '../components/SplitView/SplitView.svelte';
   import StatusBadge from '../components/StatusBadge/StatusBadge.svelte';
   import StatusDot from '../components/StatusDot/StatusDot.svelte';
-  import { COMPACT_AT, contextFill, dropPositions, placeSessions, placeTabs, projectBadge } from '../status.ts';
+  import { contextFill, dropPositions, placeSessions, placeTabs, projectBadge } from '../status.ts';
   import { childStart, placeChildren, sessionsIn } from '../children.ts';
   import WorktreeRow from '../components/WorktreeRow/WorktreeRow.svelte';
   import AgentRow from '../components/AgentRow/AgentRow.svelte';
@@ -552,7 +552,7 @@
               ? { id: 'ready', label: 'Stop waiting', description: s.waitingFor }
               : { id: 'wait', label: 'Wait for…' },
           ]),
-      ...(fill && fill.pct >= COMPACT_AT
+      ...(fill?.compact
         ? [
             {
               id: 'compact',
