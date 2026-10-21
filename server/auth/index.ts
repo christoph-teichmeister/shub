@@ -22,7 +22,11 @@ import { closeDeviceSockets } from '../api/upgrade.ts';
 import type { Auth, Services } from '../services.ts';
 import { phoneSetupRoutes } from './tailscale.ts';
 
-export const COOKIE = 'shub_session';
+/**
+ * Browsers keep cookies per host, not per port, so a second shub on the same machine (a test copy on another port)
+ * gets its own cookie name instead of signing the other one out. The default port keeps the plain name.
+ */
+export const cookieName = (port: number): string => (port === 4780 ? 'shub_session' : `shub_session_${port}`);
 const SESSION_MAX_AGE_S = 30 * 24 * 3600;
 const PAIRING_TTL_MS = 5 * 60 * 1000;
 const LAST_SEEN_THROTTLE_MS = 60 * 1000;
@@ -118,6 +122,7 @@ const isLevel = (value: unknown): value is DeviceLevel => DEVICE_LEVELS.includes
 
 export class AuthService implements Auth {
   #ctx: Context;
+  readonly cookie: string;
   #services: Services;
   #tokenFile: string;
   #tokenHash = '';
@@ -129,6 +134,7 @@ export class AuthService implements Auth {
 
   constructor(ctx: Context, services: Services) {
     this.#ctx = ctx;
+    this.cookie = cookieName(ctx.port);
     this.#services = services;
     this.#tokenFile = join(ctx.paths.stateDir, 'token');
   }
@@ -191,7 +197,7 @@ export class AuthService implements Auth {
   }
 
   deviceOf(req: IncomingMessage): DeviceRow | undefined {
-    const session = parseCookies(req.headers.cookie)[COOKIE];
+    const session = parseCookies(req.headers.cookie)[this.cookie];
     if (!session) return undefined;
     const row = this.#db.prepare('SELECT * FROM devices WHERE session_hash = ?').get(sha256(session)) as
       DeviceRow | undefined;
@@ -434,15 +440,13 @@ export class AuthService implements Auth {
 function setSessionCookie(
   req: IncomingMessage,
   res: ServerResponse,
+  name: string,
   value: string,
   maxAge: number | null = SESSION_MAX_AGE_S,
 ): void {
   const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
   const age = maxAge === null ? '' : `; Max-Age=${maxAge}`;
-  res.setHeader(
-    'set-cookie',
-    `${COOKIE}=${encodeURIComponent(value)}; HttpOnly; SameSite=Strict; Path=/${age}${secure}`,
-  );
+  res.setHeader('set-cookie', `${name}=${encodeURIComponent(value)}; HttpOnly; SameSite=Strict; Path=/${age}${secure}`);
 }
 
 /**
@@ -471,14 +475,14 @@ function routes(auth: AuthService, router: Router): void {
     async (req, res) => {
       const body = await req.json<{ token?: unknown; deviceName?: unknown; remember?: unknown }>();
       const { device, session } = auth.login(body.token, deviceName(body, req.raw));
-      setSessionCookie(req.raw, res, session, body.remember === false ? null : SESSION_MAX_AGE_S);
+      setSessionCookie(req.raw, res, auth.cookie, session, body.remember === false ? null : SESSION_MAX_AGE_S);
       return { device };
     },
     { public: true },
   );
   router.add(ROUTES.logout, (req, res) => {
     if (req.caller.deviceId) auth.deleteDevice(req.caller.deviceId);
-    setSessionCookie(req.raw, res, '', 0);
+    setSessionCookie(req.raw, res, auth.cookie, '', 0);
     return { ok: true };
   });
   router.add(ROUTES.me, (req) => {
