@@ -53,6 +53,8 @@ export const app = $state({
   devicesVersion: 0,
   /** Bumped per session on services.changed so views can refetch. */
   servicesVersion: {} as Record<string, number>,
+  /** When this client saw each session's status change (ms); lastActivityAt stands in until then. */
+  statusSince: {} as Record<string, number>,
   /** Sessions on their way out: tab and sidebar row fade and say "Closing" until they are dropped. */
   closing: {} as Record<string, boolean>,
   /** Bumped whenever the theme is re-applied (canvas consumers re-read tokens). */
@@ -229,7 +231,9 @@ function upsert<T extends { id: string }>(list: T[], item: T): void {
 
 function setStatus(sessionId: string, status: SessionStatus): void {
   const s = app.sessions.find((x) => x.id === sessionId);
-  if (s) s.status = status;
+  if (!s || s.status === status) return;
+  s.status = status;
+  app.statusSince[sessionId] = Date.now();
 }
 
 export function handleEvent(e: ServerEvent): void {

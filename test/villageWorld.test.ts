@@ -3,6 +3,10 @@ import { test } from 'node:test';
 import {
   buildWorld,
   inRect,
+  machineSpot,
+  MAX_MACHINES,
+  MAX_TENTS,
+  tentSpot,
   type Point,
   type Rect,
   type VillageProject,
@@ -101,4 +105,22 @@ test('Active only keeps the projects with a session and shrinks the map', () => 
   assert.deepEqual(Object.keys(only.houses).sort(), [...active].sort());
   assert.ok(only.W * only.H < all.W * all.H);
   assert.ok(!only.districts.some((d) => d.id === 'Extra'));
+});
+
+test('tents and machines stay inside their district and off every other house', () => {
+  const w = world();
+  const list = Object.values(w.houses);
+  const box = (x: number, y: number, bw: number, bh: number): Rect => ({ x: x - bw / 2, y: y - bh, w: bw, h: bh });
+  for (const h of list) {
+    const things = [
+      ...Array.from({ length: MAX_TENTS }, (_, i) => tentSpot(h, i)).map((p) => box(p.x, p.y, 56, 44)),
+      ...Array.from({ length: MAX_MACHINES }, (_, i) => machineSpot(h, i)).map((p) => box(p.x, p.y, 36, 36)),
+    ];
+    for (const r of things) {
+      const d = h.district;
+      assert.ok(r.x >= d.x && r.y >= d.y && r.x + r.w <= d.x + d.w && r.y + r.h <= d.y + d.h, h.project.id);
+      for (const o of list)
+        if (o !== h) assert.ok(!overlaps(r, box(o.x, o.y, 96, 92)), `${h.project.id} on ${o.project.id}`);
+    }
+  }
 });

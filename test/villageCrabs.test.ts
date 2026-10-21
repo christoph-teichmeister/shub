@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { SessionStatus } from '../shared/api.ts';
-import { crabSpots, queueOrder, walkQueue, type CrabSession } from '../web/src/lib/village/crabs.ts';
+import { backpack, crabSpots, moodOf, queueOrder, walkQueue, type CrabSession } from '../web/src/lib/village/crabs.ts';
 import { buildWorld, inRect } from '../web/src/lib/village/world.ts';
 
 const world = buildWorld({
@@ -79,4 +79,28 @@ test('keyboard triage walks the queue round, starting at the front', () => {
   assert.equal(walkQueue(q, 'c', 1), 'a');
   assert.equal(walkQueue(q, 'a', -1), 'c');
   assert.equal(walkQueue([], 'a', 1), null);
+});
+
+test('the backpack grows with the context, sweat from 120k, panting from 160k', () => {
+  assert.equal(backpack(undefined), null);
+  assert.equal(backpack(null), null);
+  const at = (tokens: number) => Object.values(backpack(tokens)!);
+  assert.deepEqual(at(0), [0, false, false]);
+  assert.deepEqual(at(79_999), [0, false, false]);
+  assert.deepEqual(at(80_000), [1, false, false]);
+  assert.deepEqual(at(120_000), [2, true, false]);
+  assert.deepEqual(at(160_000), [2, true, true]);
+});
+
+test('impatience in the queue: calm, tap at 5 min, wave at 15, angry at 30', () => {
+  assert.deepEqual([0, 4.9, 5, 14.9, 15, 29.9, 30, 600].map(moodOf), [
+    'calm',
+    'calm',
+    'tap',
+    'tap',
+    'wave',
+    'wave',
+    'angry',
+    'angry',
+  ]);
 });

@@ -82,7 +82,7 @@ export function dropPositions<S extends { id: string; position?: number | null }
 
 // Colour by tokens, not percent: a 1M window would stay quiet far past the point where a session gets slow and
 // expensive. These are 60 % and 80 % of a 200k window.
-const WARN_AT = 120_000;
+export const WARN_AT = 120_000;
 /** From this many tokens on, the tab and the menu offer /compact. */
 export const COMPACT_AT = 160_000;
 

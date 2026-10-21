@@ -23,6 +23,8 @@
     group: string;
     color: string;
     queuePos: number;
+    /** Minutes in line, for a queued crab. */
+    waited: number;
     /** Where it points, in px inside the scaled map; `below` hangs it under the spot instead of above. */
     x: number;
     y: number;
@@ -31,7 +33,8 @@
     actions?: CardAction[];
     onclose?: () => void;
   }
-  let { id, session: s, project, group, color, queuePos, x, y, below, actions, onclose }: Props = $props();
+  let { id, session: s, project, group, color, queuePos, waited, x, y, below, actions, onclose }: Props = $props();
+  const minutes = (m: number) => (m < 120 ? `${m} min` : `${Math.floor(m / 60)} h`);
   const fill = $derived(contextFill(s));
   const agents = $derived(s.agents ?? []);
 </script>
@@ -50,7 +53,7 @@
   <strong class="name"><span class="swatch {s.status}"></span>{s.name}</strong>
   <span class="meta"><span class="pill" style:background={color}>{project}</span>{group}</span>
   <span class="status">
-    {statusLabel(s)}{queuePos >= 0 ? ` · #${queuePos + 1} in line` : ''}
+    {statusLabel(s)}{queuePos >= 0 ? ` · #${queuePos + 1} in line for ${minutes(waited)}` : ''}
   </span>
   {#if s.pendingPermission}<span>Asks: {s.pendingPermission.summary}</span>{/if}
   {#each s.pendingCommands ?? [] as c, i (i)}<code>{c.command}</code>{/each}

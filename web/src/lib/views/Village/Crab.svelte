@@ -1,9 +1,10 @@
 <script lang="ts" module>
-  export type Bubble = { text: string; tone: 'needs-you' | 'your-turn' | 'waiting' | 'paused' };
+  export type Bubble = { text: string; tone: 'needs-you' | 'your-turn' | 'waiting' | 'paused' | 'angry' };
 </script>
 
 <script lang="ts">
-  // One session as a crab on the map: body frame, hat in the project colour, status bubble, subagents as babies.
+  // One session as a crab on the map: body frame, hat in the project colour, status bubble, subagents as babies,
+  // its context as a backpack (sweat, panting) and its impatience in the queue (hops, foot-tap dust).
   import type { Outfit } from '../../village/world.ts';
 
   interface Props {
@@ -20,6 +21,16 @@
     bubble: Bubble | null;
     /** Body sprites of the subagent babies next to it. */
     babies: string[];
+    /** Backpack size, null for none. */
+    pack: 0 | 1 | 2 | null;
+    sweat: boolean;
+    pant: boolean;
+    /** Hop height in px (impatience). */
+    lift: number;
+    /** Foot-tapping in the queue. */
+    dust: boolean;
+    /** The view's step counter, for the drops, puffs and dust. */
+    t: number;
     label: string;
     describedby?: string;
     dim: number;
@@ -40,6 +51,12 @@
     color,
     bubble,
     babies,
+    pack,
+    sweat,
+    pant,
+    lift,
+    dust,
+    t,
     label,
     describedby,
     dim,
@@ -81,8 +98,17 @@
   onblur={onleave}
 >
   {#if sleeping}<img class="lounger" src={url('lounger')} alt="" />{/if}
-  {#if bubble}<span class="bubble {bubble.tone}">{bubble.text}</span>{/if}
-  <span class="body" style:transform="scaleX({dir})">{@render crab(body, 'big')}</span>
+  {#if dust}<span class="dust" style:opacity={t % 3 === 0 ? 0.9 : 0}></span>{/if}
+  <span class="lift" style:transform="translateY({lift}px)">
+    {#if bubble}<span class="bubble {bubble.tone}">{bubble.text}</span>{/if}
+    {#if pack !== null}<img class="pack pack{pack}" src={url(`pack${pack}`)} alt="" />{/if}
+    <span class="body" style:transform="scaleX({dir})">{@render crab(body, 'big')}</span>
+    {#if sweat}
+      <span class="drop" style:top="{6 + ((t * 2) % 14)}px"></span>
+      <span class="drop right" style:top="{6 + ((t * 2 + 7) % 14)}px"></span>
+    {/if}
+    {#if pant}<span class="huff" style:opacity={t % 4 < 2 ? 0.9 : 0.2}></span>{/if}
+  </span>
   {#each babies as baby, i (i)}
     <span class="baby" style:left="calc(var(--village-px) * {-13 - i * 12})">{@render crab(baby, 'small')}</span>
   {/each}
@@ -113,8 +139,72 @@
     border-radius: var(--radius-xs);
   }
 
-  .body {
+  .body,
+  .lift {
+    position: relative;
     display: block;
+  }
+
+  /* Behind the crab, on its back. */
+  .pack {
+    position: absolute;
+    right: calc(var(--village-px) * -4);
+    bottom: calc(var(--village-px) * 7);
+    image-rendering: pixelated;
+  }
+
+  .pack0 {
+    width: calc(var(--village-px) * 10);
+    height: calc(var(--village-px) * 11);
+  }
+
+  .pack1 {
+    width: calc(var(--village-px) * 12);
+    height: calc(var(--village-px) * 13);
+  }
+
+  .pack2 {
+    width: calc(var(--village-px) * 14);
+    height: calc(var(--village-px) * 18);
+  }
+
+  .drop {
+    position: absolute;
+    left: calc(var(--village-px) * 4);
+    width: calc(var(--village-px) * 2);
+    height: calc(var(--village-px) * 3);
+    background: var(--village-sky);
+    box-shadow: 0 0 0 var(--hairline) var(--village-ink);
+  }
+
+  .drop.right {
+    left: auto;
+    right: calc(var(--village-px) * 3);
+  }
+
+  /* Panting: three puffs of breath in front of the mouth. */
+  .huff {
+    position: absolute;
+    top: calc(var(--village-px) * 15);
+    left: calc(var(--village-px) * -6);
+    width: calc(var(--village-px) * 3);
+    height: calc(var(--village-px) * 3);
+    background: var(--village-paper);
+    box-shadow:
+      calc(var(--village-px) * -3) calc(var(--village-px) * -2) 0 var(--village-paper),
+      calc(var(--village-px) * -5) var(--village-px) 0 var(--village-parchment);
+  }
+
+  .dust {
+    position: absolute;
+    bottom: calc(var(--village-px) * -1);
+    left: calc(var(--village-px) * 2);
+    width: calc(var(--village-px) * 3);
+    height: calc(var(--village-px) * 2);
+    background: var(--village-wood);
+    box-shadow:
+      calc(var(--village-px) * 17) 0 0 var(--village-wood),
+      calc(var(--village-px) * 3) calc(var(--village-px) * -2) 0 var(--village-parchment);
   }
 
   .sprite {
@@ -193,5 +283,10 @@
 
   .bubble.paused {
     background: var(--village-parchment);
+  }
+
+  .bubble.angry {
+    background: var(--village-alarm);
+    color: var(--village-paper);
   }
 </style>

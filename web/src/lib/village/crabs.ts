@@ -1,6 +1,7 @@
 // Where each session's crab stands on the map and what it does there. Pure: the view walks the crabs
 // towards these targets on its own clock.
 import type { Session, SessionStatus } from '../../../../shared/api.ts';
+import { COMPACT_AT, WARN_AT } from '../status.ts';
 import type { District, House, World } from './world.ts';
 
 export type CrabSession = Pick<Session, 'id' | 'kind' | 'projectId' | 'status' | 'lastActivityAt'>;
@@ -24,6 +25,24 @@ export interface CrabSpot<S extends CrabSession = CrabSession> {
 export const queued = (status: SessionStatus) => status === 'needs-you' || status === 'your-turn';
 /** These nap on the lounger by their house. */
 export const asleep = (status: SessionStatus) => status === 'paused' || status === 'waiting' || status === 'exited';
+
+/** Context below this many tokens is a small backpack; up to WARN_AT a medium one, from there a big one. */
+export const PACK_AT = 80_000;
+
+/** The backpack a crab carries for its context: size, sweat from WARN_AT, panting from COMPACT_AT. */
+export function backpack(tokens: number | null | undefined): { size: 0 | 1 | 2; sweat: boolean; pant: boolean } | null {
+  if (tokens == null) return null;
+  return {
+    size: tokens < PACK_AT ? 0 : tokens < WARN_AT ? 1 : 2,
+    sweat: tokens >= WARN_AT,
+    pant: tokens >= COMPACT_AT,
+  };
+}
+
+/** How a crab in the queue feels after `minutes` there: a bob, foot-tapping, waving claws, angry jumps. */
+export type Mood = 'calm' | 'tap' | 'wave' | 'angry';
+export const moodOf = (minutes: number): Mood =>
+  minutes >= 30 ? 'angry' : minutes >= 15 ? 'wave' : minutes >= 5 ? 'tap' : 'calm';
 
 /** Sessions that get a crab: Claude sessions and the global Claude, not plain terminals. */
 export const crabSessions = <S extends CrabSession>(sessions: S[]): S[] => sessions.filter((s) => s.kind !== 'shell');

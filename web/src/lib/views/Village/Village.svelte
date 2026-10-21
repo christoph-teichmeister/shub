@@ -10,13 +10,24 @@
   import { app, compact, sendKeys, sessionHref } from '../../stores/state.svelte.ts';
   import { toastError } from '../../stores/toasts.svelte.ts';
   import { contextFill, STATUS_LABEL } from '../../status.ts';
-  import { asleep, crabSessions, crabSpots, queueOrder, walkQueue, type CrabSpot } from '../../village/crabs.ts';
+  import {
+    asleep,
+    backpack,
+    crabSessions,
+    crabSpots,
+    moodOf,
+    queueOrder,
+    walkQueue,
+    type CrabSpot,
+    type Mood,
+  } from '../../village/crabs.ts';
   import { buildWorld, type VillageProject } from '../../village/world.ts';
   import Crab, { type Bubble } from './Crab.svelte';
   import CrabCard, { type CardAction } from './CrabCard.svelte';
   import House from './House.svelte';
   import NewProject from './NewProject.svelte';
   import NewSession from './NewSession.svelte';
+  import Yard from './Yard.svelte';
 
   const STEP_MS = 140;
   const WALK = 8; // px per step
@@ -69,6 +80,47 @@
   });
   const spots = $derived(crabSpots(world, sessions, queue, t));
 
+  // ---------- chime ----------
+  // Off by default; the AudioContext is made on the toggle, since audio needs a user gesture.
+  const CHIME_KEY = 'shub-village-chime';
+  let chime = $state(false);
+  try {
+    chime = localStorage.getItem(CHIME_KEY) === '1';
+  } catch {}
+  let audio: AudioContext | null = null;
+  function beep() {
+    try {
+      audio ??= new AudioContext();
+      void audio.resume();
+      [660, 880].forEach((f, i) => {
+        const o = audio!.createOscillator();
+        const g = audio!.createGain();
+        o.type = 'square';
+        o.frequency.value = f;
+        g.gain.value = 0.035;
+        o.connect(g).connect(audio!.destination);
+        const at = audio!.currentTime + i * 0.11;
+        o.start(at);
+        o.stop(at + 0.09);
+      });
+    } catch {
+      // No audio here: the chime stays silent.
+    }
+  }
+  function toggleChime() {
+    chime = !chime;
+    try {
+      localStorage.setItem(CHIME_KEY, chime ? '1' : '0');
+    } catch {}
+    if (chime) beep();
+  }
+  // A crab joining the line chimes; the line the village opens with does not.
+  let seen: Set<string> | null = null;
+  $effect(() => {
+    if (seen && chime && queue.some((id) => !seen!.has(id))) beep();
+    if (app.ready) seen = new Set(queue);
+  });
+
   // ---------- walking ----------
   type Pos = { x: number; y: number; dir: number; moving: boolean };
   let pos = $state<Record<string, Pos>>({});
@@ -110,21 +162,49 @@
   const projectById = $derived(new Map(app.projects.map((p) => [p.id, p])));
   const dim = (group: string | undefined) => (only && group !== only ? 0.3 : 1);
 
-  function body(c: CrabSpot<Session>, p: Pos, i: number): string {
+  /** Minutes since the status changed: how long a queued crab has been in line. */
+  const waited = (s: Session) =>
+    Math.max(0, Math.floor((Date.now() - (app.statusSince[s.id] ?? Date.parse(s.lastActivityAt))) / 60_000));
+  const moodFor = (c: CrabSpot<Session>, p: Pos): Mood | null =>
+    c.queuePos < 0 || p.moving ? null : moodOf(waited(c.session));
+
+  function body(c: CrabSpot<Session>, p: Pos, i: number, mood: Mood | null): string {
     if (p.moving) return `crab-walk${t % 2}`;
-    if (c.pose === 'work') return `crab-work${Math.floor(t / 2) % 2}`;
+    // Waving claws: the work frames, faster when angry.
+    if (mood === 'wave') return `crab-work${Math.floor(t / 3) % 2}`;
+    if (c.pose === 'work' || mood === 'angry') return `crab-work${Math.floor(t / 2) % 2}`;
     if (c.pose === 'sleep') return 'crab-sleep0';
     return (t + i * 7) % 26 === 0 ? 'crab-blink0' : 'crab-idle0';
   }
 
-  function bubble(status: SessionStatus): Bubble | null {
+  function bubble(status: SessionStatus, mood: Mood | null): Bubble | null {
     const zz = Math.floor(t / 5) % 2 ? 'zZ' : 'z';
+    if (mood === 'angry') return { text: '!!', tone: 'angry' };
     if (status === 'needs-you') return { text: '!', tone: 'needs-you' };
     if (status === 'your-turn') return { text: '...', tone: 'your-turn' };
     if (status === 'waiting') return { text: zz, tone: 'waiting' };
     if (asleep(status)) return { text: zz, tone: 'paused' };
     return null;
   }
+
+  function lift(mood: Mood | null, i: number): number {
+    if (mood === 'tap') return t % 3 === 0 ? -2 : 0;
+    if (mood === 'angry') return t % 6 < 2 ? -6 : 0;
+    if (mood === 'calm') return -Math.round(Math.abs(Math.sin(t * 0.25 + i)) * 2);
+    return 0;
+  }
+
+  // ---------- tents and machines ----------
+  const worktreesOf = $derived(Map.groupBy(app.children, (w) => w.projectId));
+  /** Whose services a house's machines show: its first Claude session (services are per project folder). */
+  const servicesFrom = $derived(
+    new Map(
+      sessions
+        .filter((s) => s.kind === 'claude' && s.projectId)
+        .reverse()
+        .map((s) => [s.projectId!, s.id]),
+    ),
+  );
 
   const label = (c: CrabSpot<Session>) =>
     `${c.session.name}, ${c.house?.project.name ?? 'global Claude'}, ${STATUS_LABEL[c.session.status]}` +
@@ -318,6 +398,13 @@
       title="Only projects with a session"
       onclick={() => (activeOnly = !activeOnly)}>Active only</button
     >
+    <button
+      type="button"
+      class="btn small"
+      aria-pressed={chime}
+      title="A short chime when a crab joins the line"
+      onclick={toggleChime}>Chime</button
+    >
     <div class="row seg" role="group" aria-label="Zoom">
       <button type="button" class="btn small" aria-pressed={zoomSet === null} onclick={() => (zoomSet = null)}
         >Fit</button
@@ -412,6 +499,13 @@
               pop = h.project.id;
             }}
           />
+          <Yard
+            house={h}
+            worktrees={worktreesOf.get(h.project.id) ?? []}
+            sessionId={servicesFrom.get(h.project.id) ?? null}
+            {t}
+            dim={dim(h.district.id)}
+          />
         {/each}
         {#each world.lots as l (l.district.id)}
           <button
@@ -443,18 +537,26 @@
         {#each spots as c, i (c.session.id)}
           {@const p = at(c)}
           {@const outfit = c.district?.outfit ?? 'mayor'}
+          {@const mood = moodFor(c, p)}
+          {@const bag = c.pose === 'sleep' ? null : backpack(c.session.context?.tokens)}
           <Crab
             x={p.x}
             y={p.y}
             dir={c.pose === 'sleep' ? 1 : p.dir}
-            body={body(c, p, i)}
+            body={body(c, p, i, mood)}
             sleeping={c.pose === 'sleep' && !p.moving}
             {outfit}
             color={c.house?.project.color ?? 'transparent'}
-            bubble={bubble(c.session.status)}
+            bubble={bubble(c.session.status, mood)}
             babies={c.pose === 'work' && !p.moving && c.session.status === 'working'
               ? (c.session.agents ?? []).map((_, j) => `crab-walk${(t + j) % 2}`)
               : []}
+            pack={bag?.size ?? null}
+            sweat={!!bag?.sweat}
+            pant={!!bag?.pant}
+            lift={lift(mood, i)}
+            dust={mood === 'tap'}
+            {t}
             label={label(c)}
             describedby={hovered === c.session.id ? 'village-card' : undefined}
             dim={dim(c.district?.id)}
@@ -475,6 +577,7 @@
           group={project?.group ?? 'town hall'}
           color={project?.accent ?? 'transparent'}
           queuePos={card.c.queuePos}
+          waited={waited(card.c.session)}
           x={card.x}
           y={card.y}
           below={card.below}
