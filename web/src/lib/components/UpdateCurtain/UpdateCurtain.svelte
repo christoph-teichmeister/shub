@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { ReleaseNotes } from '../../../../../shared/api.ts';
+  import { api } from '../../stores/api.ts';
   import { app } from '../../stores/state.svelte.ts';
   import { toast } from '../../stores/toasts.svelte.ts';
   import Wordmark from '../Wordmark/Wordmark.svelte';
@@ -33,11 +35,25 @@
       requestAnimationFrame(() =>
         requestAnimationFrame(() => {
           arrived = null;
-          toast(`Updated to shub ${v}.`);
+          void releaseNotes(v).then((notes) =>
+            notes ? toast(`Updated to shub ${v}.`, 'neutral', 0, notes) : toast(`Updated to shub ${v}.`),
+          );
         }),
       ),
     );
   });
+
+  /** Notes of the releases after the version this one replaced, up to `v`; undefined when GitHub cannot be reached. */
+  async function releaseNotes(v: string): Promise<string | undefined> {
+    const releases = await api<ReleaseNotes[]>('changelog').catch(() => undefined);
+    if (!releases?.length) return undefined;
+    const from = app.update?.last?.to === v ? app.update.last.from : null;
+    const at = releases.findIndex((r) => r.version === from);
+    return releases
+      .slice(0, at > 0 ? at : 1)
+      .map((r) => `## ${r.version}\n\n${r.notes || 'No release notes.'}`)
+      .join('\n\n');
+  }
 
   const shown = $derived(version ?? arrived);
 </script>

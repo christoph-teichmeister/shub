@@ -445,6 +445,12 @@
           { id: 1, message: 'Logs of worker sent to MR 2136 review', tone: 'neutral' },
           { id: 2, message: 'Could not reach the server', tone: 'error' },
           { id: 3, message: 'MR 2136 review needs you', tone: 'needs-you' },
+          {
+            id: 4,
+            message: 'Updated to shub 2026.10.1.',
+            tone: 'neutral',
+            details: '## 2026.10.1\n\n### Features\n\n- launcher: add `shub doctor` (#58)',
+          },
         ]}
         ondismiss={() => {}}
       />
