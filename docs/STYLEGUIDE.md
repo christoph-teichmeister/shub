@@ -14,7 +14,7 @@ How the web app looks and how its components are built. Live reference: open `#/
 `web/src/lib/tokens/` is the only place with raw colours and sizes. stylelint rejects hex, `rgb()`, `hsl()` and named colours everywhere else.
 
 - **Theme colours** (`tokens.ts`, `TOKEN_NAMES`): `bg`, `panel`, `raised`, `line`, `line-strong`, `fg`, `fg-2`, `muted`, `primary`, `primary-fg`, `on-accent`, `term-bg`, `selection`, `link`, `danger`, `yellow`, `pink`, `purple`, `status-needs-you`, `status-needs-you-bg`, `status-needs-you-fg`, `status-working`, `status-your-turn`, `shadow`. Built-in themes: `monokai` (default), `dracula`, `neutral-dark`. `applyTheme(theme, overrides)` writes them as `--<name>` on `:root`; custom themes extend a built-in via `base` and may only set these names.
-- **Fixed tokens** (`tokens.css`): brand tiles (`--brand-gitlab`, `--brand-github`, `--svc-*`), spacing, sizes, radii, type, motion, layers.
+- **Fixed tokens** (`tokens.css`): brand tiles (`--svc-*`), spacing, sizes, radii, type, motion, layers.
 
 ### Spacing
 

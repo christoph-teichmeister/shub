@@ -19,7 +19,9 @@
   let oldLoading = false;
 
   type Hit =
-    { kind: 'dormant' | 'pinned'; project: ProjectView } | { kind: 'old'; project: ProjectView; old: OldSession };
+    | { kind: 'dormant' | 'pinned'; project: ProjectView }
+    | { kind: 'old'; project: ProjectView; old: OldSession }
+    | { kind: 'add' };
 
   const q = $derived(query.trim().toLowerCase());
   const matches = (p: ProjectView) =>
@@ -41,12 +43,15 @@
       ...dormant.map((p) => ({ kind: 'dormant' as const, project: p })),
       ...pinned.map((p) => ({ kind: 'pinned' as const, project: p })),
       ...old.slice(0, 20),
+      // The sidebar has no + button any more: adding a project lives here.
+      { kind: 'add' as const },
     ];
   });
   const GROUPS = [
     { kind: 'dormant', title: 'Dormant projects' },
     { kind: 'pinned', title: 'Pinned' },
     { kind: 'old', title: 'Old sessions' },
+    { kind: 'add', title: 'New' },
   ] as const;
 
   // Old sessions are only fetched once a query is typed, one request per project, cached while open.
@@ -106,16 +111,17 @@
   function open(h: Hit) {
     if (h.kind === 'old') return void resume(h);
     close();
-    go('p', h.project.id);
+    if (h.kind === 'add') go('settings', 'project', 'new');
+    else go('p', h.project.id);
   }
 
   function onSearchKey(e: KeyboardEvent) {
     const h = hits[cursor];
     if (e.key === 'ArrowDown') cursor = Math.min(cursor + 1, hits.length - 1);
     else if (e.key === 'ArrowUp') cursor = Math.max(cursor - 1, 0);
-    else if (e.key === 'Enter' && e.altKey && h) void newSession(h.project);
+    else if (e.key === 'Enter' && e.altKey && h && h.kind !== 'add') void newSession(h.project);
     else if (e.key === 'Enter' && h) open(h);
-    else if (e.altKey && e.code === 'KeyP' && h) void pin(h.project);
+    else if (e.altKey && e.code === 'KeyP' && h && h.kind !== 'add') void pin(h.project);
     else return;
     e.preventDefault();
     document.getElementById(`hit-${cursor}`)?.scrollIntoView({ block: 'nearest' });
@@ -174,6 +180,7 @@
       <Kbd keys="Esc" />
     </div>
     <div id="search-results" class="results" role="listbox" aria-label="Results">
+      {#if hits.length === 1}<p class="empty">{q ? 'Nothing found' : 'No dormant projects. Type to search.'}</p>{/if}
       {#each GROUPS as g (g.kind)}
         {@const list = hits.map((h, i) => ({ h, i })).filter((x) => x.h.kind === g.kind)}
         {#if list.length}
@@ -190,7 +197,13 @@
               onclick={(e) => (e.target as HTMLElement).closest('button') || open(h)}
               onkeydown={() => {}}
             >
-              {#if h.kind === 'old'}
+              {#if h.kind === 'add'}
+                <span class="tile" aria-hidden="true"><Icon name="plus" /></span>
+                <span class="text">
+                  <span class="name">Add a project</span>
+                  <span class="sub">Pick a folder on this machine</span>
+                </span>
+              {:else if h.kind === 'old'}
                 <span class="tile" aria-hidden="true"><Icon name="message" /></span>
                 <span class="text">
                   <span class="name"
@@ -216,7 +229,6 @@
           {/each}
         {/if}
       {/each}
-      {#if !hits.length}<p class="empty">{q ? 'Nothing found' : 'No dormant projects. Type to search.'}</p>{/if}
     </div>
     <div class="keys">
       <span><Kbd keys="↑↓" /> move</span>

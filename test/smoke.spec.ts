@@ -156,6 +156,8 @@ test('app shell, wordmark and projects render', async ({ page }) => {
   await expect(nav).toBeVisible();
   await expect(nav.getByLabel('shub, a session needs you')).toBeVisible();
   await expect(nav.getByRole('link', { name: 'ai-portal' })).toBeVisible();
+  // Auto-detected GitLab/GitHub projects show letters, not one shared logo.
+  await expect(nav.getByRole('link', { name: 'ai-portal' }).locator('.tile')).toHaveText('AP');
   await expect(nav.getByRole('link', { name: 'street-tours' })).toHaveCount(0);
   await expect(nav.getByText('1 needs you')).toBeVisible();
   await expect(page).toHaveTitle('(1) shub');
@@ -200,8 +202,8 @@ test('sidebar hides, stays hidden after reload and comes back with Alt B', async
   // The rail keeps the project icons with their status.
   await expect(nav.getByRole('link', { name: /^ai-portal\s+1 needs you/ })).toBeVisible();
   // Everything the open sidebar shows has a place in the rail.
-  await expect(nav.getByRole('link', { name: 'New project' })).toBeVisible();
-  await expect(nav.getByRole('switch', { name: 'Active only' })).toBeVisible();
+  await expect(nav.getByRole('button', { name: /^Search or add project/ })).toBeVisible();
+  await expect(nav.getByRole('button', { name: '1 need you, jump to the next (Alt J)' })).toBeVisible();
   await expect(nav.getByRole('link', { name: /settings$/ })).toBeVisible();
   await page.screenshot({ path: 'test-results/rail.png' });
 
@@ -445,6 +447,11 @@ test('approval dialog and search', async ({ page }) => {
   await page.keyboard.press('Enter');
   await expect(search).toBeHidden();
   await expect(page.getByRole('heading', { name: 'ai-portal', level: 1 })).toBeVisible();
+
+  // Adding a project lives in the search now.
+  await page.keyboard.press('Alt+KeyK');
+  await search.getByRole('option', { name: /Add a project/ }).click();
+  await expect(page).toHaveURL(/#\/settings\/project\/new$/);
   expect(errors).toEqual([]);
 });
 
@@ -682,7 +689,7 @@ test('active group keeps a project for 10 minutes after its last session closes'
   await page.clock.fastForward('10:01');
   await expect(activeGroup.getByRole('group', { name: 'ai-portal' })).toHaveCount(0);
   await expect(activeGroup.getByText('Nothing here')).toBeVisible();
-  await page.getByRole('switch', { name: 'Active only' }).click();
+  await page.getByRole('group', { name: 'Show projects' }).getByRole('button', { name: 'All' }).click();
   await expect(page.getByRole('region', { name: 'Work', exact: true })).toBeVisible();
   await expect(activeGroup).toHaveCount(0);
   expect(errors).toEqual([]);

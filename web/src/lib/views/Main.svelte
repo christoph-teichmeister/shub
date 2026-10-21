@@ -190,8 +190,7 @@
 
   /** What a folded group still shows: who needs you, else what is working. */
   const groupBadge = (projects: ProjectView[]) => projectBadge(projects.flatMap((p) => sessionsOf(p.id)));
-  /** The number in a badge like "3 merged", for the slim rail. */
-  const railCount = (text: string) => /\d+/.exec(text)?.[0] ?? '•';
+  const needsYouTotal = $derived(needsYouCount());
   const dormantCount = $derived(app.projects.filter((p) => p.visibility === 'dormant').length);
 
   // ---------- Worktrees: the open project's worktrees, searchable, with a terminal or Claude in each ----------
@@ -732,36 +731,43 @@
       {#snippet header()}
         <div class="brand">
           <Wordmark accent={project?.accent} {needsYou} />
-          <IconButton
-            label="New project"
-            icon="plus"
-            size="md"
-            variant="outline"
-            href={href('settings', 'project', 'new')}
-          />
+          <button
+            type="button"
+            class="rail-item global"
+            title="Global Claude (Alt G)"
+            aria-expanded={ui.drawer}
+            onclick={() => (ui.drawer = !ui.drawer)}
+          >
+            <span class="global-icon" aria-hidden="true"><Icon name="sparkle" size="sm" weight={2} /></span>
+            <span class="visually-hidden">Global Claude</span>
+            {#if globalSession}<span class="rail-dot"><StatusDot status={globalSession.status} /></span>{/if}
+          </button>
         </div>
         <button type="button" class="search" onclick={() => (ui.search = true)}>
           <Icon name="search" />
-          <span class="grow">Search projects</span>
+          <span class="grow">Search or add project</span>
           <Kbd keys="Alt K" />
         </button>
-        <button type="button" class="global" aria-expanded={ui.drawer} onclick={() => (ui.drawer = !ui.drawer)}>
-          <span class="global-icon" aria-hidden="true"><Icon name="sparkle" size="sm" weight={2} /></span>
-          <span class="grow">Global Claude</span>
-          {#if globalSession}<StatusDot status={globalSession.status} />{/if}
-          <Kbd keys="Alt G" />
-        </button>
-        <button
-          type="button"
-          class="toggle"
-          role="switch"
-          aria-checked={!!app.config?.activeGroup}
-          title="Only projects with a session (kept 10 minutes after the last one closes)"
-          onclick={toggleActiveGroup}
-        >
-          <span class="grow">Active only</span>
-          <span class="switch" aria-hidden="true"></span>
-        </button>
+        <div class="filter">
+          <div class="segments" role="group" aria-label="Show projects">
+            <button
+              type="button"
+              aria-pressed={!app.config?.activeGroup}
+              onclick={() => app.config?.activeGroup && toggleActiveGroup()}>All</button
+            >
+            <button
+              type="button"
+              aria-pressed={!!app.config?.activeGroup}
+              title="Only projects with a session (kept 10 minutes after the last one closes)"
+              onclick={() => app.config?.activeGroup || toggleActiveGroup()}>Active</button
+            >
+          </div>
+          {#if dormantCount}
+            <button type="button" class="dormant" title="Find them with Alt K" onclick={() => (ui.search = true)}
+              >{dormantCount} dormant</button
+            >
+          {/if}
+        </div>
         {#if pendingApprovals > 1}
           <span class="approvals"><StatusBadge text="{pendingApprovals} approvals waiting" tone="needs-you" /></span>
         {/if}
@@ -770,6 +776,7 @@
       {#each pluginSections as section (section.plugin + section.id)}
         <SidebarSection
           title={section.title}
+          defaultCollapsed
           badge={section.content.badge}
           entries={section.content.entries}
           onentry={(entry) => pluginEntry(section.plugin, entry.action, entry.id)}
@@ -858,11 +865,12 @@
       {/if}
 
       {#snippet rail()}
-        <a class="rail-item" title="New project" href={href('settings', 'project', 'new')}><Icon name="plus" /></a>
         <button
           type="button"
           class="rail-item"
-          title={dormantCount ? `Search projects (Alt K) · ${dormantCount} dormant` : 'Search projects (Alt K)'}
+          title={dormantCount
+            ? `Search or add project (Alt K) · ${dormantCount} dormant`
+            : 'Search or add project (Alt K)'}
           onclick={() => (ui.search = true)}
         >
           <Icon name="search" />
@@ -877,16 +885,15 @@
           <span class="global-icon" aria-hidden="true"><Icon name="sparkle" size="sm" weight={2} /></span>
           {#if globalSession}<span class="rail-dot"><StatusDot status={globalSession.status} /></span>{/if}
         </button>
-        <button
-          type="button"
-          class="rail-item"
-          role="switch"
-          aria-checked={!!app.config?.activeGroup}
-          title="Active only"
-          onclick={toggleActiveGroup}
-        >
-          <span class="switch mini" aria-hidden="true"></span>
-        </button>
+        {#if needsYouTotal}
+          <button
+            type="button"
+            class="rail-item rail-next"
+            aria-label="{needsYouTotal} need you, jump to the next (Alt J)"
+            title="Next that needs you (Alt J)"
+            onclick={nextNeedsYou}>{needsYouTotal}</button
+          >
+        {/if}
         {#if pendingApprovals > 1}
           <span class="rail-count" title="{pendingApprovals} approvals waiting">
             <StatusBadge text={String(pendingApprovals)} tone="needs-you" />
@@ -901,7 +908,7 @@
             onclick={toggleSidebar}
           >
             <Icon name="board" />
-            {#if badge}<span class="rail-dot"><StatusBadge text={railCount(badge.text)} tone={badge.tone} /></span>{/if}
+            {#if badge && badge.tone !== 'neutral'}<span class="rail-dot"><StatusDot status={badge.tone} /></span>{/if}
           </button>
         {/each}
         {#each app.config?.activeGroup ? [{ name: 'Active', projects: activeProjects }] : groups as group (group.name)}
@@ -918,7 +925,6 @@
             >
               <ProjectIcon icon={p.resolvedIcon} name={p.name} />
               {#if badge}<span class="rail-dot"><StatusDot status={badge.tone} /></span>{/if}
-              {#if list.length}<span class="rail-sessions" aria-hidden="true">{list.length}</span>{/if}
             </a>
           {/each}
         {/each}
@@ -937,23 +943,24 @@
       {/snippet}
 
       {#snippet footer()}
-        <div class="hints">
-          {#if dormantCount}<span>{dormantCount} dormant projects · find them with Alt K</span>{/if}
-          <span><Kbd keys="Alt J" /> next that needs you · <Kbd keys="Alt ?" /> shortcuts</span>
-        </div>
-        <a class="user" href={href('settings')}>
-          <span class="avatar" aria-hidden="true"
-            >{(app.me?.name ?? 'You').slice(0, 1).toUpperCase()}{#if app.update?.latest}<span class="update-dot"
-              ></span>{/if}</span
+        <div class="footbar">
+          <a class="user" href={href('settings')}>
+            <span class="avatar" aria-hidden="true"
+              >{(app.me?.name ?? 'You').slice(0, 1).toUpperCase()}{#if app.update?.latest}<span class="update-dot"
+                ></span>{/if}</span
+            >
+            {#if app.update?.latest}<span class="visually-hidden">Update available</span>{/if}
+            <span class="grow user-text">
+              <span class="user-name">{app.me?.name ?? 'You'}</span>
+              <span class="user-sub">{app.connected ? 'Connected' : 'Offline, reconnecting'}</span>
+            </span>
+            <Icon name="gear" />
+            <span class="visually-hidden">Settings</span>
+          </a>
+          <button type="button" class="rail-item" title="Shortcuts (Alt ?)" onclick={() => (ui.shortcuts = true)}
+            >?<span class="visually-hidden">Shortcuts</span></button
           >
-          {#if app.update?.latest}<span class="visually-hidden">Update available</span>{/if}
-          <span class="grow user-text">
-            <span class="user-name">{app.me?.name ?? 'You'}</span>
-            <span class="user-sub">{app.connected ? 'Connected' : 'Offline, reconnecting'}</span>
-          </span>
-          <Icon name="gear" />
-          <span class="visually-hidden">Settings</span>
-        </a>
+        </div>
       {/snippet}
     </Sidebar>
   {/snippet}
@@ -1355,8 +1362,7 @@
     margin-right: calc(var(--size-control) + var(--space-2));
   }
 
-  .search,
-  .global {
+  .search {
     display: flex;
     align-items: center;
     gap: var(--space-2-5);
@@ -1371,52 +1377,40 @@
     cursor: pointer;
   }
 
-  .global {
-    background: transparent;
-    color: var(--fg);
-    font-weight: var(--weight-medium);
-  }
-
-  .toggle {
+  .filter {
     display: flex;
     align-items: center;
-    gap: var(--space-2-5);
-    padding: var(--space-1) var(--space-3);
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .segments {
+    display: flex;
+    padding: var(--space-0-5);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+  }
+
+  .segments button,
+  .dormant {
+    padding: var(--space-1) var(--space-2-5);
     border: 0;
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: var(--fg);
-    text-align: left;
+    color: var(--muted);
+    font: inherit;
+    font-size: var(--text-sm);
     cursor: pointer;
   }
 
-  .switch {
-    position: relative;
-    flex: none;
-    width: var(--space-8);
-    height: var(--space-4);
-    border-radius: var(--radius-pill);
-    background: var(--line);
-    transition: background 0.15s;
+  .segments button[aria-pressed='true'] {
+    background: var(--raised);
+    color: var(--fg);
   }
 
-  .switch::after {
-    content: '';
-    position: absolute;
-    top: var(--space-0-5);
-    left: var(--space-0-5);
-    width: calc(var(--space-4) - 2 * var(--space-0-5));
-    height: calc(var(--space-4) - 2 * var(--space-0-5));
-    border-radius: var(--radius-round);
-    background: var(--bg);
-    transition: transform 0.15s;
-  }
-
-  [aria-checked='true'] > .switch {
-    background: var(--primary);
-  }
-
-  [aria-checked='true'] > .switch::after {
-    transform: translateX(calc(var(--space-8) - var(--space-4)));
+  .segments button:hover,
+  .dormant:hover {
+    color: var(--fg);
   }
 
   .global[aria-expanded='true'] {
@@ -1454,13 +1448,15 @@
     display: flex;
   }
 
-  .rail-sessions {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    font-size: var(--text-xs);
-    line-height: 1;
-    color: var(--muted);
+  .rail-next {
+    background: var(--status-needs-you);
+    color: var(--on-accent);
+    font-weight: var(--weight-semibold);
+  }
+
+  .rail-next:hover {
+    background: var(--status-needs-you);
+    filter: brightness(1.1);
   }
 
   .rail-user {
@@ -1469,14 +1465,6 @@
 
   .avatar.offline {
     opacity: 0.5;
-  }
-
-  .switch.mini {
-    width: var(--space-6);
-  }
-
-  [aria-checked='true'] > .switch.mini::after {
-    transform: translateX(calc(var(--space-6) - var(--space-4)));
   }
 
   .rail-group {
@@ -1514,23 +1502,22 @@
     color: var(--muted);
   }
 
-  .hints {
+  .footbar {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-1-5);
-    padding: var(--space-2-5) var(--space-1-5) 0;
+    align-items: center;
+    gap: var(--space-1);
+    padding-top: var(--space-2);
     border-top: var(--hairline) solid var(--line);
-    font-size: var(--text-sm);
-    color: var(--muted);
   }
 
   .user {
+    flex: 1 1 auto;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: var(--space-2-5);
-    padding: var(--space-2);
+    padding: var(--space-1) var(--space-1-5);
     border-radius: var(--radius-md);
-    background: var(--bg);
     color: var(--muted);
     text-decoration: none;
   }

@@ -218,6 +218,11 @@ export const PROJECT_COLORS = [
   { name: 'Blue', value: '#66d9ef' },
   { name: 'Purple', value: '#ae81ff' },
   { name: 'Pink', value: '#f92672' },
+  { name: 'Teal', value: '#4fd6be' },
+  { name: 'Indigo', value: '#8c9cff' },
+  { name: 'Rose', value: '#ff9ec7' },
+  { name: 'Sand', value: '#d4b483' },
+  { name: 'Grey', value: '#b8b8a8' },
 ] as const;
 
 const isToken = (name: string): name is TokenName => (TOKEN_NAMES as readonly string[]).includes(name);
