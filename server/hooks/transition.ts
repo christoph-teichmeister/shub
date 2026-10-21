@@ -34,8 +34,9 @@ export interface Transition {
   /** undefined = leave as is. */
   pendingCommands?: Session['pendingCommands'];
   notify?: { kind: 'yourTurn' } | { kind: 'needsYou'; text: string };
-  /** The turn ended but background work still runs; shub falls back to your-turn if nothing follows. */
-  background?: true;
+  /** The turn ended but background work still runs; shub falls back to your-turn after this many ms
+   *  if nothing follows. */
+  background?: number;
   /** Background shells still running at the end of the turn (0 or undefined: none). */
   shells?: number;
 }
@@ -84,11 +85,14 @@ const ENDLESS_COMMANDS = [
   /\b(tail|journalctl|logs)\b.*\s(-f|--follow)\b/,
   /\bdocker[\s-]compose\s+up\b(?!.*\s(-d|--detach)\b)/,
 ];
-/** Task types that always end on their own. */
+/** Task types that end on their own, unless one hangs or never wakes Claude: they get the long fallback. */
 const ENDING_TASKS = new Set(['subagent', 'workflow']);
 /** Task types that may end (or never do): they get the fallback timer. Any other type (artifact watches,
  *  teammates, remote agents) only listens for events, so Claude is done with the turn. */
 const OPEN_TASKS = new Set(['shell', 'monitor']);
+/** How long a finished turn waits on its background work before shub hands the session back anyway. */
+export const SHELL_FALLBACK_MS = 90_000;
+export const AGENT_FALLBACK_MS = 10 * 60_000;
 
 interface BackgroundTask {
   type?: unknown;
@@ -168,8 +172,8 @@ export function transition(
       // Servers and watchers never end, so they do not count; other shells get the fallback timer.
       // A closing question hands the turn over anyway: Claude waits for the answer, not for the shell.
       const work = endsWithQuestion(payload.last_assistant_message) ? 'none' : backgroundWork(payload.background_tasks);
-      if (work === 'ending') return { status: 'working', pendingPermission: null };
-      if (work === 'open') return { status: 'working', pendingPermission: null, background: true };
+      if (work === 'ending') return { status: 'working', pendingPermission: null, background: AGENT_FALLBACK_MS };
+      if (work === 'open') return { status: 'working', pendingPermission: null, background: SHELL_FALLBACK_MS };
       const shells = runningShells(payload.background_tasks);
       const commands = handedOverCommands(payload.last_assistant_message);
       if (commands.length) {

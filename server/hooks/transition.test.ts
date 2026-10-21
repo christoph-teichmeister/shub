@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { handedOverCommands, newClaudeSessionId, summarizeTool, transition } from './transition.ts';
+import {
+  AGENT_FALLBACK_MS,
+  handedOverCommands,
+  newClaudeSessionId,
+  SHELL_FALLBACK_MS,
+  summarizeTool,
+  transition,
+} from './transition.ts';
 
 test('prompt submit means working and clears a pending question', () => {
   assert.deepEqual(transition('your-turn', 'UserPromptSubmit', { prompt: 'hi' }), {
@@ -21,13 +28,14 @@ test('stop with background tasks still running keeps working, and the idle remin
   assert.deepEqual(transition('working', 'Stop', { background_tasks: [task] }), {
     status: 'working',
     pendingPermission: null,
-    background: true,
+    background: SHELL_FALLBACK_MS,
   });
   assert.equal(transition('working', 'Stop', { background_tasks: [] })?.status, 'your-turn');
   const agent = { id: 'a1', type: 'subagent', status: 'running', description: 'code-review' };
   assert.deepEqual(transition('working', 'Stop', { background_tasks: [agent] }), {
     status: 'working',
     pendingPermission: null,
+    background: AGENT_FALLBACK_MS,
   });
   assert.equal(transition('working', 'Notification', { notification_type: 'idle_prompt' }), null);
 });
@@ -37,11 +45,12 @@ test('watches and other listening tasks do not keep a finished turn working', ()
   const mate = { id: 't1', type: 'teammate', status: 'running', description: 'reviewer' };
   assert.equal(transition('working', 'Stop', { background_tasks: [watch, mate] })?.status, 'your-turn');
   const monitor = { id: 'm1', type: 'monitor', status: 'running', description: 'CI' };
-  assert.equal(transition('working', 'Stop', { background_tasks: [watch, monitor] })?.background, true);
+  assert.equal(transition('working', 'Stop', { background_tasks: [watch, monitor] })?.background, SHELL_FALLBACK_MS);
   const agent = { id: 'a1', type: 'subagent', status: 'running', description: 'code-review' };
   assert.deepEqual(transition('working', 'Stop', { background_tasks: [watch, agent] }), {
     status: 'working',
     pendingPermission: null,
+    background: AGENT_FALLBACK_MS,
   });
 });
 
@@ -81,7 +90,11 @@ test('servers and watchers in the background do not hold the turn', () => {
     assert.equal(t?.shells, 1, command);
   }
   for (const command of ['npm test', 'npx vite build', 'npm ci --include=dev', 'docker compose up -d', 'pytest']) {
-    assert.equal(transition('working', 'Stop', { background_tasks: [shell(command)] })?.background, true, command);
+    assert.equal(
+      transition('working', 'Stop', { background_tasks: [shell(command)] })?.background,
+      SHELL_FALLBACK_MS,
+      command,
+    );
   }
 });
 

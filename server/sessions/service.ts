@@ -43,6 +43,7 @@ const MIGRATIONS = [
   'ALTER TABLE sessions ADD COLUMN position INTEGER',
   `ALTER TABLE sessions ADD COLUMN pending_commands TEXT`,
   'ALTER TABLE sessions ADD COLUMN shells INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE sessions ADD COLUMN background_until INTEGER',
 ];
 const WAIT_EVERY_MIN = 5;
 
@@ -70,8 +71,6 @@ const RECONCILE_MS = 3000;
 const RESTORE_GAP_MS = 4000;
 /** After SessionStart, until Claude's input box takes keys. */
 const STARTED_GAP_MS = 1500;
-/** A background shell may never end (dev server, watcher): after this long without a hook, hand the session back. */
-const BACKGROUND_FALLBACK_MS = 90_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface Row {
@@ -91,6 +90,8 @@ interface Row {
   pending_permission: string | null;
   pending_commands: string | null;
   shells: number;
+  /** Epoch ms: a turn that ended on background work is handed back then if no hook came first. */
+  background_until: number | null;
   token: string | null;
   waiting_for: string | null;
   wait_check: string | null;
@@ -144,8 +145,6 @@ export class SessionsService implements Sessions {
   #waitChecker: WaitChecker;
   /** Sessions whose background check is running right now. */
   #checking = new Set<string>();
-  /** Sessions whose turn ended with background work running, and since when. In memory: lost on restart. */
-  #background = new Map<string, number>();
   #tmux!: Tmux;
   #binDir: string;
   #shellRc: string;
@@ -465,25 +464,24 @@ export class SessionsService implements Sessions {
     status: SessionStatus,
     pendingPermission?: Session['pendingPermission'],
     pendingCommands?: Session['pendingCommands'],
-    background = false,
+    background = 0,
     shells = 0,
   ): void {
     const session = this.get(id);
     if (!session || session.status === 'exited') return;
-    if (background) this.#background.set(id, Date.now());
-    else this.#background.delete(id);
     const keep = status === 'needs-you';
     const pending = pendingPermission !== undefined ? pendingPermission : keep ? session.pendingPermission : null;
     const commands = pendingCommands !== undefined ? pendingCommands : keep ? session.pendingCommands : null;
     this.#db
       .prepare(
-        'UPDATE sessions SET status = ?, pending_permission = ?, pending_commands = ?, shells = ?, last_activity_at = ? WHERE id = ?',
+        'UPDATE sessions SET status = ?, pending_permission = ?, pending_commands = ?, shells = ?, background_until = ?, last_activity_at = ? WHERE id = ?',
       )
       .run(
         status,
         pending ? JSON.stringify(pending) : null,
         commands?.length ? JSON.stringify(commands) : null,
         shells,
+        background ? Date.now() + background : null,
         now(),
         id,
       );
@@ -692,10 +690,11 @@ export class SessionsService implements Sessions {
   }
 
   /** Claude or the shell exited on its own: the tmux session is gone. Also starts due wait checks and hands
-   *  back sessions whose background work has run past BACKGROUND_FALLBACK_MS. */
+   *  back sessions whose background work has run past its fallback (kept in the db, so it survives a restart). */
   reconcile(at = Date.now()): void {
-    for (const [id, since] of this.#background) {
-      if (at - since < BACKGROUND_FALLBACK_MS) continue;
+    for (const { id } of this.#rows().filter(
+      (r) => r.background_until !== null && r.background_until <= at && !this.#restorable.has(r.id),
+    )) {
       const waiting = !!this.get(id)?.waitingFor;
       this.setStatus(id, waiting ? 'waiting' : 'your-turn', null);
       const session = this.get(id);
