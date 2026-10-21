@@ -254,3 +254,25 @@ test('queue crabs stand apart and clear of your name plate', () => {
     for (let i = 1; i < w.slots.length; i++) assert.ok(w.slots[i - 1][1] - w.slots[i][1] >= 52, `slot ${i} spacing`);
   }
 });
+
+test('every spur ends in a gate: an opening in the fence, inside the fence span, with path tiles either side', () => {
+  each((w, n) => {
+    assert.deepEqual(
+      w.gates,
+      w.districts.map((d) => d.gate),
+    );
+    for (const d of w.districts) {
+      const [gx, gy] = d.gate;
+      assert.equal(gx % TILE, 0);
+      assert.ok(gy === d.y || gy === d.y + d.h, `${n} groups: ${d.id} gate is on a horizontal fence`);
+      assert.ok(gx - TILE > d.x && gx + TILE < d.x + d.w, `${n} groups: ${d.id} gate within the fence span`);
+      // The two path columns just outside the fence; the spur does not stop short of it or end beside it.
+      const out = gy === d.y ? gy / TILE - 1 : gy / TILE;
+      for (const c of [gx / TILE - 1, gx / TILE])
+        assert.ok(cellAt(w.ground, c, out), `${n} groups: ${d.id} spur at ${c}`);
+      // Nothing of the fence line is path elsewhere: every spur cell on that row belongs to a gate.
+      for (let c = d.x / TILE; c < (d.x + d.w) / TILE; c++)
+        if (cellAt(w.ground, c, out)) assert.ok(c === gx / TILE - 1 || c === gx / TILE, `${n} groups: stray path ${c}`);
+    }
+  });
+});

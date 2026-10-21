@@ -22,8 +22,9 @@
     type Mood,
   } from '../../village/crabs.ts';
   import { CHEER_STEPS, cheerFrame, isDark, timeOfDay, TIMES, type TimeOfDay } from '../../village/ambience.ts';
-  import { autotiles, LAYERS } from '../../village/tiles.ts';
   import { clampPan, clampZoom, fitWorld, zoomAt, type Pan } from '../../village/camera.ts';
+  import { findPath, goalKey } from '../../village/path.ts';
+  import { autotiles, LAYERS, TILE } from '../../village/tiles.ts';
   import { buildWorld, type Point, type VillageProject } from '../../village/world.ts';
   import Ambience from './Ambience.svelte';
   import Crab, { type Bubble } from './Crab.svelte';
@@ -153,6 +154,8 @@
   // ---------- walking ----------
   type Pos = { x: number; y: number; dir: number; moving: boolean };
   let pos = $state<Record<string, Pos>>({});
+  /** Route per crab: the waypoints still to walk, the goal tile they were made for. */
+  const routes = new Map<string, { goal: number; world: unknown; pts: Point[] }>();
   const at = (c: CrabSpot<Session>): Pos => (!still && pos[c.session.id]) || { x: c.x, y: c.y, dir: 1, moving: false };
 
   function step() {
@@ -170,16 +173,29 @@
           : { x: c.x, y: c.y, dir: 1, moving: false };
         continue;
       }
-      const dx = c.x - p.x;
-      const dy = c.y - p.y;
-      const d = Math.hypot(dx, dy);
-      if (d > 0.5) {
-        const s = Math.min(d, WALK);
-        p.x += (dx / d) * s;
-        p.y += (dy / d) * s;
+      // Follow the route along paths and through gates; it is made again when the target moves to another tile.
+      const goal = goalKey(world, c.x, c.y);
+      let r = routes.get(c.session.id);
+      if (!r || r.goal !== goal || r.world !== world) {
+        r = { goal, world, pts: findPath(world, [p.x, p.y], [c.x, c.y]) };
+        routes.set(c.session.id, r);
       }
-      if (Math.abs(dx) > 1) p.dir = dx < 0 ? -1 : 1;
-      p.moving = d > 3;
+      let left = WALK;
+      while (left > 0 && r.pts.length) {
+        const dx = r.pts[0][0] - p.x;
+        const dy = r.pts[0][1] - p.y;
+        const d = Math.hypot(dx, dy);
+        if (Math.abs(dx) > 1) p.dir = dx < 0 ? -1 : 1;
+        if (d <= left) {
+          [p.x, p.y] = r.pts.shift()!;
+          left -= d;
+        } else {
+          p.x += (dx / d) * left;
+          p.y += (dy / d) * left;
+          left = 0;
+        }
+      }
+      p.moving = Math.hypot(c.x - p.x, c.y - p.y) > 3;
     }
   }
   onMount(() => {
@@ -589,10 +605,19 @@
             style:height="{d.h}px"
             style:opacity={dim(d.id)}
           >
-            <span class="fence h top"></span>
-            <span class="fence h bottom"></span>
+            <span class="fence h top" class:gated={d.gate[1] === d.y} style:--gate="{d.gate[0] - d.x + 6}px"></span>
+            <span class="fence h bottom" class:gated={d.gate[1] !== d.y} style:--gate="{d.gate[0] - d.x + 6}px"></span>
             <span class="fence v left"></span>
             <span class="fence v right"></span>
+            {#each [-1, 1] as side (side)}
+              <img
+                class="gatepost"
+                src="/village/gatepost.svg"
+                alt=""
+                style:left="{d.gate[0] - d.x + side * TILE}px"
+                style:top="{d.gate[1] - d.y}px"
+              />
+            {/each}
             <div class="sign">
               <span class="hat">
                 <img src="/village/crab-idle0.svg" alt="" />
@@ -1021,6 +1046,24 @@
     height: calc(var(--village-px) * 14);
     background-image: url('/village/fence-h.svg');
     background-size: calc(var(--village-px) * 16) 100%;
+  }
+
+  .fence.h.gated {
+    /* the gate: a two tile gap, --gate px from the fence's left */
+    mask-image: linear-gradient(
+      90deg,
+      var(--village-wood) calc(var(--gate) - 32px),
+      transparent 0 calc(var(--gate) + 32px),
+      var(--village-wood) 0
+    );
+  }
+
+  .gatepost {
+    position: absolute;
+    z-index: 1;
+    width: calc(var(--village-px) * 8);
+    transform: translate(-50%, -80%);
+    image-rendering: pixelated;
   }
 
   .fence.top {
