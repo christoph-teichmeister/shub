@@ -1318,33 +1318,34 @@
       <label class="field"
         ><span>How can Haiku tell it happened?</span><textarea
           bind:value={waitDraft.check}
-          rows="4"
+          rows="3"
           placeholder="Look at merge request !2213 in ai/ai-portal on GitLab. Done once Kai has written a new comment or approved it after today 11:00."
         ></textarea></label
       >
       <p class="wait-hint">
-        Be exact: where to look (link, or MR / issue number and repo), whose action, what counts as done. Haiku checks
-        it read-only, once right away and then at the interval below, and hands the session back when it happened. Leave
-        it empty to only park the session.
+        Where to look, whose action, what counts as done. Haiku checks read-only, right away and then at the interval.
+        Empty = only park.
       </p>
-      <label class="field"
-        ><span>Check every</span><select bind:value={waitDraft.every}>
-          {#each [15, 30, 60, 120] as m (m)}<option value={m}>{m < 60 ? `${m} minutes` : `${m / 60} h`}</option>{/each}
-        </select></label
-      >
       {#if waitDraft.check.trim()}
-        <label class="field"
-          ><span>When it happened</span><select bind:value={waitDraft.then}>
-            <option value="notify">Notify me</option>
-            <option value="send">Send a prompt to the session</option>
-          </select></label
-        >
+        <div class="wait-row">
+          <label class="field"
+            ><span>Check every</span><select bind:value={waitDraft.every}>
+              {#each [15, 30, 60, 120] as m (m)}<option value={m}>{m < 60 ? `${m} minutes` : `${m / 60} h`}</option
+                >{/each}
+            </select></label
+          >
+          <label class="field"
+            ><span>When it happened</span><select bind:value={waitDraft.then}>
+              <option value="notify">Notify me</option>
+              <option value="send">Send a prompt</option>
+            </select></label
+          >
+        </div>
         {#if waitDraft.then === 'send'}
           <label class="field"><span>Prompt</span><textarea bind:value={waitDraft.onDone} rows="2"></textarea></label>
           <p class="wait-hint">
-            Claude goes on by itself with this prompt (or a /command), in the session's permission mode.
-            <code>{'{summary}'}</code> becomes Haiku's answer. Haiku can be wrong or misled by what it reads: use this for
-            clear yes/no waits (an MR got merged) and keep "Notify me" for waits that need judgment.
+            Claude carries on by itself. <code>{'{summary}'}</code> = Haiku's answer. Haiku can be wrong: use this for clear
+            yes/no waits.
           </p>
         {/if}
       {/if}
@@ -1844,6 +1845,12 @@
     font: inherit;
     font-size: var(--text-base);
     resize: vertical;
+  }
+
+  .wait-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: var(--space-3);
   }
 
   .wait-hint {
