@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, symlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Request, Router } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import type { Services } from '../services.ts';
-import { create, hookSettings, stableAppDir } from './index.ts';
+import { create, hookSettings, stableAppDir, userStatusLine } from './index.ts';
 
 test('session settings hook every event and keep Claude tools off the secrets in stateDir', () => {
   const s = hookSettings('/app', '/home/u/.local/state/shub/') as {
@@ -25,6 +25,46 @@ test('session settings hook every event and keep Claude tools off the secrets in
     'Read(//home/u/.local/state/shub/vapid.json)',
     'Edit(//home/u/.local/state/shub/**)',
   ]);
+});
+
+test("the status line reports to shub and still draws the user's own one", () => {
+  const home = mkdtempSync(join(tmpdir(), 'shub-home-'));
+  const cwd = join(home, 'repo');
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  mkdirSync(join(cwd, '.claude'), { recursive: true });
+  writeFileSync(
+    join(home, '.claude', 'settings.json'),
+    '{"statusLine":{"type":"command","command":"user it\'s","padding":1}}',
+  );
+  writeFileSync(join(cwd, '.claude', 'settings.json'), '{"permissions":{}}');
+  const line = userStatusLine(cwd, home);
+  assert.deepEqual(line, { type: 'command', command: "user it's", padding: 1 });
+  const s = hookSettings('/app', '/state', line) as { statusLine: { command: string; padding: number } };
+  assert.equal(s.statusLine.command, `sh '/app/server/hooks/statusline.sh' 'user it'\\''s'`);
+  assert.equal(s.statusLine.padding, 1);
+  assert.equal((hookSettings('/app', '/state') as typeof s).statusLine.command, `sh '/app/server/hooks/statusline.sh'`);
+});
+
+test('the status line sets the window Claude Code reports', async () => {
+  const set: unknown[] = [];
+  const services = {
+    sessions: {
+      get: () => ({ id: 's1', status: 'working', context: { tokens: 170_000, window: 200_000 } }),
+      setContext: (_id: string, context: unknown) => set.push(context),
+    },
+  } as unknown as Services;
+  let handler!: (req: Request) => Promise<unknown>;
+  const router = { add: (_spec: string, h: typeof handler) => (handler = h) } as unknown as Router;
+  create({} as Context, services).module.routes!(router);
+  const line = (payload: object) =>
+    handler({
+      caller: { id: 'session:s1' },
+      params: { event: 'StatusLine' },
+      json: async () => payload,
+    } as unknown as Request);
+  await line({ context_window: { context_window_size: 1_000_000 } });
+  await line({ context_window: {} });
+  assert.deepEqual(set, [{ tokens: 170_000, window: 1_000_000 }]);
 });
 
 test('hooks of an installed app go through current, so pruning an old version does not break sessions', () => {

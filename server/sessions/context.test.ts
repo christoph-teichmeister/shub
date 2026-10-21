@@ -50,5 +50,10 @@ test('contextFill finds an early model attachment past the tail, and anything ov
   assert.deepEqual(contextFill(file), { tokens: 10_000, window: 1_000_000 });
   assert.deepEqual(contextFill(file, 200_000), { tokens: 10_000, window: 200_000 });
   assert.deepEqual(contextFill(transcript(reply(0, 250_000, 0))), { tokens: 250_000, window: 1_000_000 });
+  // The status line's window beats a model id without "[1m]".
+  assert.deepEqual(contextFill(transcript(model('claude-opus-5-5'), reply(0, 170_000, 0)), 1_000_000), {
+    tokens: 170_000,
+    window: 1_000_000,
+  });
   assert.equal(contextFill(transcript(model('claude-opus-5-5'))), null);
 });

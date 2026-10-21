@@ -1,5 +1,6 @@
 // Claude Code hooks: the per-session settings file and the route the hook script reports to.
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { ROUTES } from '../../shared/api.ts';
 import { HttpError } from '../api/router.ts';
@@ -49,12 +50,31 @@ export function stableAppDir(appDir: string): string {
   return basename(dirname(dir)) === 'versions' && existsSync(current) ? current : dir;
 }
 
+/** The user's own statusLine, from the settings Claude Code would load for `cwd` (the most specific wins). */
+export function userStatusLine(cwd: string, home = homedir()): Record<string, unknown> | undefined {
+  const dir = process.env.CLAUDE_CONFIG_DIR ?? join(home, '.claude');
+  const files = [
+    join(cwd, '.claude', 'settings.local.json'),
+    join(cwd, '.claude', 'settings.json'),
+    join(dir, 'settings.json'),
+  ];
+  for (const file of files) {
+    try {
+      const line = JSON.parse(readFileSync(file, 'utf8')).statusLine;
+      if (line && typeof line === 'object') return line;
+    } catch {
+      // missing or broken: Claude Code skips it too
+    }
+  }
+  return undefined;
+}
+
 /**
  * Content of `--settings <file>`: shub's hooks, so the user's own settings stay untouched, plus deny rules
  * that keep Claude's file tools out of stateDir (access token, client tokens, VAPID key). An Edit rule covers
  * Write too; a separate Write rule never matches and Claude Code warns about it at startup.
  */
-export function hookSettings(appDir: string, stateDir: string): object {
+export function hookSettings(appDir: string, stateDir: string, statusLine?: Record<string, unknown>): object {
   appDir = stableAppDir(appDir);
   const script = shellQuote(join(appDir, 'server', 'hooks', 'report.sh'));
   const hooks: Record<string, object[]> = Object.fromEntries(
@@ -76,7 +96,14 @@ export function hookSettings(appDir: string, stateDir: string): object {
   // stateDir, because pasted images live in <stateDir>/pastes and Claude reads them from there.
   const dir = `/${stateDir.replace(/\/+$/, '')}`;
   const deny = [...['token', 'shub.db*', 'vapid.json'].map((file) => `Read(${dir}/${file})`), `Edit(${dir}/**)`];
-  return { hooks, permissions: { deny } };
+  // The status line is the only place Claude Code tells the real context window; it wraps the user's own one.
+  const own = typeof statusLine?.command === 'string' ? ` ${shellQuote(statusLine.command)}` : '';
+  const line = `sh ${shellQuote(join(appDir, 'server', 'hooks', 'statusline.sh'))}${own}`;
+  return {
+    hooks,
+    permissions: { deny },
+    statusLine: { ...statusLine, type: 'command', command: line },
+  };
 }
 
 export function create(ctx: Context, services: Services): { module: ShubModule } {
@@ -106,6 +133,13 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
           const sessionId = /^session:(.+)$/.exec(req.caller.id)?.[1];
           const session = sessionId ? services.sessions.get(sessionId) : undefined;
           if (!session) throw new HttpError(403, 'hooks only come from shub sessions');
+          if (req.params.event === 'StatusLine') {
+            const window = (await req.json<{ context_window?: { context_window_size?: unknown } }>()).context_window
+              ?.context_window_size;
+            if (session.context && typeof window === 'number' && window > 0)
+              services.sessions.setContext(session.id, { ...session.context, window });
+            return { ok: true };
+          }
           if (!isHookEvent(req.params.event)) {
             if (LAUNCH_HOOK_EVENTS.includes(req.params.event)) return { ok: true };
             throw new HttpError(404, 'unknown hook event');
@@ -122,7 +156,8 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
             // Stop fires before Claude writes its last reply to the transcript: read a moment later.
             // ponytail: fixed delay; a reply flushed later than this shows on the next event.
             setTimeout(() => {
-              const context = readContext(payload.transcript_path, session.context?.window);
+              const known = services.sessions.get(session.id)?.context?.window;
+              const context = readContext(payload.transcript_path, known);
               // /clear starts an empty transcript: no reply yet, so no fill.
               if (context || payload.source === 'clear') services.sessions.setContext(session.id, context);
             }, CONTEXT_DELAY_MS);

@@ -6,6 +6,8 @@
 //   attachment lines: { type: 'model', identity: { modelId: 'claude-opus-5-5[1m]' } } at the start and after every
 //                    compact; the "[1m]" marks the 1M window.
 //   system lines:    { subtype: 'compact_boundary', compactMetadata: { postTokens } } after a /compact.
+// The "[1m]" is missing when the window is the model's default (Opus 5.5 runs 1M as "claude-opus-5-5"), so the
+// window Claude Code reports to the status line wins over this guess.
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import type { ContextFill } from '../../shared/api.ts';
 
@@ -59,13 +61,13 @@ function scan(text: string): { tokens: number | null; window: number | null } {
 }
 
 /**
- * The context fill of a transcript, or null while it has no reply yet. Reads only the tail; the whole file only
- * when the tail holds no model attachment and `knownWindow` is unset (once per session).
+ * The context fill of a transcript, or null while it has no reply yet. `knownWindow` (from the status line) wins
+ * over the transcript's model. Reads only the tail; the whole file only when neither tells the window.
  */
 export function contextFill(file: string, knownWindow?: number): ContextFill | null {
   let { tokens, window } = scan(read(file, TAIL));
   if (tokens === null) return null;
-  if (window === null) window = knownWindow ?? scan(read(file, Infinity)).window ?? WINDOW;
+  window = knownWindow ?? window ?? scan(read(file, Infinity)).window ?? WINDOW;
   // A context past 200k can only be a 1M window.
   if (tokens > WINDOW) window = Math.max(window, WINDOW_1M);
   return { tokens, window };
