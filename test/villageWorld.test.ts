@@ -246,3 +246,11 @@ test('the "+ New project" lot keeps clear of the houses, tents and machines of i
     }
   }
 });
+
+test('queue crabs stand apart and clear of your name plate', () => {
+  for (const activeOnly of [false, true]) {
+    const w = world(activeOnly);
+    assert.ok(w.you.y - w.slots[0][1] >= 140, 'first slot is clear of the plate');
+    for (let i = 1; i < w.slots.length; i++) assert.ok(w.slots[i - 1][1] - w.slots[i][1] >= 52, `slot ${i} spacing`);
+  }
+});
