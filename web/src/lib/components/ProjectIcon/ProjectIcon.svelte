@@ -2,7 +2,7 @@
   import type { ResolvedIcon } from '../../../../../shared/api.ts';
   import Icon from '../Icon/Icon.svelte';
   import { isIconName } from '../Icon/icons.ts';
-  import { LOGOS } from './logos.ts';
+  import { PROJECT_COLORS } from '../../tokens/tokens.ts';
 
   interface Props {
     icon: ResolvedIcon;
@@ -16,36 +16,41 @@
   let failedPath = $state<string>();
   const broken = $derived(icon.kind === 'image' && failedPath === icon.path);
 
+  /** Up to two letters: the first letters of the first two words ("ai-portal" → AP), else the first two. */
+  const letters = $derived.by(() => {
+    const words = name.split(/[\s._-]+/).filter(Boolean);
+    return (words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? '?').slice(0, 2)).toUpperCase();
+  });
+  /** Same colour for the same name on every device, so projects without an own icon stay apart. */
+  const letterColor = $derived(
+    PROJECT_COLORS[[...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 78) % PROJECT_COLORS.length].value,
+  );
+
   const title = $derived(
     broken
       ? `Icon could not be loaded: ${failedPath?.slice(0, 120)}\nUse a direct image URL (e.g. raw.githubusercontent.com, not a github.com/…/blob/ page) from a public source, or a data:image URL.`
-      : icon.kind === 'github'
-        ? 'GitHub (auto-detected)'
-        : icon.kind === 'gitlab'
-          ? 'GitLab (auto-detected)'
-          : icon.kind === 'none'
-            ? undefined
-            : 'Custom icon',
+      : icon.kind === 'image' || icon.kind === 'symbol'
+        ? 'Custom icon'
+        : undefined,
   );
 </script>
 
+<!-- Decoration next to the project name: screen readers read the name, not "AP". -->
 <span
-  class="tile {size} {icon.kind}"
+  class="tile {size}"
   class:broken
+  aria-hidden={broken ? undefined : 'true'}
   {title}
-  style:--tile={icon.kind === 'symbol' ? icon.color : undefined}
+  style:--tile={icon.kind === 'symbol' ? icon.color : icon.kind === 'image' ? undefined : letterColor}
 >
-  {#if icon.kind === 'github' || icon.kind === 'gitlab'}<svg class="logo" viewBox="0 0 24 24" aria-hidden="true"
-      ><path d={LOGOS[icon.kind]} /></svg
-    >
-  {:else if broken}?
+  {#if broken}?
   {:else if icon.kind === 'image' && icon.path}<img src={icon.path} alt="" onerror={() => (failedPath = icon.path)} />
   {:else if icon.kind === 'symbol' && icon.symbol && isIconName(icon.symbol)}<Icon
       name={icon.symbol}
       size={size === 'lg' ? 'lg' : 'sm'}
       weight={1.8}
     />
-  {:else}{(icon.symbol ?? name).slice(0, 1).toUpperCase()}
+  {:else}{letters}
   {/if}
 </span>
 
@@ -83,27 +88,9 @@
     font-size: var(--text-sm);
   }
 
-  .github {
-    background: var(--brand-github);
-  }
-
-  .gitlab {
-    background: var(--brand-gitlab);
-  }
-
-  .none {
-    color: var(--fg);
-  }
-
   .broken {
     color: var(--fg);
     cursor: help;
-  }
-
-  .logo {
-    width: 70%;
-    height: 70%;
-    fill: currentcolor;
   }
 
   img {

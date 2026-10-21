@@ -13,11 +13,13 @@
     /** Plugin entries; rendered as small rows (link when `url`, button when `action`). */
     entries?: Entry[];
     onentry?: (entry: Entry) => void;
+    /** Starts folded until the user opens it (plugin sections: their badge is enough at a glance). */
+    defaultCollapsed?: boolean;
     /** Drop target for dragging projects into this group. */
     ondrop?: (e: DragEvent) => void;
     children?: Snippet;
   }
-  let { title, badge, collapsedBadge, entries, onentry, ondrop, children }: Props = $props();
+  let { title, badge, collapsedBadge, defaultCollapsed = false, entries, onentry, ondrop, children }: Props = $props();
   let over = $state(false);
 
   // Remembered per browser; storage can be missing or throw (private window).
@@ -25,17 +27,18 @@
   let collapsed = $state(false);
   $effect(() => {
     try {
-      collapsed = localStorage.getItem(key) === '1';
+      const stored = localStorage.getItem(key);
+      collapsed = stored === null ? defaultCollapsed : stored === '1';
     } catch {
-      collapsed = false;
+      collapsed = defaultCollapsed;
     }
   });
   const shown = $derived(collapsed ? (collapsedBadge ?? badge) : badge);
   function toggle() {
     collapsed = !collapsed;
     try {
-      if (collapsed) localStorage.setItem(key, '1');
-      else localStorage.removeItem(key);
+      if (collapsed === defaultCollapsed) localStorage.removeItem(key);
+      else localStorage.setItem(key, collapsed ? '1' : '0');
     } catch {
       // not remembered, still toggles
     }

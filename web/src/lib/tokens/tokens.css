@@ -28,8 +28,6 @@
   --shadow: rgb(0 0 0 / 50%);
 
   /* Fixed brand colours (same in every theme) */
-  --brand-gitlab: #fc6d26;
-  --brand-github: #f8f8f2;
   --brand-on-tile: #1e1f1c;
   --qr-paper: #fff;
   --svc-python: #3776ab;
