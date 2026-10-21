@@ -20,6 +20,7 @@ export const childLabel = (w: ChildWorktree): string => (w.busy ? 'working' : w.
 /**
  * Where each child shows: under its creator while that session is live, else under its project.
  * `nested` are the sessions that run in a shown child: they leave the project's top level.
+ * An orphan with a session running in it is left out: that session shows at the top level like any other.
  */
 export function placeChildren(children: ChildWorktree[], sessions: Session[]) {
   const live = new Set(sessions.map((s) => s.id));
@@ -27,9 +28,11 @@ export function placeChildren(children: ChildWorktree[], sessions: Session[]) {
   const orphans = new Map<string, ChildWorktree[]>();
   const nested = new Set<string>();
   for (const w of children) {
+    const inside = sessionsIn(w, sessions);
+    if (!live.has(w.originSessionId) && inside.length) continue;
     const [key, map] = live.has(w.originSessionId) ? [w.originSessionId, byOrigin] : [w.projectId, orphans];
     map.set(key, [...(map.get(key) ?? []), w]);
-    for (const s of sessionsIn(w, sessions)) nested.add(s.id);
+    for (const s of inside) nested.add(s.id);
   }
   return { byOrigin, orphans, nested };
 }

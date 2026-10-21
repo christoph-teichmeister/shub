@@ -37,3 +37,10 @@ test('children sit under their live creator, else under the project; sessions in
   assert.deepEqual(orphans.get('p'), [b]);
   assert.deepEqual([...nested], ['p-2']); // the creator itself and shells stay where they are
 });
+
+test('an orphan someone resumed leaves the closed sessions: its session shows at the top level', () => {
+  const b = child({ path: '/r/wt/b', originSessionId: 'p-gone' });
+  const { orphans, nested } = placeChildren([b], [session('p-4', '/r/wt/b')]);
+  assert.equal(orphans.size, 0);
+  assert.equal(nested.size, 0);
+});
