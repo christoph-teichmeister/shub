@@ -1092,6 +1092,15 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect(page.getByRole('heading', { name: 'Crab Village' })).toBeVisible();
 
   const map = page.getByRole('region', { name: 'Crab village map' });
+  /** Drag the empty grass (top left of the frame) by (dx, dy) with the mouse. */
+  const dragMap = async (dx: number, dy: number) => {
+    const m = (await map.boundingBox())!;
+    await page.mouse.move(m.x + 6, m.y + 6);
+    await page.mouse.down();
+    await page.mouse.move(m.x + 6 + dx / 2, m.y + 6 + dy / 2, { steps: 4 });
+    await page.mouse.move(m.x + 6 + dx, m.y + 6 + dy, { steps: 4 });
+    await page.mouse.up();
+  };
   await expect(map.locator('.crab')).toHaveCount(sessions.length);
   // Needs-you first, then your turn.
   await expect(
@@ -1132,9 +1141,9 @@ test('the crab village draws every session as a crab, queues the ones that need 
   // The ground: roads, lane and plaza as autotiles in one canvas.
   await expect(map.locator('canvas.ground')).toHaveAttribute('data-drawn', '');
   await page.screenshot({ path: shot('tiles-day.png'), clip: { x: 0, y: 0, width: 1440, height: 1290 } });
-  for (let i = 0; i < 6; i++) await page.getByRole('button', { name: 'Zoom in' }).click();
-  await expect(page.getByText('140 %')).toBeVisible();
-  await map.evaluate((el) => el.scrollTo(700, 850));
+  for (let i = 0; i < 15; i++) await page.getByRole('button', { name: 'Zoom in' }).click();
+  await expect(page.getByText('160 %')).toBeVisible();
+  await dragMap(700, 850);
   await page.screenshot({ path: shot('tiles-detail.png'), clip: { x: 0, y: 100, width: 1440, height: 1100 } });
   await page.getByRole('button', { name: 'Fit' }).click();
   await time.getByRole('button', { name: 'Night' }).click();
@@ -1142,23 +1151,50 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect(map.locator('.firefly')).toHaveCount(22);
   await expect(map.locator('.house img[src="/village/house-lit.svg"]')).toHaveCount(5);
   await page.screenshot({ path: shot('tiles-night.png'), clip: { x: 0, y: 0, width: 1440, height: 1290 } });
-  // A window taller than the map: the viewport ends with the map, no untinted grass below or beside it.
+  // The frame fills the window, whatever the map's size, and Fit shows the whole map in it.
   await page.setViewportSize({ width: 1440, height: 1400 });
-  const spare = () =>
-    map.evaluate((el) => {
-      const sized = el.firstElementChild as HTMLElement;
-      return Math.max(el.clientWidth - sized.offsetWidth, el.clientHeight - sized.offsetHeight);
-    });
-  await expect.poll(spare).toBeLessThanOrEqual(0);
+  await page.getByRole('button', { name: 'Fit' }).click();
+  const world = map.locator('.world');
+  const inFrame = async () => {
+    const m = (await map.boundingBox())!;
+    const w = (await world.boundingBox())!;
+    return (
+      w.x >= m.x - 1 && w.y >= m.y - 1 && w.x + w.width <= m.x + m.width + 1 && w.y + w.height <= m.y + m.height + 1
+    );
+  };
+  await expect.poll(inFrame).toBe(true);
   await page.screenshot({ path: shot('strip-night.png') });
-  for (let i = 0; i < 4; i++) await page.getByRole('button', { name: 'Zoom out' }).click();
-  await expect.poll(spare).toBeLessThanOrEqual(0);
   await page.getByRole('button', { name: 'Fit' }).click();
   await time.getByRole('button', { name: 'Day' }).click();
   await page.screenshot({ path: shot('strip-day.png') });
   await time.getByRole('button', { name: 'Now' }).click();
   await expect(time.getByRole('button', { name: 'Now' })).toHaveAttribute('aria-pressed', 'true');
   await page.setViewportSize({ width: 1440, height: 1000 });
+
+  // Camera: a drag pans the map, the wheel zooms around the cursor, a click on a crab still opens its card.
+  await page.getByRole('button', { name: 'Fit' }).click();
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  const origin = async () => (await world.boundingBox())!;
+  const before = await origin();
+  await dragMap(60, 40);
+  const panned = await origin();
+  expect(Math.round(panned.x - before.x)).toBe(60);
+  expect(Math.round(panned.y - before.y)).toBe(40);
+  expect(await map.evaluate((el) => [el.scrollLeft, el.scrollTop])).toEqual([0, 0]);
+  const c0 = (await map.boundingBox())!;
+  await page.mouse.move(c0.x + 300, c0.y + 250);
+  const wb = await origin();
+  const under = { x: (c0.x + 300 - wb.x) / wb.width, y: (c0.y + 250 - wb.y) / wb.height };
+  await page.mouse.wheel(0, -300);
+  await expect.poll(async () => (await origin()).width).toBeGreaterThan(wb.width);
+  const wa = await origin();
+  expect(Math.abs(wa.x + under.x * wa.width - (c0.x + 300))).toBeLessThan(2);
+  expect(Math.abs(wa.y + under.y * wa.height - (c0.y + 250))).toBeLessThan(2);
+  await expect(page.getByRole('button', { name: 'Fit' })).toHaveAttribute('aria-pressed', 'false');
+  await crab2.click();
+  await expect(page.getByRole('dialog', { name: 'Export CSV fix' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Fit' }).click();
 
   // Focus shows the card; Active only boards nothing up here, every project has a crab but haso.
   await crab2.focus();
