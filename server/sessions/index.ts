@@ -7,7 +7,7 @@ import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
 import { buttonPrompt, isSimpleInput } from './launch.ts';
-import { NAMED_KEYS, SessionsService, type SessionsOptions } from './service.ts';
+import { FILE_PASTE_MAX, NAMED_KEYS, SessionsService, type SessionsOptions } from './service.ts';
 import { attachTerminals } from './terminal.ts';
 
 const KINDS: SessionKind[] = ['claude', 'shell', 'global'];
@@ -200,7 +200,8 @@ function routes(sessions: SessionsService, services: Services, router: Router): 
       sessions.pasteText(req.params.id, (await req.body()).toString('utf8'));
       return { ok: true };
     }
-    return { path: sessions.pasteFile(req.params.id, type, await req.body()) };
+    const name = decodeURIComponent(String(req.raw.headers['x-filename'] ?? ''));
+    return { path: sessions.pasteFile(req.params.id, type, await req.body(FILE_PASTE_MAX), name) };
   });
   router.add(ROUTES.sessionLink, async (req) => {
     const decision = services.permissions.decide(req.caller, { kind: 'session.link', sessionId: req.params.id });

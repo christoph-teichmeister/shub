@@ -158,7 +158,7 @@
       return !((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v');
     });
 
-    // Paste and drop go through the server (images become files, their path is typed in).
+    // Paste and drop go through the server (files of any type are saved, their path is typed in).
     const onPaste = (e: ClipboardEvent) => {
       e.preventDefault();
       e.stopImmediatePropagation();

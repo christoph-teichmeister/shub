@@ -22,7 +22,7 @@ export interface Request {
   caller: Caller;
   raw: IncomingMessage;
   json<T = unknown>(): Promise<T>;
-  body(): Promise<Buffer>;
+  body(limit?: number): Promise<Buffer>;
 }
 
 export type Handler = (req: Request, res: ServerResponse) => Promise<unknown> | unknown;

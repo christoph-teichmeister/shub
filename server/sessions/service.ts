@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 import type {
   ClientKind,
   HandedCommand,
@@ -52,7 +52,7 @@ const LIVE: SessionStatus[] = ['new', 'working', 'needs-you', 'your-turn', 'wait
 export const NAMED_KEYS = new Set(['Escape', 'C-c', 'Up', 'Down', 'Tab', 'Enter']);
 const LITERAL_MAX = 2000;
 const TEXT_PASTE_MAX = 1024 * 1024;
-const FILE_PASTE_MAX = 20 * 1024 * 1024;
+export const FILE_PASTE_MAX = 500 * 1024 * 1024;
 const PASTE_TYPES: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -644,12 +644,14 @@ export class SessionsService implements Sessions {
     this.#tmux.paste(tmuxName(id), text);
   }
 
-  /** Saves the file under <stateDir>/pastes and pastes its absolute path (Claude picks up image paths). */
-  pasteFile(id: string, contentType: string, body: Buffer): string {
+  /** Saves any file under <stateDir>/pastes and pastes its absolute path (Claude picks up image paths). */
+  pasteFile(id: string, contentType: string, body: Buffer, name = ''): string {
     this.#requireRunning(id);
-    const ext = PASTE_TYPES[contentType.split(';')[0].trim().toLowerCase()];
-    if (!ext) throw new HttpError(415, 'unsupported file type');
-    if (body.length === 0 || body.length > FILE_PASTE_MAX) throw new HttpError(413, 'file must be 1 byte to 20 MB');
+    const nameExt = extname(name).slice(1).toLowerCase();
+    const ext =
+      PASTE_TYPES[contentType.split(';')[0].trim().toLowerCase()] ??
+      (/^[a-z0-9]{1,10}$/.test(nameExt) ? nameExt : 'bin');
+    if (body.length === 0 || body.length > FILE_PASTE_MAX) throw new HttpError(413, 'file must be 1 byte to 500 MB');
     const dir = join(this.#ctx.paths.stateDir, 'pastes');
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const file = join(dir, `${randomUUID()}.${ext}`);

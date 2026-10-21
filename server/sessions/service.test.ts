@@ -114,7 +114,8 @@ test('paste text and files', async () => {
   const file = svc.pasteFile('p1-1', 'image/png', Buffer.from('png'));
   assert.ok(file.startsWith(join(ctx.paths.stateDir, 'pastes')) && file.endsWith('.png') && existsSync(file));
   await waitFor(() => pane('p1-1').replace(/\n/g, '').includes(file), 'pasted path');
-  assert.throws(() => svc.pasteFile('p1-1', 'application/x-sh', Buffer.from('x')), /unsupported/);
+  assert.ok(svc.pasteFile('p1-1', 'video/mp4', Buffer.from('mp4'), 'clip.MP4').endsWith('.mp4'));
+  assert.ok(svc.pasteFile('p1-1', '', Buffer.from('x'), 'a.sh;rm -rf').endsWith('.bin'));
   assert.throws(() => svc.sendKeys('p1-1', ['x'.repeat(2001)]), /keys must be/);
   svc.sendKeys('p1-1', ['C-c']);
   await waitFor(() => pane('p1-1').trimEnd().endsWith('$'), 'fresh prompt after C-c');

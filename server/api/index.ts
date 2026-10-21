@@ -61,7 +61,7 @@ export function mayRead(caller: Caller, event: ServerEvent): boolean {
 
 function makeRequest(raw: IncomingMessage, path: string, params: Record<string, string>, caller: Caller): Request {
   let body: Promise<Buffer> | undefined;
-  const getBody = () => (body ??= readBody(raw));
+  const getBody = (limit?: number) => (body ??= readBody(raw, limit));
   return {
     method: raw.method ?? 'GET',
     path,
@@ -159,7 +159,7 @@ async function handle(
     if (method === 'OPTIONS') {
       res.writeHead(204, {
         'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE',
-        'access-control-allow-headers': 'authorization, content-type, accept',
+        'access-control-allow-headers': 'authorization, content-type, accept, x-filename',
         'access-control-max-age': '600',
       });
       return void res.end();
