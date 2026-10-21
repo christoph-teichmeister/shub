@@ -760,7 +760,7 @@ test('the tab – hides a session from the tab bar but not the sidebar', async (
   const tab = (name: string) => page.getByRole('tab', { name });
   const row = (name: string) => page.getByRole('link', { name: new RegExp(name) });
 
-  await tab('MR 2136 review').hover(); // the – shows on hover
+  await tab('MR 2136 review').click(); // only the open tab has its buttons
   await page.getByRole('button', { name: 'Hide MR 2136 review tab (stays in the sidebar)' }).click();
   await expect(tab('MR 2136 review')).toHaveCount(0);
   await expect(row('MR 2136 review')).toBeVisible();
