@@ -324,6 +324,16 @@ test('a turn paused on background work falls back to your-turn after its fallbac
   svc.setStatus(s.id, 'working');
   svc.reconcile(Date.now() + 2 * 60_000);
   assert.equal(svc.get(s.id)?.status, 'working', 'a new hook clears the fallback');
+  svc.keepBackground(s.id, 10 * 60_000);
+  svc.reconcile(Date.now() + 2 * 60_000);
+  assert.equal(svc.get(s.id)?.status, 'working', 'no fallback pending: nothing to push');
+  svc.setStatus(s.id, 'working', null, undefined, 90_000);
+  svc.keepBackground(s.id, 10 * 60_000);
+  svc.reconcile(Date.now() + 5 * 60_000);
+  assert.equal(svc.get(s.id)?.status, 'working', 'a busy agent pushes the fallback');
+  svc.reconcile(Date.now() + 11 * 60_000);
+  assert.equal(svc.get(s.id)?.status, 'your-turn');
+  notified.splice(0);
 });
 
 test('a finished turn remembers its running shells until the next status', async () => {

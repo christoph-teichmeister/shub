@@ -541,6 +541,12 @@ export class SessionsService implements Sessions {
     this.#emitUpdated(id);
   }
 
+  keepBackground(id: string, ms: number): void {
+    this.#db
+      .prepare('UPDATE sessions SET background_until = ? WHERE id = ? AND background_until IS NOT NULL')
+      .run(Date.now() + ms, id);
+  }
+
   setAgents(id: string, agents: SubagentRun[]): void {
     const session = this.get(id);
     if (!session || session.status === 'exited') return;
