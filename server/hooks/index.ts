@@ -12,7 +12,14 @@ import { listWorktrees } from '../projects/worktrees.ts';
 import { contextFill } from '../sessions/context.ts';
 import { isPermissionMode } from '../sessions/launch.ts';
 import { claudeDir } from '../sessions/old.ts';
-import { LAUNCH_HOOK_EVENTS, isHookEvent, newClaudeSessionId, nextAgents, transition } from './transition.ts';
+import {
+  AGENT_FALLBACK_MS,
+  LAUNCH_HOOK_EVENTS,
+  isHookEvent,
+  newClaudeSessionId,
+  nextAgents,
+  transition,
+} from './transition.ts';
 
 /** Events after which the transcript has a new usage line or compact boundary. */
 const CONTEXT_EVENTS = new Set<string>(['Stop', 'PostToolUse', 'SessionStart']);
@@ -109,6 +116,8 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
           }
           const agents = nextAgents(session.agents ?? [], req.params.event, payload);
           if (agents) services.sessions.setAgents(session.id, agents);
+          // A subagent's events prove it still works: the fallback only fires after 10 minutes of silence.
+          if (payload.agent_id) services.sessions.keepBackground(session.id, AGENT_FALLBACK_MS);
           if (CONTEXT_EVENTS.has(req.params.event) && !payload.agent_id) {
             // Stop fires before Claude writes its last reply to the transcript: read a moment later.
             // ponytail: fixed delay; a reply flushed later than this shows on the next event.
