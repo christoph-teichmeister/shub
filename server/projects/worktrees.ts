@@ -53,13 +53,43 @@ export async function listWorktrees(dir: string): Promise<Worktree[]> {
   }
 }
 
+/** origin/develop, main and master, those that exist. */
+export async function defaultBases(dir: string): Promise<string[]> {
+  return (
+    await git(
+      dir,
+      'for-each-ref',
+      '--format=%(refname)',
+      'refs/remotes/origin/develop',
+      'refs/remotes/origin/main',
+      'refs/remotes/origin/master',
+    )
+  )
+    .split('\n')
+    .filter(Boolean);
+}
+
+/** What shub saw when a session created the worktree (session_worktrees). */
+export interface Tracked {
+  head_at_creation: string;
+  in_default_at_creation: number;
+}
+
+export interface OverviewOptions {
+  fetch?: boolean;
+  tracked?: Map<string, Tracked>;
+  onlyTracked?: boolean;
+}
+
 export interface Facts {
   active: boolean;
   prunable: boolean;
   locked: boolean;
   dirty: boolean;
   merged: boolean;
-  /** Nothing happened here since it was created: its HEAD reflog only holds the current commit. */
+  /** Nothing happened here since it was created, so being in origin's default branch says nothing: for a tracked
+   *  worktree, HEAD is the one shub first saw and was already in the default branch then; for any other, its HEAD
+   *  reflog only holds the current commit. */
   fresh: boolean;
   gone: boolean;
   unpushed: boolean;
@@ -83,12 +113,13 @@ export function classify(f: Facts): WorktreeState {
  * Every worktree of the repo at `dir` except the main checkout, with its state.
  * `fetch` runs `git fetch --prune` first so squash-merged branches show as remote gone.
  * `activeCwds` are the folders shub sessions run in. Empty when `dir` is no git repository.
+ * `tracked` are the worktrees sessions created (by path); `onlyTracked` leaves the others out.
  */
 export async function worktreeOverview(
   projectId: string,
   dir: string,
   activeCwds: string[],
-  fetch = false,
+  { fetch = false, tracked = new Map(), onlyTracked = false }: OverviewOptions = {},
 ): Promise<WorktreeInfo[]> {
   let entries: Entry[];
   try {
@@ -97,21 +128,10 @@ export async function worktreeOverview(
     return [];
   }
   const [main, ...rest] = entries.filter((e) => !e.bare);
-  const others = rest.filter((e) => e.path !== dir);
+  const others = rest.filter((e) => e.path !== dir && (!onlyTracked || tracked.has(e.path)));
   if (!main || !others.length) return [];
   if (fetch) await git(dir, 'fetch', '--prune', '--quiet').catch(() => {});
-  const bases = (
-    await git(
-      dir,
-      'for-each-ref',
-      '--format=%(refname)',
-      'refs/remotes/origin/develop',
-      'refs/remotes/origin/main',
-      'refs/remotes/origin/master',
-    )
-  )
-    .split('\n')
-    .filter(Boolean);
+  const bases = await defaultBases(dir);
   const gone = new Set(
     (await git(dir, 'for-each-ref', '--format=%(refname:short)\t%(upstream:track)', 'refs/heads'))
       .split('\n')
@@ -127,6 +147,7 @@ export async function worktreeOverview(
           () => false,
         );
       const live = !e.prunable;
+      const first = tracked.get(e.path);
       const [dirty, unpushed, lastCommitAt, mergedInto, fresh] = await Promise.all([
         live
           ? git(e.path, 'status', '--porcelain').then(
@@ -142,13 +163,16 @@ export async function worktreeOverview(
           : false,
         git(dir, 'log', '-1', '--format=%cI', e.head).catch(() => ''),
         Promise.all(bases.map((b) => ok('merge-base', '--is-ancestor', e.head, b))),
-        // A worktree cut from develop without a commit of its own would otherwise count as merged.
-        live
-          ? git(e.path, 'reflog', '--format=%H', 'HEAD').then(
-              (log) => log.split('\n').every((h) => h === e.head),
-              () => false,
-            )
-          : false,
+        // A worktree cut from develop without a commit of its own would otherwise count as merged. The reflog
+        // never lets a detached review checkout (one entry) count as merged, so tracked ones use what shub saw.
+        first
+          ? first.in_default_at_creation === 1 && first.head_at_creation === e.head
+          : live
+            ? git(e.path, 'reflog', '--format=%H', 'HEAD').then(
+                (log) => log.split('\n').every((h) => h === e.head),
+                () => false,
+              )
+            : false,
       ]);
       const state = classify({
         active: activeCwds.some((c) => within(c, e.path)),

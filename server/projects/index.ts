@@ -7,6 +7,7 @@ import {
   terminalSettingsError,
   type Approval,
   type ButtonDef,
+  type ChildWorktree,
   type Config,
   type MainCheckout,
   type Project,
@@ -21,6 +22,15 @@ import { HttpError, requireRight, requireUser, type Caller, type Request, type R
 import type { PermissionAction, Services } from '../services.ts';
 import { importCandidates } from './import.ts';
 import { updateMainCheckout } from './main-checkout.ts';
+import {
+  BUSY_MS,
+  CHILD_MIGRATIONS,
+  childRows,
+  claudeCwds,
+  forgetChild,
+  newestTranscript,
+  type ChildRow,
+} from './children.ts';
 import { listWorktrees, pruneWorktrees, removeWorktree, worktreeOverview } from './worktrees.ts';
 import { isLaunchPermissionMode } from '../sessions/launch.ts';
 
@@ -273,7 +283,9 @@ function projectRoutes(services: Services, router: Router): void {
   // Cleanup section: every project's worktrees with their state. Writes are user only and plain git;
   // projects with a /worktree-close button close through a Claude session instead (web side).
   const sessionCwds = () => services.sessions.list().map((s) => s.cwd);
-  const overview = (p: Project, fetch = false) => worktreeOverview(p.id, p.path, sessionCwds(), fetch);
+  const trackedMap = () => new Map(childRows(services.state).map((r) => [r.worktree_path, r]));
+  const overview = (p: Project, fetch = false) =>
+    worktreeOverview(p.id, p.path, sessionCwds(), { fetch, tracked: trackedMap() });
   router.add(ROUTES.worktrees, async (req) => {
     requireRight(req.caller, 'read');
     const fetch = req.query.get('fetch') === '1';
@@ -283,6 +295,39 @@ function projectRoutes(services: Services, router: Router): void {
     return (await Promise.all(projects.map((p) => overview(p, fetch))))
       .flat()
       .filter((w) => !seen.has(w.path) && seen.add(w.path));
+  });
+
+  // Worktrees sessions created, with what a click does there: resume the newest conversation, or start fresh.
+  router.add(ROUTES.worktreeChildren, async (req): Promise<ChildWorktree[]> => {
+    requireRight(req.caller, 'read');
+    const fetch = req.query.get('fetch') === '1';
+    const live = services.sessions.list();
+    const held = new Set(live.flatMap((s) => (s.claudeSessionId ? [s.claudeSessionId] : [])));
+    const procs = claudeCwds();
+    const byProject = new Map<string, ChildRow[]>();
+    for (const r of childRows(services.state))
+      byProject.set(r.project_id ?? '', [...(byProject.get(r.project_id ?? '') ?? []), r]);
+    const out: ChildWorktree[] = [];
+    for (const [projectId, rows] of byProject) {
+      const p = config.project(projectId);
+      if (!p || !existsSync(p.path)) continue;
+      const tracked = new Map<string, ChildRow>(rows.map((r) => [r.worktree_path, r]));
+      const infos = await worktreeOverview(p.id, p.path, sessionCwds(), { fetch, tracked, onlyTracked: true });
+      // Removed (closed) worktrees leave the list for good.
+      for (const r of rows)
+        if (!infos.some((i) => i.path === r.worktree_path) && !existsSync(r.worktree_path))
+          forgetChild(services.state, r.worktree_path);
+      for (const info of infos) {
+        const newest = newestTranscript(info.path, held);
+        out.push({
+          ...info,
+          originSessionId: tracked.get(info.path)!.origin_session_id,
+          conversation: newest?.claudeSessionId ?? null,
+          busy: procs.has(info.path) || (!!newest && Date.now() - newest.mtime < BUSY_MS),
+        });
+      }
+    }
+    return out;
   });
 
   router.add(ROUTES.worktreeRemove, async (req) => {
@@ -419,6 +464,7 @@ function mainCheckoutUpdates(services: Services): { start(): void; stop(): void 
 }
 
 export function create(_ctx: Context, services: Services): { module: ShubModule } {
+  services.state.migrate('worktrees', CHILD_MIGRATIONS);
   const updates = mainCheckoutUpdates(services);
   return {
     module: {

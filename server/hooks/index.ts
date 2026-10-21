@@ -7,6 +7,7 @@ import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { guard, type GuardInput } from '../projects/main-checkout.ts';
+import { childCandidates, recordChildren } from '../projects/children.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
 import { isPermissionMode } from '../sessions/launch.ts';
 import { HOOK_EVENTS, isHookEvent, newClaudeSessionId, transition } from './transition.ts';
@@ -55,7 +56,7 @@ export function hookSettings(appDir: string, stateDir: string): object {
   return { hooks, permissions: { deny } };
 }
 
-export function create(_ctx: Context, services: Services): { module: ShubModule } {
+export function create(ctx: Context, services: Services): { module: ShubModule } {
   return {
     module: {
       name: 'hooks',
@@ -92,6 +93,12 @@ export function create(_ctx: Context, services: Services): { module: ShubModule 
             if (claudeSessionId) services.sessions.setClaudeSessionId(session.id, claudeSessionId);
             services.sessions.started(session.id);
             return { ok: true };
+          }
+          if (req.params.event === 'PostToolUse' && childCandidates(payload).length) {
+            // Off the hook's path: git may take longer than the hook script waits.
+            void recordChildren(services.state, session.id, services.config.get().projects, payload)
+              .then((added) => added.length && ctx.bus.emit({ type: 'worktrees.changed' }))
+              .catch((err: unknown) => console.warn('shub: recording a worktree failed', err));
           }
           // A session started without a prompt is "Session N" until its first prompt names it.
           const prompt = typeof payload.prompt === 'string' ? payload.prompt.trim() : '';

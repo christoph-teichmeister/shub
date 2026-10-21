@@ -70,6 +70,7 @@ const API: Record<string, unknown> = {
       lastCommitAt: null,
     },
   ],
+  '/api/worktrees/children': [],
   '/api/auth/me': { caller: { kind: 'user', id: 'user' }, device: null },
   '/api/devices': [],
   '/api/phone-setup': {
@@ -612,6 +613,55 @@ test('the Worktrees dialog finds a worktree and opens a terminal in it as its ow
   await expect(dialog).toBeHidden();
   const start = calls.find((c) => c.method === 'POST' && c.path === '/api/sessions');
   expect(start?.body).toMatchObject({ projectId: 'ai-portal', kind: 'shell', cwd: path });
+  expect(errors).toEqual([]);
+});
+
+test('worktrees a session created sit under it; a click resumes the conversation there', async ({ page }) => {
+  const base = '/home/chris/PycharmProjects/work/ai-portal/.claude/worktrees';
+  const child = (name: string, over: object) => ({
+    projectId: 'ai-portal',
+    path: `${base}/${name}`,
+    name,
+    branch: '',
+    state: 'detached',
+    lastCommitAt: null,
+    originSessionId: 's1',
+    conversation: null,
+    busy: false,
+    ...over,
+  });
+  const conversation = '0b0e4c2a-6a39-4d55-9f7e-0c6a1d2c3b4a';
+  const children = [
+    child('review-3445', { conversation }),
+    child('review-3548', { busy: true }),
+    child('review-3511', { state: 'merged' }),
+  ];
+  const resumed: Session = { ...session, id: 's2', name: 'review-3445', cwd: `${base}/review-3445` };
+  const { errors, calls } = await mockApi(page, {
+    '/api/worktrees/children': children,
+    'POST /api/sessions': { status: 200, json: resumed },
+    '/api/sessions/s2/services': [],
+  });
+  await page.goto('/#/p/ai-portal/s1');
+  await expect(page.getByRole('button', { name: /review-3445/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /review-3548/ })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /review-3511/ })).toContainText('merged');
+  await page.getByRole('button', { name: /review-3445/ }).click();
+  const start = calls.find((c) => c.method === 'POST' && c.path === '/api/sessions');
+  expect(start?.body).toEqual({
+    projectId: 'ai-portal',
+    kind: 'claude',
+    cwd: `${base}/review-3445`,
+    name: 'review-3445',
+    resumeClaudeSessionId: conversation,
+  });
+  await expect(page).toHaveURL(/#\/p\/ai-portal\/s2$/);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/#/');
+  // The resumed session now runs in review-3445, so only the other two are dormant.
+  await expect(page.getByRole('heading', { name: 'Worktrees · 2' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /ai-portal · review-3511/ })).toContainText('merged');
   expect(errors).toEqual([]);
 });
 

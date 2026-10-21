@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
+  import type { ChildWorktree } from '../../../../shared/api.ts';
   import BottomPanel from '../components/BottomPanel/BottomPanel.svelte';
   import Button from '../components/Button/Button.svelte';
   import Checkbox from '../components/Checkbox/Checkbox.svelte';
@@ -19,6 +20,7 @@
   import ProjectRow from '../components/ProjectRow/ProjectRow.svelte';
   import ServicesTree from '../components/ServicesTree/ServicesTree.svelte';
   import SessionRow from '../components/SessionRow/SessionRow.svelte';
+  import WorktreeRow from '../components/WorktreeRow/WorktreeRow.svelte';
   import SessionTab from '../components/SessionTab/SessionTab.svelte';
   import Sidebar from '../components/Sidebar/Sidebar.svelte';
   import SidebarSection from '../components/SidebarSection/SidebarSection.svelte';
@@ -78,6 +80,24 @@
     'Terminal',
   ];
   const slug = (s: string) => s.toLowerCase().replaceAll(' ', '-');
+
+  const child = (name: string, over: Partial<ChildWorktree>): ChildWorktree => ({
+    projectId: 'ai-portal',
+    path: `/r/.claude/worktrees/${name}`,
+    name,
+    branch: '',
+    state: 'detached',
+    lastCommitAt: null,
+    originSessionId: 's1',
+    conversation: null,
+    busy: false,
+    ...over,
+  });
+  const CHILDREN = [
+    child('review-3445', { conversation: '0b0e4c2a-6a39-4d55-9f7e-0c6a1d2c3b4a' }),
+    child('review-3548', { busy: true }),
+    child('review-3511', { state: 'merged' }),
+  ];
 </script>
 
 <div class="page">
@@ -233,6 +253,9 @@
                   onmenu={() => {}}
                   onunpin={() => {}}
                 />{/each}
+              {#each CHILDREN as w (w.path)}<div style:padding-left="var(--space-4)">
+                  <WorktreeRow worktree={w} onopen={w.busy ? undefined : () => {}} />
+                </div>{/each}
             </ProjectRow>
             <ProjectRow project={PROJECTS[1]} sessions={[]} href="#/styleguide" settingsHref="#/styleguide" />
             <ProjectRow

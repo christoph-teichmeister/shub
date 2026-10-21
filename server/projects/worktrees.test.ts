@@ -61,7 +61,7 @@ test('worktreeOverview: one state per worktree; removeWorktree keeps work, prune
 
   const states = async (fetch = false) =>
     Object.fromEntries(
-      (await worktreeOverview('p', repo, [join(root, 'busy', 'sub')], fetch)).map((w) => [w.name, w.state]),
+      (await worktreeOverview('p', repo, [join(root, 'busy', 'sub')], { fetch })).map((w) => [w.name, w.state]),
     );
   assert.deepEqual(await states(true), {
     merged: 'merged',
@@ -74,7 +74,7 @@ test('worktreeOverview: one state per worktree; removeWorktree keeps work, prune
     pushed: 'open',
   });
 
-  const list = await worktreeOverview('p', repo, [], false);
+  const list = await worktreeOverview('p', repo, []);
   const pick = (name: string) => list.find((w) => w.name === name)!;
   await assert.rejects(removeWorktree(repo, pick('local')), /not pushed/);
   await assert.rejects(removeWorktree(repo, pick('dirty')), /dirty/);

@@ -1,6 +1,7 @@
 // Reactive app state, loaded over HTTP and kept fresh by the /api/events WebSocket.
 import type {
   Approval,
+  ChildWorktree,
   Config,
   Device,
   DeviceLevel,
@@ -32,6 +33,8 @@ export const app = $state({
   config: null as Config | null,
   projects: [] as ProjectView[],
   sessions: [] as Session[],
+  /** Worktrees sessions created (GET /api/worktrees/children). */
+  children: [] as ChildWorktree[],
   /** A session started from a terminal (`shub claude`): Main jumps there when that terminal is the open tab. */
   jump: null as { from: string; to: Session } | null,
   approvals: [] as Approval[],
@@ -170,6 +173,10 @@ export async function loadConfig(): Promise<void> {
 }
 export const loadProjects = async () => (app.projects = (await guard(api<ProjectView[]>('projects'))) ?? app.projects);
 export const loadSessions = async () => (app.sessions = (await guard(api<Session[]>('sessions'))) ?? app.sessions);
+export const loadChildren = async (fetch = false) =>
+  (app.children =
+    (await guard(api<ChildWorktree[]>('worktreeChildren', { query: fetch ? { fetch: '1' } : undefined }))) ??
+    app.children);
 export const loadApprovals = async () => (app.approvals = (await guard(api<Approval[]>('approvals'))) ?? app.approvals);
 export const loadPlugins = async () => (app.plugins = (await guard(api<PluginInfo[]>('plugins'))) ?? app.plugins);
 /** The server version this page's code came with; another one means an update ran, so reload to get its frontend. */
@@ -199,6 +206,7 @@ export async function loadAll(): Promise<void> {
     loadConfig(),
     loadProjects(),
     loadSessions(),
+    loadChildren(),
     loadApprovals(),
     loadPlugins(),
     loadUpdate(),
@@ -231,6 +239,7 @@ export function handleEvent(e: ServerEvent): void {
     case 'session.status':
       return setStatus(e.sessionId, e.status);
     case 'session.closed':
+      void loadChildren();
       // Also for closes from another device: let the fade-out play before the session goes.
       app.closing[e.sessionId] = true;
       setTimeout(() => {
@@ -250,6 +259,9 @@ export function handleEvent(e: ServerEvent): void {
       return upsert(app.approvals, e.approval);
     case 'services.changed':
       app.servicesVersion[e.sessionId] = (app.servicesVersion[e.sessionId] ?? 0) + 1;
+      return;
+    case 'worktrees.changed':
+      void loadChildren();
       return;
     case 'plugins.changed':
       void loadPlugins();

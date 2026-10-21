@@ -297,6 +297,16 @@ export interface WorktreeInfo {
   lastCommitAt: string | null; // ISO date of HEAD's commit
 }
 
+/** GET /api/worktrees/children: a worktree a Claude session created, shown under that session. */
+export interface ChildWorktree extends WorktreeInfo {
+  /** The shub session that created it; it may have closed since. */
+  originSessionId: string;
+  /** Newest Claude conversation kept for the folder that no live session holds: a click resumes it. */
+  conversation: string | null;
+  /** A Claude still writes there (a headless run): no resume until it is idle. */
+  busy: boolean;
+}
+
 export interface OldSession {
   claudeSessionId: string;
   projectId: string;
@@ -566,6 +576,7 @@ export const ROUTES = {
   worktrees: 'GET /api/worktrees', // ?projectId= one project, ?fetch=1 fetches first -> WorktreeInfo[] (every project without projectId)
   worktreeRemove: 'POST /api/worktrees/remove', // { projectId, path } -> { branchDeleted } (user only, plain git)
   worktreePrune: 'POST /api/worktrees/prune', // { projectId } -> { ok } (user only)
+  worktreeChildren: 'GET /api/worktrees/children', // -> ChildWorktree[] (worktrees sessions created)
 
   sessions: 'GET /api/sessions',
   sessionStart: 'POST /api/sessions', // StartSessionRequest -> Session | { approval: Approval }
@@ -641,6 +652,8 @@ export type ServerEvent =
   | { type: 'plugins.changed' }
   | { type: 'updates.changed' }
   | { type: 'devices.changed' }
+  /** A session created a worktree (GET /api/worktrees/children). */
+  | { type: 'worktrees.changed' }
   | {
       type: 'plugin.action';
       plugin: string;
