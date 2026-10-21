@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { href } from '../../stores/router.svelte.ts';
   import { app } from '../../stores/state.svelte.ts';
   import { toast } from '../../stores/toasts.svelte.ts';
   import Wordmark from '../Wordmark/Wordmark.svelte';
@@ -33,7 +34,10 @@
       requestAnimationFrame(() =>
         requestAnimationFrame(() => {
           arrived = null;
-          toast(`Updated to shub ${v}.`);
+          toast(`Updated to shub ${v}.`, 'neutral', 10_000, {
+            label: 'What changed',
+            href: href('settings', 'updates', 'changelog'),
+          });
         }),
       ),
     );

@@ -860,6 +860,27 @@ test('update curtain stays opaque until the reloaded page has its data', async (
   expect(errors).toEqual([]);
 });
 
+test('the update toast links to the changelog', async ({ page }) => {
+  const { errors } = await mockApi(page, {
+    '/api/updates/changelog': [
+      {
+        version: '2026.10.1',
+        publishedAt: '2026-10-19T14:00:00Z',
+        notes: '### Features\n\n- launcher: add shub doctor',
+      },
+    ],
+  });
+  await page.addInitScript(() => sessionStorage.setItem('shub-updated', '2026.10.1'));
+  await page.goto('/#/');
+  await page.getByRole('link', { name: 'What changed' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Changelog' });
+  await expect(dialog.getByRole('listitem').filter({ hasText: 'launcher: add shub doctor' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/#\/settings\/updates$/);
+  expect(errors).toEqual([]);
+});
+
 test('a tab menu parks the session with a background check', async ({ page }) => {
   const { errors, calls } = await mockApi(page);
   await page.goto('/#/p/ai-portal/s1');

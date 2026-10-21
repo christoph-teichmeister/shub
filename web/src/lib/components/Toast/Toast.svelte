@@ -21,6 +21,9 @@
     <div class="toast {item.tone}">
       <span class="icon"><Icon name={ICON[item.tone]} size="sm" weight={2} /></span>
       <span class="message">{item.message}</span>
+      {#if item.action}
+        <a class="action" href={item.action.href} onclick={() => ondismiss(item.id)}>{item.action.label}</a>
+      {/if}
       <IconButton label="Dismiss" icon="close" size="xs" tone="muted" onclick={() => ondismiss(item.id)} />
       {#if item.ms}
         <!-- The draining line is the timer: it pauses on hover and dismisses when it runs out. -->
@@ -77,6 +80,11 @@
   .message {
     flex: 1 1 auto;
     min-width: 0;
+  }
+
+  .action {
+    flex: none;
+    font-weight: 600;
   }
 
   .timer {

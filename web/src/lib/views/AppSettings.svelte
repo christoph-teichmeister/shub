@@ -365,6 +365,16 @@
     releases = (await api<ReleaseNotes[]>('changelog').catch(toastError)) ?? null;
   }
 
+  /** #/settings/updates/changelog (the "What changed" link of the update toast) opens the changelog. */
+  const changelogLinked = $derived(router.route.name === 'settings' && router.route.rest[1] === 'changelog');
+  $effect(() => {
+    if (changelogLinked) void showChangelog();
+  });
+  function closeChangelog() {
+    releases = null;
+    if (changelogLinked) location.replace(href('settings', 'updates'));
+  }
+
   const update = $derived(app.update);
   /** A failed update, or a switch that waits for a restart; a plain success needs no line. */
   const lastNote = $derived(
@@ -1194,7 +1204,7 @@
   open={!!releases}
   title="Changelog"
   description="What changed in shub {app.update?.current ?? ''} and the releases before it."
-  onclose={() => (releases = null)}
+  onclose={closeChangelog}
 >
   <div class="changelog">
     {#each releases ?? [] as r (r.version)}
