@@ -22,7 +22,7 @@
     type Mood,
   } from '../../village/crabs.ts';
   import { CHEER_STEPS, cheerFrame, isDark, timeOfDay, TIMES, type TimeOfDay } from '../../village/ambience.ts';
-  import { clampPan, clampZoom, fitWorld, zoomAt, type Pan } from '../../village/camera.ts';
+  import { clampPan, clampZoom, fitWorld, minZoom, zoomAt, type Pan } from '../../village/camera.ts';
   import { findPath, goalKey } from '../../village/path.ts';
   import { autotiles, LAYERS, TILE } from '../../village/tiles.ts';
   import { buildWorld, type Point, type VillageProject } from '../../village/world.ts';
@@ -279,27 +279,49 @@
     ({ zoom, pan } = fitWorld(world, vw, vh));
     fitted = true;
   }
+  /** The zoom at which the world just covers the window: no further out, so no bare bar shows. */
+  const minZ = $derived(vw && vh ? minZoom(world, vw, vh) : 0.1);
   /** Zoom around a screen point of the viewport (its centre for the buttons). */
   function zoomTo(next: number, cx = vw / 2, cy = vh / 2) {
-    const r = zoomAt(pan, zoom, next, cx, cy);
+    const r = zoomAt(pan, zoom, next, cx, cy, minZ);
     zoom = r.zoom;
     pan = clampPan(r.pan, zoom, world, vw, vh);
     fitted = false;
   }
   const nudge = (d: number) => zoomTo(Math.round((zoom + d) * 10) / 10);
-  // Fitted follows the window and the map; a free camera only keeps the map in view.
+  // Fitted follows the window and the map; a free camera only keeps the map covering the window.
   $effect(() => {
     if (!vw || !vh) return;
     if (fitted) untrack(fit);
-    else
+    else {
+      const z = clampZoom(
+        untrack(() => zoom),
+        minZ,
+      );
+      zoom = z;
       pan = clampPan(
         untrack(() => pan),
-        untrack(() => zoom),
+        z,
         world,
         vw,
         vh,
       );
+    }
   });
+
+  // ---------- culling ----------
+  // Only what lies in the camera rect plus a margin is rendered (crabs, decoration, ambience). The rect snaps outwards
+  // to a coarse grid, so panning only changes what is drawn once in a while, not on every pointer move.
+  const CULL = 256;
+  const MARGIN = 192;
+  const vx0 = $derived(Math.floor((-pan.x / zoom - MARGIN) / CULL) * CULL);
+  const vy0 = $derived(Math.floor((-pan.y / zoom - MARGIN) / CULL) * CULL);
+  const vx1 = $derived(Math.ceil(((vw - pan.x) / zoom + MARGIN) / CULL) * CULL);
+  const vy1 = $derived(Math.ceil(((vh - pan.y) / zoom + MARGIN) / CULL) * CULL);
+  const view = $derived({ x: vx0, y: vy0, w: vx1 - vx0, h: vy1 - vy0 });
+  const onScreen = (x: number, y: number) => x >= vx0 && x <= vx1 && y >= vy0 && y <= vy1;
+  /** Decoration standing in the view: index and sprite. The far decoration is painted into the ground canvas. */
+  const decor = $derived(world.decor.flatMap((d, i) => (!d.far && onScreen(d.x, d.y) ? [{ d, i }] : [])));
 
   let drag: { id: number; x: number; y: number; px: number; py: number; on: boolean } | null = null;
   let dragged = false;
@@ -475,28 +497,53 @@
   );
 
   // ---------- ground ----------
-  // Roads, lane and plaza: autotiles drawn once per map into a canvas with one pixel per sprite pixel, scaled up
-  // with the map (crisp, no seams, one node; the 140 ms step never touches it).
+  // Roads, lane, plaza, forest floor and water as autotiles, plus the far decoration (everything off the roads and away
+  // from buildings), drawn once per map into a canvas with one pixel per sprite pixel and scaled up with the map (crisp,
+  // no seams, one node; the 140 ms step never touches it). Every sprite is rasterized once into a small canvas first:
+  // thousands of drawImage calls from a canvas are cheap, from an SVG each one would rasterize again.
   let ground = $state<HTMLCanvasElement>();
+  const bitmaps = new Map<string, Promise<HTMLCanvasElement>>();
+  const bitmap = (name: string) => {
+    let b = bitmaps.get(name);
+    if (!b) {
+      b = (async () => {
+        const img = new Image();
+        img.src = `/village/${name}.svg`;
+        await img.decode();
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        c.getContext('2d')?.drawImage(img, 0, 0);
+        return c;
+      })();
+      bitmaps.set(name, b);
+    }
+    return b;
+  };
   $effect(() => {
     const canvas = ground;
     const g = world.ground;
+    const far = world.decor.filter((d) => d.far).sort((a, b) => a.y - b.y);
     if (!canvas) return;
     let gone = false;
-    void Promise.all(
-      LAYERS.map(async (l) => {
-        const img = new Image();
-        img.src = `/village/${l.sprite}.svg`;
-        await img.decode();
-        return { img, tiles: autotiles(g, l.is) };
-      }),
-    ).then((layers) => {
+    void Promise.all([
+      Promise.all(LAYERS.map(async (l) => ({ img: await bitmap(l.sprite), tiles: autotiles(g, l.is) }))),
+      Promise.all([...new Set(far.map((d) => d.sprite))].map(async (n) => [n, await bitmap(n)] as const)),
+    ]).then(([layers, used]) => {
       const ctx = canvas.getContext('2d');
       if (gone || !ctx) return;
+      const t0 = performance.now();
+      ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       for (const { img, tiles } of layers)
         for (const { x, y, mask } of tiles)
           ctx.drawImage(img, (mask % 4) * 16, (mask >> 2) * 16, 16, 16, x / 2, y / 2, 16, 16);
+      const sprites = new Map(used);
+      for (const d of far) {
+        const img = sprites.get(d.sprite)!;
+        ctx.drawImage(img, Math.round((d.x - d.w / 2) / 2), Math.round((d.y - d.h) / 2), img.width, img.height);
+      }
+      canvas.dataset.drawMs = String(Math.round(performance.now() - t0));
       canvas.dataset.drawn = '';
     });
     return () => (gone = true);
@@ -636,7 +683,7 @@
           style:left="{world.pond.x}px"
           style:top="{world.pond.y}px"
         />
-        {#each world.decor as d, i (i)}
+        {#each decor as { d, i } (i)}
           <img
             class="obj"
             src="/village/{d.sprite}.svg"
@@ -698,40 +745,42 @@
         </div>
         {#each spots as c, i (c.session.id)}
           {@const p = at(c)}
-          {@const outfit = c.district?.outfit ?? 'mayor'}
-          {@const mood = moodFor(c, p)}
-          {@const bag = c.pose === 'sleep' ? null : backpack(c.session.context?.tokens)}
-          {@const party = cheer(c.session.id)}
-          <Crab
-            x={p.x}
-            y={p.y}
-            dir={c.pose === 'sleep' ? 1 : p.dir}
-            body={body(c, p, i, mood)}
-            sleeping={c.pose === 'sleep' && !p.moving}
-            {outfit}
-            color={c.house?.project.color ?? 'transparent'}
-            bubble={bubble(c.session.status, mood)}
-            babies={c.pose === 'work' && !p.moving && c.session.status === 'working'
-              ? (c.session.agents ?? []).map((_, j) => `crab-walk${(t + j) % 2}`)
-              : []}
-            pack={bag?.size ?? null}
-            sweat={!!bag?.sweat}
-            pant={!!bag?.pant}
-            lift={party?.hop || lift(mood, i)}
-            dust={mood === 'tap'}
-            confetti={party?.confetti ?? []}
-            {t}
-            label={label(c)}
-            describedby={hovered === c.session.id ? 'village-card' : undefined}
-            dim={dim(c.district?.id)}
-            ring={pinned === c.session.id}
-            onclick={() => void pin(pinned === c.session.id ? null : c.session.id)}
-            ondblclick={() => open(c.session)}
-            onenter={() => (hovered = c.session.id)}
-            onleave={() => hovered === c.session.id && (hovered = null)}
-          />
+          {#if onScreen(p.x, p.y) || pinned === c.session.id}
+            {@const outfit = c.district?.outfit ?? 'mayor'}
+            {@const mood = moodFor(c, p)}
+            {@const bag = c.pose === 'sleep' ? null : backpack(c.session.context?.tokens)}
+            {@const party = cheer(c.session.id)}
+            <Crab
+              x={p.x}
+              y={p.y}
+              dir={c.pose === 'sleep' ? 1 : p.dir}
+              body={body(c, p, i, mood)}
+              sleeping={c.pose === 'sleep' && !p.moving}
+              {outfit}
+              color={c.house?.project.color ?? 'transparent'}
+              bubble={bubble(c.session.status, mood)}
+              babies={c.pose === 'work' && !p.moving && c.session.status === 'working'
+                ? (c.session.agents ?? []).map((_, j) => `crab-walk${(t + j) % 2}`)
+                : []}
+              pack={bag?.size ?? null}
+              sweat={!!bag?.sweat}
+              pant={!!bag?.pant}
+              lift={party?.hop || lift(mood, i)}
+              dust={mood === 'tap'}
+              confetti={party?.confetti ?? []}
+              {t}
+              label={label(c)}
+              describedby={hovered === c.session.id ? 'village-card' : undefined}
+              dim={dim(c.district?.id)}
+              ring={pinned === c.session.id}
+              onclick={() => void pin(pinned === c.session.id ? null : c.session.id)}
+              ondblclick={() => open(c.session)}
+              onenter={() => (hovered = c.session.id)}
+              onleave={() => hovered === c.session.id && (hovered = null)}
+            />
+          {/if}
         {/each}
-        <Ambience {world} {tod} {t} {lights} />
+        <Ambience {world} {tod} {t} {lights} {view} />
       </div>
       {#if card}
         {@const project = card.c.session.projectId ? projectById.get(card.c.session.projectId) : undefined}

@@ -746,6 +746,50 @@ function cobbleTiles() {
   });
 }
 
+/** Outskirts forest floor: dark grass with leaf litter; its edge dithers into the meadow. */
+function forestTiles() {
+  const t = noise(21, [
+    ['#2f6a26', 0.55],
+    ['#285a20', 0.82],
+    ['#367630', 0.95],
+    ['#1f4a1a', 1],
+  ]);
+  const r = rng(22);
+  for (let i = 0; i < 5; i++) {
+    const [x, y] = [r.randint(1, 14), r.randint(1, 14)];
+    t[y][x] = '#7a5a2a';
+    t[y][x + 1 > 15 ? x : x + 1] = '#5a4020';
+  }
+  for (let i = 0; i < 3; i++) t[r.randint(0, 15)][r.randint(0, 15)] = '#4f8f32';
+  return autotiles({
+    tex: (x, y) => t[y][x],
+    ring: (d, _up, x, y) => (d === 1 ? (bayer(x, y) < 10 ? '#245020' : '#2a5c24') : null),
+    lip: (_s, x, y) => (bayer(x, y) < 6 ? ['#3a7024', 1] : null),
+    fringe: (d, x, y) => (bayer(x, y) < (d === 2 ? 6 : d === 3 ? 3 : 1) ? ['#3f7a28', 1] : null),
+  });
+}
+
+/** Lakes and the shore at the world's rim: sand edge, shallows, deep water with ripples. */
+function waterTiles() {
+  const t = noise(31, [
+    ['#2a72a8', 0.55],
+    ['#2468a0', 0.85],
+    ['#3f8fc0', 1],
+  ]);
+  const r = rng(32);
+  for (let i = 0; i < 4; i++) {
+    const [x, y] = [r.randint(1, 11), r.randint(1, 14)];
+    for (let j = 0; j < r.randint(2, 4); j++) t[y][x + j] = '#8ccbec';
+  }
+  return autotiles({
+    tex: (x, y) => t[y][x],
+    ring: (d, _up, x, y) =>
+      d === 1 ? (bayer(x, y) < 9 ? '#d4b47a' : '#b8945a') : d === 2 ? (bayer(x, y) < 8 ? '#5aa8d8' : '#3f8fc0') : null,
+    lip: (_s, x, y) => (bayer(x, y) < 10 ? ['#b8945a', 1] : ['#8a6a3a', 1]),
+    fringe: (d, x, y) => (bayer(x, y) < (d === 2 ? 5 : d === 3 ? 2 : 0) ? ['#d4b47a', 1] : null),
+  });
+}
+
 function fenceH() {
   const f = new Px(16, 14);
   for (let y = 1; y < 14; y++) for (let x = 1; x < 4; x++) f.set(x, y, x === 1 ? WOOD[4] : x === 2 ? WOOD[3] : WOOD[2]);
@@ -1287,6 +1331,8 @@ export function sprites(): Map<string, Px> {
   out.set('tile-grass', grass());
   out.set('tiles-dirt', dirtTiles());
   out.set('tiles-cobble', cobbleTiles());
+  out.set('tiles-forest', forestTiles());
+  out.set('tiles-water', waterTiles());
   out.set('fence-h', fenceH());
   out.set('fence-v', fenceV());
   out.set('gatepost', gatepost());

@@ -1092,6 +1092,35 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect(page.getByRole('heading', { name: 'Crab Village' })).toBeVisible();
 
   const map = page.getByRole('region', { name: 'Crab village map' });
+  const world = map.locator('.world');
+  /** The map's visible area and the world's box, in page px. */
+  const boxes = async () => {
+    const m = (await map.boundingBox())!;
+    const inner = await map.evaluate((el) => ({
+      l: el.clientLeft,
+      t: el.clientTop,
+      w: el.clientWidth,
+      h: el.clientHeight,
+    }));
+    return { frame: { x: m.x + inner.l, y: m.y + inner.t, w: inner.w, h: inner.h }, w: (await world.boundingBox())! };
+  };
+  /** The world covers the whole visible area: no bare bar beside it, at any zoom or pan. */
+  const covers = async () => {
+    const { frame: f, w } = await boxes();
+    return w.x <= f.x + 1 && w.y <= f.y + 1 && w.x + w.width >= f.x + f.w - 1 && w.y + w.height >= f.y + f.h - 1;
+  };
+  /** Crabs only render near the camera, so make the window the world's shape and Fit shows every crab. */
+  const showAll = async () => {
+    const [W, H] = await world.evaluate((el) => [el.clientWidth, el.clientHeight]);
+    const { frame } = await boxes();
+    const size = page.viewportSize()!;
+    await page.setViewportSize({
+      width: size.width,
+      height: Math.round(size.height + (frame.w * H) / W - frame.h + 24),
+    });
+    await page.getByRole('button', { name: 'Fit' }).click();
+  };
+  await showAll();
   /** Drag the empty grass (top left of the frame) by (dx, dy) with the mouse. */
   const dragMap = async (dx: number, dy: number) => {
     const m = (await map.boundingBox())!;
@@ -1145,35 +1174,44 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect(page.getByText('160 %')).toBeVisible();
   await dragMap(700, 850);
   await page.screenshot({ path: shot('tiles-detail.png'), clip: { x: 0, y: 100, width: 1440, height: 1100 } });
+  // Zoomed in at the world's top left corner: the rim is dense forest and shore, not a cut.
+  for (let i = 0; i < 4; i++) await dragMap(1300, 1600);
+  expect(await covers()).toBe(true);
+  await page.screenshot({ path: shot('outskirts-day.png'), clip: { x: 0, y: 100, width: 1440, height: 1100 } });
+  await time.getByRole('button', { name: 'Night' }).click();
+  await page.screenshot({ path: shot('outskirts-night.png'), clip: { x: 0, y: 100, width: 1440, height: 1100 } });
   await page.getByRole('button', { name: 'Fit' }).click();
   await time.getByRole('button', { name: 'Night' }).click();
   await expect(map.locator('.tint.night')).toHaveCount(1);
-  await expect(map.locator('.firefly')).toHaveCount(22);
+  // Fireflies scale with the map and only the ones in view are drawn.
+  await expect.poll(() => map.locator('.firefly').count()).toBeGreaterThan(20);
   await expect(map.locator('.house img[src="/village/house-lit.svg"]')).toHaveCount(5);
   await page.screenshot({ path: shot('tiles-night.png'), clip: { x: 0, y: 0, width: 1440, height: 1290 } });
-  // The frame fills the window, whatever the map's size, and Fit shows the whole map in it.
+  // The frame fills the window, whatever the map's size, and the world covers it: no bare bar at Fit.
   await page.setViewportSize({ width: 1440, height: 1400 });
   await page.getByRole('button', { name: 'Fit' }).click();
-  const world = map.locator('.world');
-  const inFrame = async () => {
-    const m = (await map.boundingBox())!;
-    const w = (await world.boundingBox())!;
-    return (
-      w.x >= m.x - 1 && w.y >= m.y - 1 && w.x + w.width <= m.x + m.width + 1 && w.y + w.height <= m.y + m.height + 1
-    );
-  };
-  await expect.poll(inFrame).toBe(true);
+  await expect.poll(covers).toBe(true);
   await page.screenshot({ path: shot('strip-night.png') });
   await page.getByRole('button', { name: 'Fit' }).click();
   await time.getByRole('button', { name: 'Day' }).click();
   await page.screenshot({ path: shot('strip-day.png') });
   await time.getByRole('button', { name: 'Now' }).click();
   await expect(time.getByRole('button', { name: 'Now' })).toHaveAttribute('aria-pressed', 'true');
+  // Not the world's shape: Fit fits the larger side and still covers the window, and so does the smallest zoom.
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: 'Fit' }).click();
+  await expect.poll(covers).toBe(true);
+  for (let i = 0; i < 30; i++) await page.getByRole('button', { name: 'Zoom out' }).click();
+  expect(await covers()).toBe(true);
+  await dragMap(900, 900);
+  expect(await covers()).toBe(true);
+  await dragMap(-3000, -3000);
+  expect(await covers()).toBe(true);
+  await showAll();
 
   // Camera: a drag pans the map, the wheel zooms around the cursor, a click on a crab still opens its card.
   await page.getByRole('button', { name: 'Fit' }).click();
-  await page.getByRole('button', { name: 'Zoom in' }).click();
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Zoom in' }).click();
   const origin = async () => (await world.boundingBox())!;
   const before = await origin();
   await dragMap(60, 40);
@@ -1191,10 +1229,11 @@ test('the crab village draws every session as a crab, queues the ones that need 
   expect(Math.abs(wa.x + under.x * wa.width - (c0.x + 300))).toBeLessThan(2);
   expect(Math.abs(wa.y + under.y * wa.height - (c0.y + 250))).toBeLessThan(2);
   await expect(page.getByRole('button', { name: 'Fit' })).toHaveAttribute('aria-pressed', 'false');
+  expect(await covers()).toBe(true);
+  await page.getByRole('button', { name: 'Fit' }).click();
   await crab2.click();
   await expect(page.getByRole('dialog', { name: 'Export CSV fix' })).toBeVisible();
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Fit' }).click();
 
   // Focus shows the card; Active only boards nothing up here, every project has a crab but haso.
   await crab2.focus();
@@ -1209,8 +1248,8 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect(page.locator('.house')).toHaveCount(5);
   await page.getByRole('button', { name: 'Active only' }).click();
   await page.mouse.move(0, 0);
-  for (let i = 0; i < 8; i++) await page.getByRole('button', { name: 'Zoom out' }).click();
-  await expect(page.getByText('40 %')).toBeVisible();
+  for (let i = 0; i < 30; i++) await page.getByRole('button', { name: 'Zoom out' }).click();
+  await expect.poll(covers).toBe(true);
   await page.screenshot({ path: 'test-results/village.png' });
 
   await page.getByRole('button', { name: 'Fit' }).click();
@@ -1299,6 +1338,7 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect(page.getByRole('heading', { name: 'ai-portal', level: 1 })).toBeVisible();
   await page.keyboard.press('Alt+KeyV');
   await expect(page.getByRole('heading', { name: 'Crab Village' })).toBeVisible();
+  await showAll();
   await map.getByRole('button', { name: /^MR 311 review/ }).dblclick();
   await expect(page).toHaveURL(/#\/p\/vynce\/s3$/);
   expect(errors).toEqual([]);

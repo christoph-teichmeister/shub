@@ -1,36 +1,36 @@
-// Village camera maths: the world sits at `translate(pan) scale(zoom)` inside a clipped viewport.
+// Village camera maths: the world sits at `translate(pan) scale(zoom)` inside a clipped viewport. The world always
+// covers the viewport (no bare bar beside it): the zoom never goes below the one where it just fills the window, and
+// the pan keeps the world's edge at or outside the window's edge.
 
 export interface Pan {
   x: number;
   y: number;
 }
 
-export const MIN_ZOOM = 0.4;
 export const MAX_ZOOM = 1.6;
-/** How much of the map must stay inside the viewport, in screen px. */
-export const KEEP = 120;
 
-export const clampZoom = (z: number, min = MIN_ZOOM) => Math.min(MAX_ZOOM, Math.max(min, z));
+/** The zoom at which the world just covers the viewport on both axes: the smallest one allowed. */
+export const minZoom = (world: { W: number; H: number }, vw: number, vh: number) =>
+  Math.min(MAX_ZOOM, Math.max(vw / world.W, vh / world.H));
 
-/** The map never leaves the viewport entirely: at least KEEP px of it stay in view on each axis. */
+export const clampZoom = (z: number, min: number) => Math.min(MAX_ZOOM, Math.max(min, z));
+
+/** The world edge stays at or outside the viewport edge on each axis (centred where the world is smaller). */
 export function clampPan(p: Pan, zoom: number, world: { W: number; H: number }, vw: number, vh: number): Pan {
-  const kx = Math.min(KEEP, vw, world.W * zoom);
-  const ky = Math.min(KEEP, vh, world.H * zoom);
-  return {
-    x: Math.min(vw - kx, Math.max(kx - world.W * zoom, p.x)),
-    y: Math.min(vh - ky, Math.max(ky - world.H * zoom, p.y)),
-  };
+  const axis = (v: number, size: number, view: number) =>
+    size <= view ? (view - size) / 2 : Math.min(0, Math.max(view - size, v));
+  return { x: axis(p.x, world.W * zoom, vw), y: axis(p.y, world.H * zoom, vh) };
 }
 
 /** Zoom to `next`, keeping the world point under the screen point (cx, cy) where it is. */
-export function zoomAt(pan: Pan, zoom: number, next: number, cx: number, cy: number) {
-  const z = clampZoom(next);
+export function zoomAt(pan: Pan, zoom: number, next: number, cx: number, cy: number, min: number) {
+  const z = clampZoom(next, min);
   const k = z / zoom;
   return { zoom: z, pan: { x: cx - (cx - pan.x) * k, y: cy - (cy - pan.y) * k } };
 }
 
-/** The whole world in the viewport, centred. */
+/** Fit: the whole world if its shape matches the window, else the larger side fits and the rest is cropped; centred. */
 export function fitWorld(world: { W: number; H: number }, vw: number, vh: number) {
-  const zoom = clampZoom(Math.min(vw / world.W, vh / world.H), 0.2);
-  return { zoom, pan: { x: (vw - world.W * zoom) / 2, y: (vh - world.H * zoom) / 2 } };
+  const zoom = minZoom(world, vw, vh);
+  return { zoom, pan: clampPan({ x: (vw - world.W * zoom) / 2, y: (vh - world.H * zoom) / 2 }, zoom, world, vw, vh) };
 }

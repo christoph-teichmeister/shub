@@ -7,6 +7,12 @@ export const TILE = 32;
 export const GRASS = 0;
 export const DIRT = 1;
 export const COBBLE = 2;
+/** Outskirts: dark forest floor (trees stand on it) and open water (ponds, lakes, the shore at the rim). */
+export const FOREST = 3;
+export const WATER = 4;
+
+/** A road or lane tile: what crabs walk on outside the districts. */
+export const isPath = (m: number) => m === DIRT || m === COBBLE;
 
 export interface Ground {
   cols: number;
@@ -51,6 +57,8 @@ export function autotiles(g: Ground, is: (material: number) => boolean): Autotil
 
 /** Ground layers bottom to top: cobble lies on dirt, so a lane meeting a road gets its curb on the dirt. */
 export const LAYERS = [
-  { sprite: 'tiles-dirt', is: (m: number) => m !== GRASS },
+  { sprite: 'tiles-dirt', is: isPath },
   { sprite: 'tiles-cobble', is: (m: number) => m === COBBLE },
+  { sprite: 'tiles-forest', is: (m: number) => m === FOREST },
+  { sprite: 'tiles-water', is: (m: number) => m === WATER },
 ];

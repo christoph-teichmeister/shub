@@ -1,7 +1,8 @@
 <script lang="ts">
   // The village's weather and wildlife over the map: lantern posts, pond sparkles and ducks, dew in the morning,
   // butterflies, birds and cloud shadows by day, and after dark a tint, glowing lanterns and windows, fireflies.
-  // Nothing here catches the mouse.
+  // Nothing here catches the mouse. Only what lies in `view` (the camera's rect plus a margin, in map px) is drawn:
+  // the map is big and most of it is off screen.
   import {
     ambientSpots,
     birds,
@@ -14,7 +15,7 @@
     pondSparkles,
     type TimeOfDay,
   } from '../../village/ambience.ts';
-  import type { Point, World } from '../../village/world.ts';
+  import type { Point, Rect, World } from '../../village/world.ts';
 
   interface Props {
     world: World;
@@ -22,27 +23,37 @@
     t: number;
     /** Centres of the glows of lit windows and your desk lamp. */
     lights: Point[];
+    view: Rect;
   }
-  let { world, tod, t, lights }: Props = $props();
+  let { world, tod, t, lights, view }: Props = $props();
   const url = (name: string) => `/village/${name}.svg`;
 
   const spots = $derived(ambientSpots(world));
   const dark = $derived(isDark(tod));
-  const glows = $derived(dark ? [...world.lanterns.map(([x, y]): Point => [x, y - 40]), ...lights] : []);
+  /** In the view, with a margin for the glow and the biggest sprite (the clouds are tested on their own rect). */
+  const seen = (x: number, y: number, m = 120) =>
+    x > view.x - m && x < view.x + view.w + m && y > view.y - m && y < view.y + view.h + m;
+  const shown = <T extends { x: number; y: number }>(list: T[]) => list.filter((p) => seen(p.x, p.y));
+  const lanterns = $derived(world.lanterns.filter(([x, y]) => seen(x, y)));
+  const glows = $derived(
+    (dark ? [...world.lanterns.map(([x, y]): Point => [x, y - 40]), ...lights] : []).filter(([x, y]) =>
+      seen(x, y, 200),
+    ),
+  );
 </script>
 
-{#each world.lanterns as [x, y], i (i)}
+{#each lanterns as [x, y] (`${x},${y}`)}
   <img class="thing lantern" src={url('lantern')} alt="" style:left="{x}px" style:top="{y}px" style:z-index={y} />
 {/each}
-{#each pondSparkles(world, t) as s, i (i)}
+{#each shown(pondSparkles(world, t)) as s, i (i)}
   <span class="sparkle" style:left="{s.x}px" style:top="{s.y}px" style:opacity={s.on ? 1 : 0}></span>
 {/each}
 {#if tod === 'morning'}
-  {#each dewFrame(spots.dew, t) as s, i (i)}
+  {#each shown(dewFrame(spots.dew, t)) as s, i (i)}
     <span class="sparkle dew" style:left="{s.x}px" style:top="{s.y}px" style:opacity={s.on ? 0.9 : 0}></span>
   {/each}
 {/if}
-{#each ducks(world, t) as d, i (i)}
+{#each shown(ducks(world, t)) as d, i (i)}
   <img
     class="thing duck"
     src={url(d.src)}
@@ -53,10 +64,10 @@
   />
 {/each}
 {#if tod !== 'night'}
-  {#each butterflies(world, t) as f, i (i)}
+  {#each shown(butterflies(world, t)) as f, i (i)}
     <img class="thing fly" src={url(f.src)} alt="" style:left="{f.x}px" style:top="{f.y}px" />
   {/each}
-  {#each clouds(world, t) as c, i (i)}
+  {#each clouds(world, t).filter((c) => c.x < view.x + view.w && c.x + c.w > view.x && c.y < view.y + view.h && c.y + c.h > view.y) as c, i (i)}
     <span class="cloud" style:left="{c.x}px" style:top="{c.y}px" style:width="{c.w}px" style:height="{c.h}px"></span>
   {/each}
 {/if}
@@ -67,11 +78,11 @@
   <span class="glow" class:bright={tod === 'night'} style:left="{x}px" style:top="{y}px"></span>
 {/each}
 {#if dark}
-  {#each fireflyFrame(spots.fireflies, tod, t) as f, i (i)}
+  {#each shown(fireflyFrame(spots.fireflies, tod, t)) as f, i (i)}
     <span class="firefly" style:left="{f.x}px" style:top="{f.y}px" style:opacity={f.on ? 1 : 0.2}></span>
   {/each}
 {:else}
-  {#each birds(world, t) as b, i (i)}
+  {#each shown(birds(world, t)) as b, i (i)}
     <img class="thing bird" src={url(b.src)} alt="" style:left="{b.x}px" style:top="{b.y}px" />
   {/each}
 {/if}
