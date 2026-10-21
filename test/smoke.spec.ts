@@ -616,6 +616,33 @@ test('the Worktrees dialog finds a worktree and opens a terminal in it as its ow
   expect(errors).toEqual([]);
 });
 
+test('worktrees of closed sessions fold under their own row in the project', async ({ page }) => {
+  const path = '/home/chris/PycharmProjects/work/ai-portal/.claude/worktrees/review-3600';
+  const { errors } = await mockApi(page, {
+    '/api/worktrees/children': [
+      {
+        projectId: 'ai-portal',
+        path,
+        name: 'review-3600',
+        branch: '',
+        state: 'detached',
+        lastCommitAt: null,
+        originSessionId: 'closed-session',
+        conversation: null,
+        busy: false,
+      },
+    ],
+  });
+  await page.goto('/#/p/ai-portal/s1');
+  const row = page.getByRole('button', { name: 'Closed sessions 1 worktree' });
+  await expect(row).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByRole('button', { name: /review-3600/ })).toBeHidden();
+  await row.click();
+  await expect(row).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('button', { name: /review-3600/ })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('worktrees a session created sit under it; a click resumes the conversation there', async ({ page }) => {
   const base = '/home/chris/PycharmProjects/work/ai-portal/.claude/worktrees';
   const child = (name: string, over: object) => ({

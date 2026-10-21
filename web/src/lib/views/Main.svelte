@@ -840,10 +840,23 @@
 {#snippet childGroup(key: string, list: ChildWorktree[])}
   {#if list.length}
     {@const open = childrenOpen(key, list)}
-    <button type="button" class="child-toggle" aria-expanded={open} onclick={() => (openChildren[key] = !open)}>
-      <Icon name={open ? 'chevron-down' : 'chevron-right'} size="xs" weight={2} />
-      {worktreeCount(list)}
-    </button>
+    <!-- Worktrees whose session closed: a row of its own, folded from the same gutter as a session. -->
+    <div class="folder orphans">
+      <button
+        type="button"
+        class="orphan-row"
+        aria-expanded={open}
+        title="{open ? 'Hide' : 'Show'} worktrees of closed sessions"
+        onclick={() => (openChildren[key] = !open)}
+      >
+        <span class="fold" aria-hidden="true">
+          <Icon name={open ? 'chevron-down' : 'chevron-right'} size="xs" weight={2} />
+        </span>
+        <Icon name="folder" size="xs" />
+        <span class="grow">Closed sessions</span>
+        <span class="orphan-count">{worktreeCount(list)}</span>
+      </button>
+    </div>
     {#if open}{#each list as w (w.path)}{@render childRow(w)}{/each}{/if}
   {/if}
 {/snippet}
@@ -1648,23 +1661,34 @@
     min-width: 0;
   }
 
-  .child-toggle {
+  .orphans {
+    margin-top: var(--space-2-5);
+  }
+
+  .orphan-row {
     display: flex;
     align-items: center;
-    gap: var(--space-1);
-    margin-left: var(--space-4);
-    padding: var(--space-0-5) var(--space-2);
+    gap: var(--space-2);
+    width: 100%;
+    padding: var(--space-1) var(--space-2-5);
     border: 0;
     border-radius: var(--radius-sm);
-    background: transparent;
+    background: none;
     color: var(--muted);
     font: inherit;
-    font-size: var(--text-sm);
+    text-align: left;
     cursor: pointer;
   }
 
-  .child-toggle:hover {
+  .orphan-row:hover,
+  .orphan-row:focus-visible {
+    background: var(--raised);
     color: var(--fg);
+  }
+
+  .orphan-count {
+    flex: none;
+    font-size: var(--text-xs);
   }
 
   .folder {
@@ -1689,6 +1713,10 @@
   }
 
   .fold:hover {
+    color: var(--fg);
+  }
+
+  .orphan-row:hover .fold {
     color: var(--fg);
   }
 
