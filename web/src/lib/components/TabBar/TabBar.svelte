@@ -4,15 +4,21 @@
 
   interface Props {
     label: string;
-    children: Snippet;
-    /** Content after the tabs (new-tab button, hints). */
+    /** The tabs; none (split view) leaves the bar with its leading and trailing parts. */
+    children?: Snippet;
+    /** Content before the tabs (the project name). */
+    leading?: Snippet;
+    /** Content after the tabs (new-tab button, view toggles). */
     trailing?: Snippet;
   }
-  let { label, children, trailing }: Props = $props();
+  let { label, children, leading, trailing }: Props = $props();
 </script>
 
 <div class="bar">
-  <div class="tabs" role="tablist" tabindex="-1" aria-label={label} onkeydown={tabKeys}>{@render children()}</div>
+  {#if leading}<div class="leading">{@render leading()}</div>{/if}
+  {#if children}
+    <div class="tabs" role="tablist" tabindex="-1" aria-label={label} onkeydown={tabKeys}>{@render children()}</div>
+  {/if}
   {#if trailing}<div class="trailing">{@render trailing()}</div>{/if}
 </div>
 
@@ -36,12 +42,20 @@
   }
 
   /* As tall as a tab and centred in it: aligned to the bottom, the buttons sat on the line. */
+  .leading,
   .trailing {
-    flex: 1 0 auto;
     display: flex;
     align-items: center;
     gap: var(--space-0-5);
     height: var(--size-tab);
+  }
+
+  .leading {
+    flex: 0 0 auto;
+  }
+
+  .trailing {
+    flex: 1 0 auto;
   }
 
   .tabs {

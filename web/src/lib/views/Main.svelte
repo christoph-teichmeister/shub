@@ -331,6 +331,7 @@
   let panelTab = $state('services');
   let renamingId = $state<string | null>(null);
   let menu = $state<{ session: Session; x: number; y: number } | null>(null);
+  let newMenu = $state<{ x: number; y: number } | null>(null);
   let projectMenu = $state<{ project: ProjectView; x: number; y: number } | null>(null);
   let confirm = $state<{ title: string; body: string; action: string; danger?: boolean; run: () => void } | null>(null);
   let ask = $state<{ button: ButtonDef; value: string; worktrees: Worktree[] | null } | null>(null);
@@ -480,6 +481,28 @@
     if (s.status === 'working')
       confirm = { title: `Close ${s.name}?`, body: 'It is still working.', action: 'Close', danger: true, run };
     else run();
+  }
+
+  /** The tab bar's + menu: a Claude session, a terminal, then the project's own buttons. */
+  function newMenuItems(p: ProjectView): MenuItem[] {
+    return [
+      { id: 'claude', label: 'New Claude session', hint: 'Alt N' },
+      { id: 'terminal', label: 'New terminal', hint: 'Alt T' },
+      ...p.buttons.map((b, i) => ({
+        id: `button:${b.id}`,
+        label: `${b.label}${b.ask !== 'nothing' ? '…' : ''}`,
+        separator: i === 0,
+      })),
+    ];
+  }
+
+  function onNewMenu(p: ProjectView, id: string) {
+    if (id === 'claude') void newSession(p);
+    else if (id === 'terminal') void newTerminal(p);
+    else {
+      const b = p.buttons.find((x) => `button:${x.id}` === id);
+      if (b) void runButton(b);
+    }
   }
 
   function menuItems(s: Session): MenuItem[] {
@@ -996,42 +1019,14 @@
       body="Or open the global Claude with Alt G."
     />
   {:else}
-    <header class="head">
-      <ProjectIcon icon={project.resolvedIcon} name={project.name} size="lg" />
-      <div class="title">
-        <h1>{project.name}</h1>
-        <span class="path"
-          >{split ? `${sessions.length} sessions side by side` : project.path}{project.resolvedIcon.host && !split
-            ? ` · ${project.resolvedIcon.host}`
-            : ''}</span
-        >
-      </div>
-      <div class="actions">
-        <Button variant="primary" onclick={() => newSession()}>New session</Button>
-        {#each project.buttons as b (b.id)}
-          <Button variant={b.skill || b.prompt ? 'secondary' : 'dashed'} onclick={() => runButton(b)}
-            >{b.label}{b.ask !== 'nothing' ? '…' : ''}</Button
-          >
-        {/each}
-        <Button icon="split" pressed={split} onclick={() => (split = !split)}
-          >{split ? 'Split view on' : 'Split view'}</Button
-        >
-        <Button icon="folder" onclick={openWorktrees}>Worktrees</Button>
-        <Button icon="services" pressed={panelOpen} onclick={() => (panelOpen = !panelOpen)}
-          >Services{services.length ? ` · ${services.length}` : ''}</Button
-        >
-        <IconButton
-          label="Project settings"
-          icon="gear"
-          size="lg"
-          variant="outline"
-          href={href('settings', 'project', project.id)}
-        />
-      </div>
-    </header>
-
-    {#if !split}
-      <TabBar label="Sessions">
+    <TabBar label="Sessions">
+      {#snippet leading()}
+        <span class="project" title={[project.path, project.resolvedIcon.host].filter(Boolean).join(' · ')}>
+          <ProjectIcon icon={project.resolvedIcon} name={project.name} size="sm" />
+          <h1>{project.name}</h1>
+        </span>
+      {/snippet}
+      {#if !split}
         {#each tabs as s (s.id)}
           <SessionTab
             session={s}
@@ -1041,27 +1036,58 @@
             onselect={() => (location.hash = sessionHref(s))}
             onrename={(name) => rename(s, name)}
             onhide={() => hideTab(s)}
+            onclose={() => close(s)}
             onmenu={(at) => (menu = { session: s, ...at })}
             ondragstart={dragSessionStart(s)}
             ondrop={(after) => dropSession(sessions, s, after)}
           />
         {/each}
-        {#snippet trailing()}
-          <IconButton label="New session (Alt N)" icon="plus" size="md" tone="muted" onclick={() => newSession()} />
+      {/if}
+      {#snippet trailing()}
+        <button
+          type="button"
+          class="new"
+          aria-haspopup="menu"
+          aria-expanded={!!newMenu}
+          title="New session (Alt N), terminal (Alt T) or project button"
+          onclick={(e) => {
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            newMenu = { x: r.left, y: r.bottom };
+          }}><Icon name="plus" /><Icon name="chevron-down" size="sm" /><span class="visually-hidden">New</span></button
+        >
+        {#if active?.kind === 'shell' && !active.parentId && !split}
+          <Button size="sm" icon="sparkle" onclick={() => claudeHere(active)}>Start Claude here</Button>
+        {/if}
+        <span class="views">
+          <Button size="sm" variant="ghost" icon="folder" onclick={openWorktrees}>Worktrees</Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            icon="split"
+            pressed={split}
+            title="Split view (Alt S)"
+            onclick={() => (split = !split)}>Split</Button
+          >
+          <Button
+            size="sm"
+            variant="ghost"
+            icon="services"
+            pressed={panelOpen}
+            title="Services and terminals (Alt D)"
+            onclick={() => (panelOpen = !panelOpen)}
+            >Services{#if services.length}<span class="count">{services.length}</span>{/if}</Button
+          >
+          <span class="divider" aria-hidden="true"></span>
           <IconButton
-            label="New terminal (Alt T)"
-            icon="terminal"
+            label="Project settings"
+            icon="sliders"
             size="md"
             tone="muted"
-            onclick={() => newTerminal()}
+            href={href('settings', 'project', project.id)}
           />
-          {#if active?.kind === 'shell' && !active.parentId}
-            <Button size="sm" icon="sparkle" onclick={() => claudeHere(active)}>Start Claude here</Button>
-          {/if}
-          <span class="tab-hint">Double-click a tab to rename</span>
-        {/snippet}
-      </TabBar>
-    {/if}
+        </span>
+      {/snippet}
+    </TabBar>
 
     {#if split && sessions.length}
       <SplitView {sessions} selectedId={active?.id} onselect={(id) => go('p', project.id, id)}>
@@ -1114,6 +1140,18 @@
     {/if}
   {/if}
 </AppShell>
+
+{#if newMenu && project}
+  {@const p = project}
+  <Menu
+    label="New in {p.name}"
+    items={newMenuItems(p)}
+    x={newMenu.x}
+    y={newMenu.y}
+    onselect={(id) => onNewMenu(p, id)}
+    onclose={() => (newMenu = null)}
+  />
+{/if}
 
 {#if menu}
   {@const s = menu.session}
@@ -1597,51 +1635,62 @@
     font-size: var(--text-xs);
   }
 
-  .head {
+  .project {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-3-5) var(--space-5);
-    border-bottom: var(--hairline) solid var(--line);
-  }
-
-  .title {
-    flex: 1 1 0;
-    min-width: var(--size-rename);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-0-5);
+    gap: var(--space-2);
+    height: var(--size-control-xs);
+    margin-right: var(--space-2);
+    padding: 0 var(--space-3) 0 var(--space-1);
+    border-right: var(--hairline) solid var(--line);
   }
 
   h1 {
     margin: 0;
-    font-size: var(--text-xl);
+    font-size: var(--text-base);
     font-weight: var(--weight-semibold);
-    line-height: var(--leading-tight);
-  }
-
-  .path {
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    color: var(--muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .actions {
+  .new {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-0-5);
+    height: var(--size-control-sm);
+    margin-left: var(--space-1);
+    padding: 0 var(--space-1-5);
+    border: var(--hairline) solid var(--line);
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--fg);
+    cursor: pointer;
+  }
+
+  .new:hover,
+  .new[aria-expanded='true'] {
+    border-color: var(--primary);
+    background: var(--raised);
+  }
+
+  .views {
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
+    align-items: center;
+    gap: var(--space-0-5);
+    margin-left: auto;
   }
 
-  .tab-hint {
-    margin-left: auto;
-    padding-right: var(--space-2);
-    font-size: var(--text-sm);
-    color: var(--muted);
-    white-space: nowrap;
+  .count {
+    padding: 0 var(--space-1-5);
+    border-radius: var(--radius-md);
+    background: var(--line-strong);
+    font-size: var(--text-xs);
+  }
+
+  .divider {
+    width: var(--hairline);
+    height: var(--space-4);
+    margin: 0 var(--space-1);
+    background: var(--line-strong);
   }
 
   .form {

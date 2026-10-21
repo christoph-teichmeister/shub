@@ -13,8 +13,10 @@
     renaming?: boolean;
     onselect?: () => void;
     onrename?: (name: string) => void;
-    /** The ✕: takes the tab out of the bar, the session keeps running. */
+    /** The –: takes the tab out of the bar, the session keeps running. */
     onhide?: () => void;
+    /** The ✕: ends the session. */
+    onclose?: () => void;
     /** Right-click or the tab's menu button; `at` is where the menu opens. */
     onmenu?: (at: { x: number; y: number }) => void;
     /** Drag and drop to reorder; `after` when dropped on the right half. */
@@ -29,11 +31,14 @@
     onselect,
     onrename,
     onhide,
+    onclose,
     onmenu,
     ondragstart,
     ondrop,
   }: Props = $props();
   let over = $state<'before' | 'after' | null>(null);
+  // ✕ turns red under the pointer: it sits next to hide, so a slip shows before the click.
+  let closeHot = $state(false);
   const half = (e: DragEvent) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     return e.clientX > r.left + r.width / 2 ? 'after' : 'before';
@@ -141,10 +146,25 @@
     <span class="reveal"
       ><IconButton
         label="Hide {session.name} tab (stays in the sidebar)"
-        icon="close"
+        icon="minus"
         size="xs"
         tone="muted"
         onclick={onhide}
+      /></span
+    >
+  {/if}
+  {#if onclose}
+    <span
+      class="reveal"
+      role="presentation"
+      onpointerenter={() => (closeHot = true)}
+      onpointerleave={() => (closeHot = false)}
+      ><IconButton
+        label="Close {session.name}"
+        icon="close"
+        size="xs"
+        tone={closeHot ? 'stop' : 'muted'}
+        onclick={onclose}
       /></span
     >
   {/if}
