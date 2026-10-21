@@ -11,8 +11,9 @@ One session in the tab bar: status mark, name (`role="tab"`, only the selected o
 | `onselect`    | `() => void`               |                                              |
 | `onrename`    | `(name: string) => void`   | Only called on a change                      |
 | `onclose`     | `() => void`               | The view asks if working                     |
+| `oncompact`   | `() => void`               | Chip from 80 % context: sends `/compact`     |
 | `onmenu`      | `(at: {x, y}) => void`     | Right-click or `⋯`                           |
 | `ondragstart` | `(e: DragEvent) => void`   | Makes the tab draggable (not while renaming) |
 | `ondrop`      | `(after: boolean) => void` | `after`: dropped on the right half           |
 
-States: drop target (line left or right), closing (fades out, `Closing` badge, inert), selected (open like a folder tab, no line under it), unselected, hover, needs-you, working, your-turn, waiting (tooltip on the name), renaming, with link chip.
+States: drop target (line left or right), closing (fades out, `Closing` badge, inert), selected (open like a folder tab, no line under it), unselected, hover, needs-you, working, your-turn, waiting (tooltip on the name), renaming, with link chip. Context fill: a 2px bar along the bottom edge (muted, yellow from 60 %, danger from 80 %) and the fill in the name's tooltip; from 80 % a compact chip, disabled until it is your turn.

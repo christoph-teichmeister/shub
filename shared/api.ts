@@ -230,6 +230,15 @@ export interface Session {
   shells?: number;
   /** Subagents running inside the session (no pane of their own), from the SubagentStart/Stop hooks. */
   agents?: SubagentRun[];
+  /** How full Claude's context is, from the transcript after each turn and tool call; null before the first reply. */
+  context?: ContextFill | null;
+}
+
+export interface ContextFill {
+  /** Tokens the model saw on its last call. */
+  tokens: number;
+  /** The model's context window: 200k, or 1M for a "[1m]" model. */
+  window: number;
 }
 
 export interface SubagentRun {

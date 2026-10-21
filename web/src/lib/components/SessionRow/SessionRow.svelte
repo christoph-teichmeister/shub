@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Session } from '../../../../../shared/api.ts';
-  import { statusLabel, waitTitle } from '../../status.ts';
+  import { contextFill, statusLabel, waitTitle } from '../../status.ts';
   import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
 
@@ -20,6 +20,7 @@
   }
   let { session, href, selected = false, closing = false, onmenu, ondragstart, ondrop, onunpin }: Props = $props();
   let over = $state<'before' | 'after' | null>(null);
+  const fill = $derived(contextFill(session));
   const half = (e: DragEvent) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     return e.clientY > r.top + r.height / 2 ? 'after' : 'before';
@@ -47,7 +48,9 @@
     class="link"
     {href}
     aria-current={selected ? 'page' : undefined}
-    title={session.pendingCommands?.map((c) => c.command).join('\n') ?? waitTitle(session)}
+    title={[session.pendingCommands?.map((c) => c.command).join('\n') ?? waitTitle(session), fill?.title]
+      .filter(Boolean)
+      .join('\n') || undefined}
   >
     <StatusDot status={session.status} />
     <span class="name">{session.name}</span>
@@ -67,6 +70,9 @@
       /></span
     >
   {/if}
+  {#if fill}
+    <span class="fill {fill.level}" style:--fill="{fill.pct}%" aria-hidden="true"></span>
+  {/if}
   <!-- Last, so the hover menu opening beside it never shifts it. -->
   {#if onunpin && session.position != null && !closing}
     <IconButton label="Unpin {session.name}" icon="pin" size="xs" tone="muted" onclick={onunpin} />
@@ -75,6 +81,7 @@
 
 <style>
   .row {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--space-1);
@@ -82,6 +89,28 @@
     border-radius: var(--radius-sm);
     color: var(--fg-2);
     transition: opacity var(--duration-slow) var(--ease-standard);
+  }
+
+  /* Context fill along the bottom edge: quiet until 60 %, then yellow, from 80 % danger. */
+  .fill {
+    position: absolute;
+    inset: auto 0 0;
+    height: var(--space-0-5);
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    background: linear-gradient(to right, var(--c) var(--fill), transparent var(--fill));
+    pointer-events: none;
+  }
+
+  .low {
+    --c: var(--muted);
+  }
+
+  .mid {
+    --c: var(--yellow);
+  }
+
+  .high {
+    --c: var(--danger);
   }
 
   .link {

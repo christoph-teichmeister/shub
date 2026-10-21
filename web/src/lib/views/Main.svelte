@@ -34,7 +34,7 @@
   import SplitView from '../components/SplitView/SplitView.svelte';
   import StatusBadge from '../components/StatusBadge/StatusBadge.svelte';
   import StatusDot from '../components/StatusDot/StatusDot.svelte';
-  import { dropPositions, placeSessions, placeTabs, projectBadge } from '../status.ts';
+  import { COMPACT_AT, contextFill, dropPositions, placeSessions, placeTabs, projectBadge } from '../status.ts';
   import { childStart, placeChildren, sessionsIn } from '../children.ts';
   import WorktreeRow from '../components/WorktreeRow/WorktreeRow.svelte';
   import AgentRow from '../components/AgentRow/AgentRow.svelte';
@@ -49,6 +49,7 @@
     closeSession,
     loadProjects,
     needsYouCount,
+    sendKeys,
     sessionHref,
     sessionsOf,
     shellsOf,
@@ -524,7 +525,10 @@
     }
   }
 
+  const compact = (s: Session) => void sendKeys(s.id, ['/compact', 'Enter']);
+
   function menuItems(s: Session): MenuItem[] {
+    const fill = contextFill(s);
     const plugin = app.plugins.flatMap((p) =>
       p.enabled ? p.sessionMenuActions.map((a) => ({ id: `plugin:${p.name}:${a.id}`, label: a.label })) : [],
     );
@@ -548,6 +552,17 @@
               ? { id: 'ready', label: 'Stop waiting', description: s.waitingFor }
               : { id: 'wait', label: 'Wait for…' },
           ]),
+      ...(fill && fill.pct >= COMPACT_AT
+        ? [
+            {
+              id: 'compact',
+              label: 'Compact',
+              hint: `${fill.pct} %`,
+              disabled: s.status !== 'your-turn',
+              description: s.status === 'your-turn' ? undefined : 'Once it is your turn',
+            },
+          ]
+        : []),
       ...(!s.projectId
         ? []
         : [s.position == null ? { id: 'pin', label: 'Pin to top' } : { id: 'unpin', label: 'Unpin' }]),
@@ -572,6 +587,7 @@
     else if (id === 'pause')
       void api(s.status === 'paused' ? 'sessionResume' : 'sessionPause', { params: { id: s.id } }).catch(toastError);
     else if (id === 'close') close(s);
+    else if (id === 'compact') compact(s);
     else if (id === 'claude-here') void claudeHere(s);
     else if (id === 'hide') hideTab(s);
     else if (id === 'pin') pinSession(s);
@@ -1121,6 +1137,7 @@
             onrename={(name) => rename(s, name)}
             onhide={() => hideTab(s)}
             onclose={() => close(s)}
+            oncompact={() => compact(s)}
             onmenu={(at) => (menu = { session: s, ...at })}
             ondragstart={dragSessionStart(s)}
             ondrop={(after) => dropSession(sessions, s, after, true)}

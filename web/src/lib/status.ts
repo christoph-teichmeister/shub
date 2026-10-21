@@ -79,3 +79,17 @@ export function dropPositions<S extends { id: string; position?: number | null }
     rest.flatMap((s, i) => (all || s === moving || s.position != null ? [[s.id, i] as const] : [])),
   );
 }
+
+/** From this fill on, the tab and the menu offer /compact. */
+export const COMPACT_AT = 80;
+
+const tokensLabel = (n: number) => (n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`);
+
+/** How full a session's context is: percent, colour level (60 % and 80 % steps) and tooltip line. */
+export function contextFill(s: Session): { pct: number; level: 'low' | 'mid' | 'high'; title: string } | null {
+  if (!s.context) return null;
+  const { tokens, window } = s.context;
+  const pct = Math.min(100, Math.round((tokens / window) * 100));
+  const level = pct >= COMPACT_AT ? 'high' : pct >= 60 ? 'mid' : 'low';
+  return { pct, level, title: `Context ${tokensLabel(tokens)} / ${tokensLabel(window)} · ${pct} %` };
+}

@@ -14,3 +14,5 @@ One session under its project in the sidebar: status mark, name, status text, a 
 | `onunpin`     | `() => void`               | Pin button on a dragged session    |
 
 States: pinned (dragged, `position` set: a pin button that unpins it), drop target (line above or below), commands waiting (status reads `▶ N command(s)`, hover shows them), closing (fades out, status reads `Closing`, inert), needs-you (tinted orange row), working, your-turn, waiting (tooltip: what for and the last background check), paused, exited, selected.
+
+Context fill: a 2px bar along the bottom edge (muted, yellow from 60 %, danger from 80 %), the numbers in the row's tooltip.
