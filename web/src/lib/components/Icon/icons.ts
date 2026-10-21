@@ -7,6 +7,8 @@ export const ICONS = {
   },
   close: { d: 'M4 4l8 8M12 4l-8 8' },
   check: { d: 'M3 8.5l3.2 3L13 4.5' },
+  warning: { d: 'M8 2.5L1.8 13h12.4zM8 6.5v3M8 11.3v.01' },
+  bell: { d: 'M4.5 10.5V7a3.5 3.5 0 0 1 7 0v3.5l1 1.5h-9zM6.8 13.5a1.3 1.3 0 0 0 2.4 0' },
   'chevron-down': { d: 'M4 6l4 4 4-4' },
   'chevron-right': { d: 'M6 4l4 4-4 4' },
   'chevron-left': { d: 'M10 4L6 8l4 4' },
