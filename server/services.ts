@@ -6,6 +6,7 @@ import type {
   ActivityEntry,
   Approval,
   Config,
+  ContextFill,
   Decision,
   OldSession,
   PermissionMode,
@@ -90,6 +91,7 @@ export interface Sessions {
   ): void;
   /** The subagents running inside the session changed (SubagentStart/Stop, their tool calls). */
   setAgents(id: string, agents: SubagentRun[]): void;
+  setContext(id: string, context: ContextFill | null): void;
   /** Claude switched conversations (/clear, compact): remember the new id for resume. */
   setClaudeSessionId(id: string, claudeSessionId: string): void;
   /** A hook reported the mode Claude runs in (needed for "inherit", or after Shift+Tab). */

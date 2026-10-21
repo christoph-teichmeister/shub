@@ -79,3 +79,24 @@ export function dropPositions<S extends { id: string; position?: number | null }
     rest.flatMap((s, i) => (all || s === moving || s.position != null ? [[s.id, i] as const] : [])),
   );
 }
+
+// Colour by tokens, not percent: a 1M window would stay quiet far past the point where a session gets slow and
+// expensive. These are 60 % and 80 % of a 200k window.
+const WARN_AT = 120_000;
+/** From this many tokens on, the tab and the menu offer /compact. */
+export const COMPACT_AT = 160_000;
+
+const tokensLabel = (n: number) => (n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`);
+
+/** How full a session's context is: percent of the window, colour level by tokens, tooltip line, and whether to
+ *  offer /compact. */
+export function contextFill(
+  s: Session,
+): { pct: number; level: 'low' | 'mid' | 'high'; title: string; compact: boolean } | null {
+  if (!s.context) return null;
+  const { tokens, window } = s.context;
+  const pct = Math.min(100, Math.round((tokens / window) * 100));
+  const compact = tokens >= COMPACT_AT;
+  const level = compact ? 'high' : tokens >= WARN_AT ? 'mid' : 'low';
+  return { pct, level, compact, title: `Context ${tokensLabel(tokens)} / ${tokensLabel(window)} · ${pct} %` };
+}

@@ -9,8 +9,26 @@ import type { Services } from '../services.ts';
 import { guard, type GuardInput } from '../projects/main-checkout.ts';
 import { childCandidates, recordChildren } from '../projects/children.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
+import { contextFill } from '../sessions/context.ts';
 import { isPermissionMode } from '../sessions/launch.ts';
+import { claudeDir } from '../sessions/old.ts';
 import { LAUNCH_HOOK_EVENTS, isHookEvent, newClaudeSessionId, nextAgents, transition } from './transition.ts';
+
+/** Events after which the transcript has a new usage line or compact boundary. */
+const CONTEXT_EVENTS = new Set<string>(['Stop', 'PostToolUse', 'SessionStart']);
+const CONTEXT_DELAY_MS = 1000;
+
+/** The fill of a transcript under Claude's own folder; a session cannot point shub at other files. */
+function readContext(path: unknown, knownWindow?: number) {
+  if (typeof path !== 'string' || !path.endsWith('.jsonl')) return null;
+  const file = resolve(path);
+  if (!file.startsWith(join(claudeDir(), 'projects') + '/')) return null;
+  try {
+    return contextFill(file, knownWindow);
+  } catch {
+    return null; // not written yet, or gone
+  }
+}
 
 const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
@@ -91,6 +109,15 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
           }
           const agents = nextAgents(session.agents ?? [], req.params.event, payload);
           if (agents) services.sessions.setAgents(session.id, agents);
+          if (CONTEXT_EVENTS.has(req.params.event) && !payload.agent_id) {
+            // Stop fires before Claude writes its last reply to the transcript: read a moment later.
+            // ponytail: fixed delay; a reply flushed later than this shows on the next event.
+            setTimeout(() => {
+              const context = readContext(payload.transcript_path, session.context?.window);
+              // /clear starts an empty transcript: no reply yet, so no fill.
+              if (context || payload.source === 'clear') services.sessions.setContext(session.id, context);
+            }, CONTEXT_DELAY_MS);
+          }
           if (req.params.event === 'SessionStart') {
             const claudeSessionId = newClaudeSessionId(session.claudeSessionId, payload);
             if (claudeSessionId) services.sessions.setClaudeSessionId(session.id, claudeSessionId);

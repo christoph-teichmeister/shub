@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Session } from '../../../../../shared/api.ts';
-  import { STATUS_LABEL, waitTitle } from '../../status.ts';
+  import { contextFill, STATUS_LABEL, waitTitle } from '../../status.ts';
+  import Icon from '../Icon/Icon.svelte';
   import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
 
@@ -17,6 +18,8 @@
     onhide?: () => void;
     /** The ✕: ends the session. */
     onclose?: () => void;
+    /** The compact chip, shown from 160k tokens of context: sends /compact. */
+    oncompact?: () => void;
     /** Right-click or the tab's menu button; `at` is where the menu opens. */
     onmenu?: (at: { x: number; y: number }) => void;
     /** Drag and drop to reorder; `after` when dropped on the right half. */
@@ -32,11 +35,15 @@
     onrename,
     onhide,
     onclose,
+    oncompact,
     onmenu,
     ondragstart,
     ondrop,
   }: Props = $props();
   let over = $state<'before' | 'after' | null>(null);
+  const fill = $derived(contextFill(session));
+  // Typed into a running turn, /compact would queue as a prompt: only offered on your turn.
+  const canCompact = $derived(session.status === 'your-turn');
   // ✕ turns red under the pointer: it sits next to hide, so a slip shows before the click.
   let closeHot = $state(false);
   const half = (e: DragEvent) => {
@@ -109,7 +116,7 @@
       aria-describedby="status-{session.id}"
       onclick={onselect}
       ondblclick={() => (renaming = true)}
-      title={[session.name, waitTitle(session)].filter(Boolean).join('\n')}
+      title={[session.name, waitTitle(session), fill?.title].filter(Boolean).join('\n')}
     >
       {session.name}
     </button>
@@ -117,6 +124,17 @@
   {/if}
   {#if closing}
     <span class="badge-closing">Closing</span>
+  {/if}
+  {#if fill?.compact && oncompact && !closing}
+    <button
+      type="button"
+      class="compact"
+      disabled={!canCompact}
+      title={canCompact ? `${fill.title}\nSend /compact` : `${fill.title}\nCompact once it is your turn`}
+      onclick={oncompact}
+      ><Icon name="restart" size="sm" />{fill.pct} %<span class="visually-hidden">, compact {session.name}</span
+      ></button
+    >
   {/if}
   {#each session.links.slice(0, 1) as link (link.url)}
     <a class="chip" href={link.url} target="_blank" rel="noreferrer">{link.label}</a>
@@ -161,11 +179,15 @@
       {/if}
     </span>
   {/if}
+  {#if fill}
+    <span class="fill {fill.level}" style:--fill="{fill.pct}%" aria-hidden="true"></span>
+  {/if}
 </div>
 
 <style>
   /* Tabs shrink as one when the bar runs out of room (names end in …); the open one keeps its width. */
   .tab {
+    position: relative;
     flex: 0 1 auto;
     min-width: var(--size-tab-min);
     overflow: hidden;
@@ -227,6 +249,45 @@
     border: var(--hairline) solid var(--primary);
     background: var(--bg);
     color: var(--fg);
+  }
+
+  /* Context fill along the bottom edge: quiet until 120k tokens, then yellow, from 160k danger. */
+  .fill {
+    position: absolute;
+    inset: auto 0 0;
+    height: var(--space-0-5);
+    background: linear-gradient(to right, var(--c) var(--fill), transparent var(--fill));
+    pointer-events: none;
+  }
+
+  .low {
+    --c: var(--muted);
+  }
+
+  .mid {
+    --c: var(--yellow);
+  }
+
+  .high {
+    --c: var(--danger);
+  }
+
+  .compact {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    padding: 0 var(--space-1-5);
+    border-radius: var(--radius-xs);
+    border: var(--hairline) solid var(--danger);
+    background: transparent;
+    color: var(--danger);
+    cursor: pointer;
+  }
+
+  .compact:disabled {
+    opacity: 0.6;
+    cursor: default;
   }
 
   .chip {
