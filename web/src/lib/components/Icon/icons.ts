@@ -27,6 +27,10 @@ export const ICONS = {
   stop: { d: 'M4 3h8a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z', fill: true },
   restart: { d: 'M13 8a5 5 0 1 1-1.5-3.5M13 2.5v3h-3' },
   message: { d: 'M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z' },
+  // Claude crab: body, two claws up, three legs a side.
+  crab: {
+    d: 'M4.5 7.5h7a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1zM4 7.5 2.5 4.5M12 7.5l1.5-3M3.5 10H2M12.5 10H14M5 11.5 4 13.5M11 11.5l1 2M6.5 9.5v.01M9.5 9.5v.01',
+  },
   sparkle: {
     d: 'M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3M3.4 3.4l2.1 2.1M10.5 10.5l2.1 2.1M3.4 12.6l2.1-2.1M10.5 5.5l2.1-2.1',
   },

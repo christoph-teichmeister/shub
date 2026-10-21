@@ -26,6 +26,17 @@
   --status-working: #66d9ef;
   --status-your-turn: #a6e22e;
   --shadow: rgb(0 0 0 / 50%);
+  --village-bg: #3b2414;
+  --village-grass: #5a9e3c;
+  --village-parchment: #f6dfaa;
+  --village-parchment-line: #8a4a1f;
+  --village-wood: #c48a4a;
+  --village-wood-dark: #5a3518;
+  --village-ink: #2a1408;
+  --village-ink-muted: #6b4a2a;
+  --village-gold: #e8b04a;
+  --village-sky: #bfe4f6;
+  --village-alarm: #d0342c;
 
   /* Fixed brand colours (same in every theme) */
   --brand-on-tile: #1e1f1c;
@@ -98,6 +109,8 @@
   --size-tab-label: 220px;
   --size-tab-min: 72px;
   --size-toast: 360px;
+  --size-village-card: 290px;
+  --village-px: 2px; /* one sprite pixel on the village map */
 
   /* Radii */
   --radius-xs: 4px;
@@ -111,6 +124,7 @@
   /* Type */
   --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-pixel: 'Pixelify Sans', system-ui, sans-serif;
   --text-3xs: 8px;
   --text-2xs: 10px;
   --text-xs: 11px;

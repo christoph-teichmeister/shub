@@ -1,4 +1,4 @@
-// Hash router: #/, #/g, #/p/<projectId>[/<sessionId>], #/styleguide, #/login, #/settings/...
+// Hash router: #/, #/g, #/p/<projectId>[/<sessionId>], #/village, #/styleguide, #/login, #/settings/...
 // Plus one path route: /pair/<code> (the phone opens the QR link; the server serves index.html for it).
 // Settings: #/settings[/<area>], #/settings/project/<id|new>, #/settings/theme/<id|new>, #/settings/import.
 export type Route =
@@ -7,6 +7,7 @@ export type Route =
   | { name: 'pair'; code: string }
   | { name: 'global' }
   | { name: 'project'; projectId: string; sessionId: string | null }
+  | { name: 'village' }
   | { name: 'styleguide' }
   | { name: 'settings'; rest: string[] };
 
@@ -17,6 +18,8 @@ export function parseHash(hash: string): Route {
       return { name: 'global' };
     case 'p':
       return parts[1] ? { name: 'project', projectId: parts[1], sessionId: parts[2] ?? null } : { name: 'home' };
+    case 'village':
+      return { name: 'village' };
     case 'styleguide':
       return { name: 'styleguide' };
     case 'login':
@@ -35,7 +38,14 @@ function current(): Route {
 
 export const router = $state({ route: current() });
 
-window.addEventListener('hashchange', () => (router.route = current()));
+/** The last place outside the village, where "← shub" and Alt V go back to. */
+let beforeVillage = '#/';
+window.addEventListener('hashchange', (e) => {
+  const old = new URL(e.oldURL).hash;
+  if (parseHash(old).name !== 'village') beforeVillage = old || '#/';
+  router.route = current();
+});
+export const villageBack = () => beforeVillage;
 
 export function href(...parts: (string | null | undefined)[]): string {
   return (

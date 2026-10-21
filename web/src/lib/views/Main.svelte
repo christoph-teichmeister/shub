@@ -196,6 +196,10 @@
   /** What a folded group still shows: who needs you, else what is working. */
   const groupBadge = (projects: ProjectView[]) => projectBadge(projects.flatMap((p) => sessionsOf(p.id)));
   const needsYouTotal = $derived(needsYouCount());
+  // Crabs in the village queue: everyone who needs you or whose turn it is.
+  const villageQueue = $derived(
+    app.sessions.filter((s) => s.kind !== 'shell' && (s.status === 'needs-you' || s.status === 'your-turn')).length,
+  );
   const dormantCount = $derived(app.projects.filter((p) => p.visibility === 'dormant').length);
 
   // ---------- Child worktrees: created by a session, nested under it ----------
@@ -780,6 +784,9 @@
         case 'KeyK':
           ui.search = !ui.search;
           break;
+        case 'KeyV':
+          go('village');
+          break;
         case 'KeyN':
           void newSession();
           break;
@@ -893,12 +900,26 @@
   </div>
 {/snippet}
 
+{#snippet villageButton()}
+  <a
+    class="rail-item"
+    href={href('village')}
+    title={villageQueue ? `Crab village · ${villageQueue} in line (Alt V)` : 'Crab village (Alt V)'}
+  >
+    <Icon name="crab" />
+    <span class="visually-hidden">Crab village{villageQueue ? `, ${villageQueue} in line` : ''}</span>
+    {#if villageQueue}<span class="rail-badge" aria-hidden="true">{villageQueue}</span>{/if}
+  </a>
+{/snippet}
+
 <AppShell>
   {#snippet sidebar()}
     <Sidebar collapsed={sidebarCollapsed} ontoggle={toggleSidebar}>
       {#snippet header()}
         <div class="brand">
           <Wordmark accent={project?.accent} {needsYou} />
+          <span class="grow"></span>
+          {@render villageButton()}
           <button
             type="button"
             class="rail-item global"
@@ -1031,6 +1052,7 @@
           <span class="global-icon" aria-hidden="true"><Icon name="sparkle" size="sm" weight={2} /></span>
           {#if globalSession}<span class="rail-dot"><StatusDot status={globalSession.status} /></span>{/if}
         </button>
+        {@render villageButton()}
         {#if needsYouTotal}
           <button
             type="button"
@@ -1628,6 +1650,20 @@
     top: 0;
     right: 0;
     display: flex;
+  }
+
+  .rail-badge {
+    position: absolute;
+    top: calc(var(--space-0-5) * -1);
+    right: calc(var(--space-0-5) * -1);
+    min-width: var(--size-check);
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-pill);
+    background: var(--status-needs-you);
+    color: var(--on-accent);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-base);
   }
 
   .rail-next {

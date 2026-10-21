@@ -3,6 +3,7 @@ export const SHORTCUTS: [string, string[]][] = [
   ['Open / hide the global Claude', ['Alt G']],
   ['Show / hide the sidebar', ['Alt B']],
   ['Next session that needs you', ['Alt J']],
+  ['Crab village / back', ['Alt V']],
   ['Search projects and sessions', ['Alt K']],
   ['New session in this project', ['Alt N']],
   ['Go to tab 1 to 9', ['Alt 1', 'Alt 9']],
