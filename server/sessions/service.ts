@@ -589,11 +589,11 @@ export class SessionsService implements Sessions {
   }
 
   /**
-   * A command Claude handed over: "run" types `!` (Claude's bash mode) and pastes it, Enter only when asked, into
+   * A command Claude handed over: "run" types `!` (Claude's bash mode), pastes it and presses Enter, in
    * the session it names (resumed first when it is down) or else this one; both actions clear the list and hand
    * the turn back.
    */
-  answerCommand(id: string, index: number, action: 'run' | 'dismiss', enter = false): void {
+  answerCommand(id: string, index: number, action: 'run' | 'dismiss'): void {
     const handed = this.get(id)?.pendingCommands?.[index];
     if (handed === undefined) throw new HttpError(404, 'no such command waiting');
     if (action === 'run') {
@@ -605,7 +605,7 @@ export class SessionsService implements Sessions {
       const type = () => {
         this.sendKeys(into, ['!']);
         this.pasteText(into, handed.command);
-        if (enter) this.sendKeys(into, ['Enter']);
+        this.sendKeys(into, ['Enter']);
       };
       if (this.#tmux.has(tmuxName(into))) type();
       else if (this.get(into)?.status === 'starting') throw new HttpError(409, 'that session is still starting');
