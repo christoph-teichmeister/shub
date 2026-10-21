@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { advance, blocked, direction, SPEED, standSpot } from '../web/src/lib/village/walk.ts';
+import { advance, blocked, direction, inReach, SPEED, standSpot } from '../web/src/lib/village/walk.ts';
 import { buildWorld, type VillageProject } from '../web/src/lib/village/world.ts';
 
 const groups = ['Projects', 'private', 'work', 'everyday'];
@@ -75,4 +75,25 @@ test('a big frame cannot jump over a fence', () => {
   const y = d.y + d.h / 2;
   const r = advance(w, x - d.w, y, 1, 0, d.w * 2); // across the whole district, no gate on the side
   assert.ok(r.x < d.x + d.w + 10, 'stays inside the right fence');
+});
+
+test('E reaches the nearest crab within 64 px, or your desk, whichever is nearer', () => {
+  const [sx, sy] = standSpot(w);
+  const crabs = [
+    { id: 'far', x: sx + 200, y: sy },
+    { id: 'near', x: sx + 90, y: sy + 40 },
+    { id: 'nearer', x: sx + 50, y: sy + 30 },
+  ];
+  assert.deepEqual(inReach(w, { x: sx + 60, y: sy + 30 }, crabs), { kind: 'crab', id: 'nearer' });
+  assert.deepEqual(inReach(w, { x: sx + 140, y: sy + 40 }, crabs), { kind: 'crab', id: 'near' });
+  // A crab right beside you beats the desk; at the desk with none about, E sits.
+  assert.deepEqual(inReach(w, { x: sx, y: sy }, [{ id: 'on', x: sx + 5, y: sy }]), { kind: 'crab', id: 'on' });
+  assert.deepEqual(inReach(w, { x: sx, y: sy }, crabs.slice(0, 1)), { kind: 'desk' });
+  assert.equal(inReach(w, { x: sx + 400, y: sy + 300 }, []), null);
+});
+
+test('sitting snaps to the desk, standing puts you on free ground below it', () => {
+  const [x, y] = standSpot(w);
+  assert.equal(blocked(w, x, y), false);
+  assert.ok(Math.hypot(x - w.you.x, y - w.you.y) < 96, 'the stand spot is within reach of the desk');
 });
