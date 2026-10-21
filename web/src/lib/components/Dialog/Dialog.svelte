@@ -36,7 +36,7 @@
         <h2 id="{id}-title" class="title">{title}</h2>
         {#if description}<p class="description">{description}</p>{/if}
       </div>
-      {#if children}{@render children()}{/if}
+      {#if children}<div class="body">{@render children()}</div>{/if}
       {#if actions}<div class="actions">{@render actions()}</div>{/if}
     </div>
   {/if}
@@ -54,6 +54,13 @@
     box-shadow: 0 var(--space-6) var(--space-12) var(--shadow);
   }
 
+  /* A tall dialog keeps its title and buttons on screen: only the body scrolls. */
+  .dialog[open] {
+    display: flex;
+    max-height: calc(100dvh - var(--space-8));
+    overflow: hidden;
+  }
+
   .needs-you {
     border: var(--ring) solid var(--status-needs-you);
   }
@@ -65,8 +72,22 @@
   .content {
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
     gap: var(--space-4);
     padding: var(--space-6);
+  }
+
+  /* The padding keeps focus rings from being clipped by the scroll box. */
+  .body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-height: 0;
+    margin: calc(-1 * var(--ring));
+    padding: var(--ring);
+    overflow-y: auto;
   }
 
   .head {

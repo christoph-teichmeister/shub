@@ -46,6 +46,8 @@ const MIGRATIONS = [
   'ALTER TABLE sessions ADD COLUMN background_until INTEGER',
 ];
 const WAIT_EVERY_MIN = 5;
+/** Failed checks in a row before the user hears the check does not work. */
+const WAIT_FAILS_NOTIFY = 3;
 
 const GLOBAL_ID = 'global';
 const LIVE: SessionStatus[] = ['new', 'working', 'needs-you', 'your-turn', 'waiting'];
@@ -417,8 +419,14 @@ export class SessionsService implements Sessions {
   }
 
   /** Parks the session until `reason` happens, or (null) ends the wait: back to "your-turn".
-   *  With `check`, a small model looks every `everyMinutes` and ends the wait once it happened. */
-  wait(id: string, reason: string | null, actor: string, check?: { prompt: string; everyMinutes?: number }): Session {
+   *  With `check`, a small model looks every `everyMinutes` and ends the wait once it happened: it then types
+   *  `onDone` into the session, or (none) notifies the user. */
+  wait(
+    id: string,
+    reason: string | null,
+    actor: string,
+    check?: { prompt: string; everyMinutes?: number; onDone?: string | null },
+  ): Session {
     const session = this.require(id);
     if (session.kind === 'shell') throw new HttpError(400, 'shells cannot wait');
     const clean = reason?.trim().slice(0, 200) || null;
@@ -431,6 +439,8 @@ export class SessionsService implements Sessions {
           // Runs at once, so the user sees right away whether the check makes sense.
           checkedAt: null,
           last: null,
+          onDone: check?.onDone?.trim().slice(0, 2000) || null,
+          failures: 0,
         }
       : null;
     this.#db
@@ -602,19 +612,23 @@ export class SessionsService implements Sessions {
         throw new HttpError(409, 'no session to run it in: use Open in terminal');
       }
       const into = target.kind === 'session' ? target.session.id : id;
-      const type = () => {
+      this.#typeInto(into, 'shub:command', () => {
         this.sendKeys(into, ['!']);
         this.pasteText(into, handed.command);
         this.sendKeys(into, ['Enter']);
-      };
-      if (this.#tmux.has(tmuxName(into))) type();
-      else if (this.get(into)?.status === 'starting') throw new HttpError(409, 'that session is still starting');
-      else {
-        this.resume(into, 'shub:command');
-        this.#afterStart.set(into, type);
-      }
+      });
     }
     this.setStatus(id, 'your-turn', null, null);
+  }
+
+  /** Types into the session now, or resumes it first and types once Claude is up. */
+  #typeInto(id: string, actor: string, type: () => void): void {
+    if (this.#tmux.has(tmuxName(id))) type();
+    else if (this.get(id)?.status === 'starting') throw new HttpError(409, 'that session is still starting');
+    else {
+      this.resume(id, actor);
+      this.#afterStart.set(id, type);
+    }
   }
 
   /** Claude's SessionStart hook: it is up, so a command waiting for this session goes in now. */
@@ -724,14 +738,34 @@ export class SessionsService implements Sessions {
       // The wait changed or ended meanwhile: this answer belongs to an old check.
       if (current?.waitCheck?.prompt !== check.prompt || current.waitingFor !== before!.waitingFor) return;
       const last = result ? `${result.done ? 'DONE' : 'NOT YET'}: ${result.summary}` : 'Check failed';
-      const updated = { ...check, checkedAt: now(), last };
+      const failures = result ? 0 : (check.failures ?? 0) + 1;
+      const updated = { ...check, checkedAt: now(), last, failures };
       this.#db.prepare('UPDATE sessions SET wait_check = ? WHERE id = ?').run(JSON.stringify(updated), id);
       if (result?.done && current.status === 'waiting') {
         const session = this.wait(id, null, 'shub:wait-check');
-        this.#services.notify.needsYou(session, result.summary);
-      } else this.#emitUpdated(id);
+        if (check.onDone) this.#resumeAfterWait(session, check.onDone.replaceAll('{summary}', result.summary));
+        else this.#services.notify.needsYou(session, result.summary);
+      } else {
+        const session = this.#emitUpdated(id);
+        if (failures === WAIT_FAILS_NOTIFY) {
+          this.#services.notify.needsYou(session, `Wait check failed ${failures} times in a row: ${check.prompt}`);
+        }
+      }
     } finally {
       this.#checking.delete(id);
+    }
+  }
+
+  /** The wait is over: Claude goes on with `text`; when that cannot be typed, the user hears of it instead. */
+  #resumeAfterWait(session: Session, text: string): void {
+    try {
+      this.#typeInto(session.id, 'shub:wait-check', () => {
+        this.pasteText(session.id, text);
+        this.sendKeys(session.id, ['Enter']);
+      });
+    } catch (err) {
+      console.error(`shub: wait follow-up for ${session.id}`, err);
+      this.#services.notify.needsYou(session, `Done waiting, but shub could not send: ${text}`);
     }
   }
 

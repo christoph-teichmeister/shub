@@ -842,13 +842,19 @@ test('a tab menu parks the session with a background check', async ({ page }) =>
   await dialog.getByLabel('Waiting for').fill("Kai's answer on MR !2213");
   await dialog.getByLabel('How can Haiku tell it happened?').fill('Has Kai commented on MR !2213 in ai/ai-portal?');
   await dialog.getByLabel('Check every').selectOption('60');
+  await dialog.getByLabel('When it happened').selectOption('send');
+  await dialog
+    .getByLabel('Prompt', { exact: true })
+    .fill('Kai answered: {summary}. Verify it, then address his comments.');
   if (process.env.SHUB_SHOT) await page.screenshot({ path: process.env.SHUB_SHOT });
+  await expect(dialog.getByRole('button', { name: 'Wait and check' })).toBeInViewport({ ratio: 1 });
   await dialog.getByRole('button', { name: 'Wait and check' }).click();
   await expect(dialog).toHaveCount(0);
   expect(calls.find((c) => c.method === 'PATCH' && c.path === '/api/sessions/s1')?.body).toEqual({
     waitingFor: "Kai's answer on MR !2213",
     waitCheck: 'Has Kai commented on MR !2213 in ai/ai-portal?',
     waitEveryMinutes: 60,
+    waitOnDone: 'Kai answered: {summary}. Verify it, then address his comments.',
   });
   expect(errors).toEqual([]);
 });
