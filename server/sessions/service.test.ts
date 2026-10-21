@@ -348,7 +348,31 @@ test('a wait check runs at once, keeps waiting on NOT YET and hands back on DONE
   await svc.checkWait(s.id, true);
   assert.equal(svc.get(s.id)?.status, 'your-turn');
   assert.equal(svc.get(s.id)?.waitCheck, null);
-  assert.deepEqual(notified, [`${s.id}: Kai approved the MR`]);
+  assert.deepEqual(notified.splice(0), [`${s.id}: Kai approved the MR`]);
+});
+
+test('a wait check with a follow-up types it into the session instead of notifying', async () => {
+  const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  svc.setStatus(s.id, 'your-turn');
+  svc.wait(s.id, 'Kai', 'chris', { prompt: 'Kai?', onDone: '  echo wait-over-{summary}  ' });
+  assert.equal(svc.get(s.id)?.waitCheck?.onDone, 'echo wait-over-{summary}');
+  checkAnswer = { done: true, summary: 'approved' };
+  await svc.checkWait(s.id, true);
+  await waitFor(() => pane(s.id).includes('echo wait-over-approved'), 'follow-up typed into the session');
+  assert.deepEqual(notified.splice(0), []);
+});
+
+test('the third failed wait check in a row notifies once, an answer resets the count', async () => {
+  const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  svc.setStatus(s.id, 'your-turn');
+  svc.wait(s.id, 'Kai', 'chris', { prompt: 'Kai?' });
+  checkAnswer = null;
+  for (let i = 0; i < 4; i++) await svc.checkWait(s.id, true);
+  assert.equal(svc.get(s.id)?.waitCheck?.failures, 4);
+  assert.deepEqual(notified.splice(0), [`${s.id}: Wait check failed 3 times in a row: Kai?`]);
+  checkAnswer = { done: false, summary: 'not yet' };
+  await svc.checkWait(s.id, true);
+  assert.equal(svc.get(s.id)?.waitCheck?.failures, 0);
 });
 
 test('a handed-over command runs in the session it names, resuming it first', async () => {

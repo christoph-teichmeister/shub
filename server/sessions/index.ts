@@ -122,16 +122,20 @@ function routes(sessions: SessionsService, services: Services, router: Router): 
       waitingFor?: unknown;
       waitCheck?: unknown;
       waitEveryMinutes?: unknown;
+      waitOnDone?: unknown;
     }>();
     if ('waitingFor' in body) {
-      const { waitingFor, waitCheck, waitEveryMinutes } = body;
+      const { waitingFor, waitCheck, waitEveryMinutes, waitOnDone } = body;
       if (waitingFor !== null && typeof waitingFor !== 'string') throw new HttpError(400, 'waitingFor: string | null');
       if (waitCheck !== undefined && typeof waitCheck !== 'string') throw new HttpError(400, 'waitCheck: string');
       if (waitEveryMinutes !== undefined && typeof waitEveryMinutes !== 'number') {
         throw new HttpError(400, 'waitEveryMinutes: number');
       }
+      if (waitOnDone !== undefined && waitOnDone !== null && typeof waitOnDone !== 'string') {
+        throw new HttpError(400, 'waitOnDone: string | null');
+      }
       const before = sessions.get(req.params.id);
-      const check = waitCheck ? { prompt: waitCheck, everyMinutes: waitEveryMinutes } : undefined;
+      const check = waitCheck ? { prompt: waitCheck, everyMinutes: waitEveryMinutes, onDone: waitOnDone } : undefined;
       const session = sessions.wait(req.params.id, waitingFor, req.caller.id, check);
       // The session ending its own wait means what it waited for happened: tell the user like a question.
       if (body.waitingFor === null && before?.status === 'waiting' && !isUser(req.caller)) {

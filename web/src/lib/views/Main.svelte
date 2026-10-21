@@ -341,7 +341,15 @@
   let confirm = $state<{ title: string; body: string; action: string; danger?: boolean; run: () => void } | null>(null);
   let ask = $state<{ button: ButtonDef; value: string; worktrees: Worktree[] | null } | null>(null);
   let linkDraft = $state<{ session: Session; label: string; url: string } | null>(null);
-  let waitDraft = $state<{ session: Session; reason: string; check: string; every: number } | null>(null);
+  const WAIT_ON_DONE = 'The wait is over: {summary}. Carry on.';
+  let waitDraft = $state<{
+    session: Session;
+    reason: string;
+    check: string;
+    every: number;
+    then: 'notify' | 'send';
+    onDone: string;
+  } | null>(null);
   let restorable = $state<{ session: Session; on: boolean }[]>([]);
   let services = $state<ServiceContainer[]>([]);
   let dragId: string | null = null;
@@ -548,7 +556,8 @@
       if (s.id !== active?.id) location.hash = sessionHref(s);
       renamingId = s.id;
     } else if (id === 'link') linkDraft = { session: s, label: '', url: '' };
-    else if (id === 'wait') waitDraft = { session: s, reason: '', check: '', every: 30 };
+    else if (id === 'wait')
+      waitDraft = { session: s, reason: '', check: '', every: 30, then: 'notify', onDone: WAIT_ON_DONE };
     else if (id === 'ready')
       void api('sessionUpdate', { params: { id: s.id }, body: { waitingFor: null } }).catch(toastError);
     else if (id === 'pause')
@@ -616,8 +625,13 @@
 
   function saveWait() {
     if (!waitDraft) return;
-    const { session, reason, check, every } = waitDraft;
-    const body = { waitingFor: reason.trim(), waitCheck: check.trim() || undefined, waitEveryMinutes: every };
+    const { session, reason, check, every, then, onDone } = waitDraft;
+    const body = {
+      waitingFor: reason.trim(),
+      waitCheck: check.trim() || undefined,
+      waitEveryMinutes: every,
+      waitOnDone: then === 'send' ? onDone.trim() || WAIT_ON_DONE : null,
+    };
     void api('sessionUpdate', { params: { id: session.id }, body }).catch(toastError);
     waitDraft = null;
   }
@@ -1317,6 +1331,20 @@
           {#each [15, 30, 60, 120] as m (m)}<option value={m}>{m < 60 ? `${m} minutes` : `${m / 60} h`}</option>{/each}
         </select></label
       >
+      {#if waitDraft.check.trim()}
+        <label class="field"
+          ><span>When it happened</span><select bind:value={waitDraft.then}>
+            <option value="notify">Notify me</option>
+            <option value="send">Send a prompt to the session</option>
+          </select></label
+        >
+        {#if waitDraft.then === 'send'}
+          <label class="field"><span>Prompt</span><textarea bind:value={waitDraft.onDone} rows="2"></textarea></label>
+          <p class="wait-hint">
+            Claude goes on by itself with this prompt (or a /command). <code>{'{summary}'}</code> becomes Haiku's answer.
+          </p>
+        {/if}
+      {/if}
     </form>
   {/if}
   {#snippet actions()}

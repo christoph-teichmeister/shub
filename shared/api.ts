@@ -242,6 +242,10 @@ export interface WaitCheck {
   checkedAt: string | null;
   /** The last answer, e.g. "NOT YET: no new comment from Kai". */
   last: string | null;
+  /** What shub types into the session once it happened (`{summary}` = the check's answer); null = only notify. */
+  onDone?: string | null;
+  /** Checks in a row that gave no answer; the user hears of it at the third. */
+  failures?: number;
 }
 
 export interface StartSessionRequest {
@@ -580,7 +584,7 @@ export const ROUTES = {
 
   sessions: 'GET /api/sessions',
   sessionStart: 'POST /api/sessions', // StartSessionRequest -> Session | { approval: Approval }
-  sessionUpdate: 'PATCH /api/sessions/:id', // { name } rename, { waitingFor: string | null, waitCheck?, waitEveryMinutes? } wait / stop
+  sessionUpdate: 'PATCH /api/sessions/:id', // { name } rename, { waitingFor: string | null, waitCheck?, waitEveryMinutes?, waitOnDone? } wait / stop
   sessionsReorder: 'POST /api/sessions/reorder', // { positions: { [id]: number | null } } -> Session[], user only
   sessionClose: 'DELETE /api/sessions/:id',
   sessionClaudeHere: 'POST /api/sessions/:id/claude-here', // shell id -> Session | { approval }: Claude in the shell's current folder
