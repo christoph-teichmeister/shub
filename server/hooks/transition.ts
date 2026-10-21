@@ -31,6 +31,37 @@ export const HOOK_EVENTS = [
 ] as const;
 export type HookEvent = (typeof HOOK_EVENTS)[number];
 
+/**
+ * Every event a session hooks at launch, beyond the ones shub handles today. Claude Code reads its hooks once
+ * at startup, so a session only reports an event that a later shub version handles if it hooked it from the
+ * start. The event list of Claude Code 2.1.306, minus WorktreeCreate/WorktreeRemove (a hook there replaces
+ * git's own worktree handling), MessageDisplay and FileChanged (not lifecycle events).
+ */
+export const LAUNCH_HOOK_EVENTS: readonly string[] = [
+  ...HOOK_EVENTS,
+  'PreToolUse',
+  'PostToolUseFailure',
+  'PostToolBatch',
+  'UserPromptExpansion',
+  'SessionEnd',
+  'StopFailure',
+  'PreCompact',
+  'PostCompact',
+  'PreModelSwitch',
+  'PostModelSwitch',
+  'PermissionDenied',
+  'Setup',
+  'TeammateIdle',
+  'TaskCreated',
+  'TaskCompleted',
+  'Elicitation',
+  'ElicitationResult',
+  'ConfigChange',
+  'InstructionsLoaded',
+  'CwdChanged',
+  'DirectoryAdded',
+];
+
 export interface Transition {
   status: SessionStatus;
   /** undefined = leave as is. */

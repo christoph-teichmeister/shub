@@ -13,8 +13,12 @@ test('session settings hook every event and keep Claude tools off the secrets in
     hooks: Record<string, unknown>;
     permissions: { deny: string[] };
   };
-  assert.ok(s.hooks.SessionStart && s.hooks.Stop && s.hooks.PostToolUse);
-  assert.match(JSON.stringify(s.hooks.PreToolUse), /"matcher":"Bash\|Edit\|Write\|MultiEdit\|NotebookEdit".*guard\.sh/);
+  assert.ok(s.hooks.SessionStart && s.hooks.Stop && s.hooks.PostToolUse && s.hooks.SessionEnd);
+  assert.equal(s.hooks.WorktreeCreate, undefined);
+  assert.match(
+    JSON.stringify(s.hooks.PreToolUse),
+    /report\.sh' PreToolUse.*"matcher":"Bash\|Edit\|Write\|MultiEdit\|NotebookEdit".*guard\.sh/,
+  );
   assert.deepEqual(s.permissions.deny, [
     'Read(//home/u/.local/state/shub/token)',
     'Read(//home/u/.local/state/shub/shub.db*)',
@@ -55,6 +59,10 @@ test('a hook reports the permission mode Claude runs in (for "inherit")', async 
   await hook('Stop', { permission_mode: 'nonsense' });
   await hook('Stop', {});
   assert.deepEqual(modes, ['auto', 'bypassPermissions', 'acceptEdits']);
+  // Hooked for later shub versions: accepted and ignored. Anything else is not a hook.
+  assert.deepEqual(await hook('PreCompact', { permission_mode: 'plan' }), { ok: true });
+  assert.deepEqual(modes, ['auto', 'bypassPermissions', 'acceptEdits']);
+  await assert.rejects(hook('Bogus', {}), /unknown hook event/);
 });
 
 test('the guard denies changes to a protected main checkout and stays quiet otherwise', async () => {
