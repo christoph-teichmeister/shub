@@ -10,7 +10,7 @@ shub session rename <name> [--id <session id>]   (defaults to $SHUB_SESSION_ID; 
 shub session wait <what for> [--check <what to look at>] [--every <minutes>] [--then <prompt>] [--id <session id>]
                                      (parks the session as "waiting"; --check lets Haiku look every --every minutes, default 30;
                                      once it happened shub types --then into the session ({summary} = the check's answer),
-                                     without --then it notifies you)
+                                     without --then it notifies you; use --then only for clear yes/no waits)
 shub session ready [--id <session id>]   (ends the wait: back to "your turn", with a notification when a session calls it)
 shub session link <url> [--label <label>] [--id <session id>]
                                      (pins a link as a chip on the session's tab; defaults to $SHUB_SESSION_ID)

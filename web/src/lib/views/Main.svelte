@@ -341,7 +341,8 @@
   let confirm = $state<{ title: string; body: string; action: string; danger?: boolean; run: () => void } | null>(null);
   let ask = $state<{ button: ButtonDef; value: string; worktrees: Worktree[] | null } | null>(null);
   let linkDraft = $state<{ session: Session; label: string; url: string } | null>(null);
-  const WAIT_ON_DONE = 'The wait is over: {summary}. Carry on.';
+  const WAIT_ON_DONE =
+    'A background check says the wait is over: {summary}. Verify that yourself first, then carry on.';
   let waitDraft = $state<{
     session: Session;
     reason: string;
@@ -1341,7 +1342,9 @@
         {#if waitDraft.then === 'send'}
           <label class="field"><span>Prompt</span><textarea bind:value={waitDraft.onDone} rows="2"></textarea></label>
           <p class="wait-hint">
-            Claude goes on by itself with this prompt (or a /command). <code>{'{summary}'}</code> becomes Haiku's answer.
+            Claude goes on by itself with this prompt (or a /command), in the session's permission mode.
+            <code>{'{summary}'}</code> becomes Haiku's answer. Haiku can be wrong or misled by what it reads: use this for
+            clear yes/no waits (an MR got merged) and keep "Notify me" for waits that need judgment.
           </p>
         {/if}
       {/if}
