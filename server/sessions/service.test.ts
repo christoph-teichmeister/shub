@@ -73,6 +73,8 @@ const svc = new SessionsService(ctx, services, {
   startedGapMs: 50,
   launcher: (spec) => (launches.push(spec), ['bash', '--norc', '--noprofile']),
   titler: async (prompt) => (prompt === 'do the thing' ? 'Thing Doing' : null),
+  mrLookup: async (ref) =>
+    ref.number === 5 ? { title: 'Fix login', mine: false } : { title: '#12: Own work', mine: true },
   waitChecker: async (check) => (checks.push(check), checkAnswer),
 });
 
@@ -413,4 +415,20 @@ test('worktrees a session created stay linked to it after it closes, unlike its 
     childRows(state).map((r) => [r.worktree_path, r.origin_session_id]),
     [[join(repo, 'wt'), creator.id]],
   );
+});
+
+test('an MR/PR link pins a chip and names a session shub named, never a given name', async () => {
+  const s = await svc.start({ kind: 'claude', projectId: 'p1', prompt: 'review it' }, 'chris');
+  const mr = 'https://gitlab.example.com/ai/portal/-/merge_requests/5';
+  svc.nameFromMr(s.id, `/mr-review ${mr}`);
+  await waitFor(() => svc.get(s.id)?.name === '👀 MR !5: Fix login', 'MR name');
+  assert.deepEqual(svc.get(s.id)?.links, [{ source: 'shub', url: mr, label: 'MR !5' }]);
+  svc.nameFromMr(s.id, 'https://github.com/a/b/pull/6');
+  await waitFor(() => svc.get(s.id)?.name === '🔨 #12: Own work', 'shub may rename its own MR name');
+  svc.rename(s.id, 'mine', 'chris');
+  svc.nameFromMr(s.id, 'https://github.com/a/b/pull/7');
+  await new Promise((r) => setImmediate(r));
+  assert.equal(svc.get(s.id)?.name, 'mine');
+  assert.equal(svc.get(s.id)?.links.at(-1)?.label, 'PR #7', 'the chip still comes');
+  svc.close(s.id, 'chris');
 });

@@ -19,6 +19,7 @@ import { HttpError } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import { hookSettings } from '../hooks/index.ts';
 import type { Services, Sessions } from '../services.ts';
+import { defaultMrLookup, findMr, mrName, type MrLookup } from './mr.ts';
 import { defaultTitler, type Titler } from './title.ts';
 import { defaultWaitChecker, type WaitChecker } from './waitcheck.ts';
 import {
@@ -141,6 +142,7 @@ const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 export interface SessionsOptions {
   launcher?: Launcher;
   titler?: Titler;
+  mrLookup?: MrLookup;
   waitChecker?: WaitChecker;
   restoreGapMs?: number;
   startedGapMs?: number;
@@ -151,6 +153,10 @@ export class SessionsService implements Sessions {
   #services: Services;
   #launcher: Launcher;
   #titler: Titler;
+  #mrLookup: MrLookup;
+  /** The last name shub itself gave each session; any other name (button, user, skill) is never overwritten.
+   *  ponytail: in memory, so after a shub restart only "Session N" names follow an MR link. */
+  #autoNames = new Map<string, string>();
   #waitChecker: WaitChecker;
   /** Sessions whose background check is running right now. */
   #checking = new Set<string>();
@@ -169,6 +175,7 @@ export class SessionsService implements Sessions {
     this.#services = services;
     this.#launcher = options.launcher ?? defaultLauncher;
     this.#titler = options.titler ?? defaultTitler;
+    this.#mrLookup = options.mrLookup ?? defaultMrLookup;
     this.#waitChecker = options.waitChecker ?? defaultWaitChecker;
     this.#restoreGapMs = options.restoreGapMs ?? RESTORE_GAP_MS;
     this.#startedGapMs = options.startedGapMs ?? STARTED_GAP_MS;
@@ -332,9 +339,31 @@ export class SessionsService implements Sessions {
 
   /** The quick name stays until the model's title arrives, and stays for good if the user renamed meanwhile. */
   #retitle(id: string, prompt: string, quick: string): void {
+    this.#autoNames.set(id, quick);
     void this.#titler(prompt).then((title) => {
-      if (title && this.get(id)?.name === quick) this.rename(id, title, 'shub');
+      if (title && this.#autoNamed(id) && this.get(id)?.name === quick) this.#autoRename(id, title);
     });
+  }
+
+  nameFromMr(id: string, prompt: string): void {
+    const ref = findMr(prompt);
+    const session = this.get(id);
+    if (!ref || !session || session.links.some((l) => l.url === ref.url)) return;
+    this.addLink(id, { source: 'shub', url: ref.url, label: ref.label });
+    if (!this.#autoNamed(id)) return;
+    void this.#mrLookup(ref).then((mr) => {
+      if (mr && this.#autoNamed(id)) this.#autoRename(id, mrName(ref, mr));
+    });
+  }
+
+  #autoNamed(id: string): boolean {
+    const name = this.get(id)?.name;
+    return !!name && (/^Session \d+$/.test(name) || this.#autoNames.get(id) === name);
+  }
+
+  #autoRename(id: string, name: string): void {
+    this.rename(id, name, 'shub');
+    this.#autoNames.set(id, this.get(id)!.name);
   }
 
   /** An old conversation of this folder that no live shub session holds. */

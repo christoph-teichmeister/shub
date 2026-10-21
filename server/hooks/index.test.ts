@@ -89,6 +89,7 @@ test('the first prompt names a "Session N" session, later prompts and given name
     sessions: {
       get: () => ({ id: 's1', status: 'your-turn', claudeSessionId: null, name }),
       nameFromPrompt: (_id: string, prompt: string) => renames.push((name = prompt)),
+      nameFromMr: () => {},
       setPermissionMode: () => {},
       setStatus: () => {},
     },
