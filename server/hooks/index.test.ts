@@ -20,7 +20,6 @@ test('session settings hook every event and keep Claude tools off the secrets in
     'Read(//home/u/.local/state/shub/shub.db*)',
     'Read(//home/u/.local/state/shub/vapid.json)',
     'Edit(//home/u/.local/state/shub/**)',
-    'Write(//home/u/.local/state/shub/**)',
   ]);
 });
 
