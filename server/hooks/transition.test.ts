@@ -4,6 +4,7 @@ import {
   AGENT_FALLBACK_MS,
   handedOverCommands,
   newClaudeSessionId,
+  nextAgents,
   SHELL_FALLBACK_MS,
   summarizeTool,
   transition,
@@ -199,4 +200,23 @@ test('a block can name the session or folder it belongs to', () => {
     { command: 'claude --resume x', session: 'ai-portal-2' },
     { command: 'ls', cwd: '/home/u/w/2213' },
   ]);
+});
+
+test('subagents are tracked from start to stop, with their last tool call', () => {
+  let agents = nextAgents([], 'SubagentStart', { agent_id: 'a1', agent_type: 'code-review' })!;
+  assert.deepEqual(agents, [{ id: 'a1', type: 'code-review' }]);
+  assert.equal(nextAgents(agents, 'SubagentStart', { agent_id: 'a1', agent_type: 'code-review' }), null);
+  // The main thread's tool calls carry no agent_id and change nothing.
+  assert.equal(nextAgents(agents, 'PostToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } }), null);
+  agents = nextAgents(agents, 'PostToolUse', {
+    agent_id: 'a1',
+    tool_name: 'Bash',
+    tool_input: { command: 'npm test' },
+  })!;
+  assert.equal(agents[0].activity, 'Bash: npm test');
+  // A turn that ends while the agent runs in the background keeps it; one with nothing left clears missed stops.
+  assert.equal(nextAgents(agents, 'Stop', { background_tasks: [{ type: 'subagent' }] }), null);
+  assert.deepEqual(nextAgents(agents, 'Stop', { background_tasks: [] }), []);
+  assert.deepEqual(nextAgents(agents, 'SubagentStop', { agent_id: 'a1' }), []);
+  assert.equal(nextAgents([], 'SubagentStop', { agent_id: 'a1' }), null);
 });

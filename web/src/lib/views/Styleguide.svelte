@@ -21,6 +21,7 @@
   import ServicesTree from '../components/ServicesTree/ServicesTree.svelte';
   import SessionRow from '../components/SessionRow/SessionRow.svelte';
   import WorktreeRow from '../components/WorktreeRow/WorktreeRow.svelte';
+  import AgentRow from '../components/AgentRow/AgentRow.svelte';
   import SessionTab from '../components/SessionTab/SessionTab.svelte';
   import Sidebar from '../components/Sidebar/Sidebar.svelte';
   import SidebarSection from '../components/SidebarSection/SidebarSection.svelte';
@@ -253,6 +254,9 @@
                   onmenu={() => {}}
                   onunpin={() => {}}
                 />{/each}
+              <div style:padding-left="var(--space-4)">
+                <AgentRow agent={{ id: 'a1', type: 'code-review', activity: 'Bash: git diff origin/develop' }} />
+              </div>
               {#each CHILDREN as w (w.path)}<div style:padding-left="var(--space-4)">
                   <WorktreeRow worktree={w} onopen={w.busy ? undefined : () => {}} />
                 </div>{/each}

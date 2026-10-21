@@ -12,6 +12,7 @@ import type {
   SessionLink,
   SessionStatus,
   StartSessionRequest,
+  SubagentRun,
 } from '../../shared/api.ts';
 import { commandTarget } from '../../shared/commands.ts';
 import { HttpError } from '../api/router.ts';
@@ -45,6 +46,7 @@ const MIGRATIONS = [
   'ALTER TABLE sessions ADD COLUMN shells INTEGER NOT NULL DEFAULT 0',
   'ALTER TABLE sessions ADD COLUMN background_until INTEGER',
   'ALTER TABLE sessions ADD COLUMN tab_position INTEGER',
+  'ALTER TABLE sessions ADD COLUMN agents TEXT',
 ];
 const WAIT_EVERY_MIN = 5;
 /** Failed checks in a row before the user hears the check does not work. */
@@ -100,6 +102,7 @@ interface Row {
   wait_check: string | null;
   position: number | null;
   tab_position: number | null;
+  agents: string | null;
 }
 
 const toSession = (r: Row): Session => ({
@@ -128,6 +131,7 @@ const toSession = (r: Row): Session => ({
       )
     : null,
   shells: r.shells,
+  agents: r.agents ? JSON.parse(r.agents) : [],
 });
 
 export const tmuxName = (id: string): string => `shub-${id}`;
@@ -501,6 +505,15 @@ export class SessionsService implements Sessions {
         id,
       );
     this.#ctx.bus.emit({ type: 'session.status', sessionId: id, status });
+    this.#emitUpdated(id);
+  }
+
+  setAgents(id: string, agents: SubagentRun[]): void {
+    const session = this.get(id);
+    if (!session || session.status === 'exited') return;
+    this.#db
+      .prepare('UPDATE sessions SET agents = ? WHERE id = ?')
+      .run(agents.length ? JSON.stringify(agents) : null, id);
     this.#emitUpdated(id);
   }
 
