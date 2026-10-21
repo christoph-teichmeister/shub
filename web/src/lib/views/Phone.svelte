@@ -3,7 +3,13 @@
   import CommandChip from '../components/CommandChip/CommandChip.svelte';
   import MachineSwitcher from '../components/MachineSwitcher/MachineSwitcher.svelte';
   import { fleet } from '../stores/machines.svelte.ts';
-  import { API_VERSION, type ServiceContainer, type Session, type SessionStatus } from '../../../../shared/api.ts';
+  import {
+    API_VERSION,
+    type ChildWorktree,
+    type ServiceContainer,
+    type Session,
+    type SessionStatus,
+  } from '../../../../shared/api.ts';
   import Button from '../components/Button/Button.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
   import Icon from '../components/Icon/Icon.svelte';
@@ -14,6 +20,7 @@
   import TerminalView from '../components/TerminalView/TerminalView.svelte';
   import Wordmark from '../components/Wordmark/Wordmark.svelte';
   import { statusLabel } from '../status.ts';
+  import { childLabel, childStart, sessionsIn } from '../children.ts';
   import { api } from '../stores/api.ts';
   import { href, router } from '../stores/router.svelte.ts';
   import { app, needsYouCount, sendKeys, sessionHref, sessionsOf, startSession, ui } from '../stores/state.svelte.ts';
@@ -37,6 +44,14 @@
     { status: 'new', title: 'Not started' },
     { status: 'waiting', title: 'Waiting' },
   ];
+
+  /** Worktrees sessions created with no Claude of shub's running there: a tap starts or resumes one. */
+  const dormant = $derived(app.children.filter((w) => !sessionsIn(w, app.sessions).length));
+  async function openChild(w: ChildWorktree) {
+    const request = childStart(w);
+    const s = request && (await startSession(request));
+    if (s) location.hash = sessionHref(s);
+  }
 
   let picking = $state(false);
   let showServices = $state(false);
@@ -225,6 +240,25 @@
         </section>
       {/if}
     {/each}
+    {#if dormant.length}
+      <section class="section" aria-labelledby="h-worktrees">
+        <h2 id="h-worktrees">Worktrees · {dormant.length}</h2>
+        {#each dormant as w (w.path)}
+          <button
+            type="button"
+            class="card row child"
+            class:merged={w.state === 'merged'}
+            disabled={!childStart(w)}
+            onclick={() => openChild(w)}
+          >
+            <Icon name="folder" size="sm" />
+            <span class="grow">{app.projects.find((p) => p.id === w.projectId)?.name ?? ''} · {w.name}</span>
+            {#if w.conversation && !w.busy}<Icon name="message" size="sm" label="Has a conversation to resume" />{/if}
+            <span class="sub">{childLabel(w)}</span>
+          </button>
+        {/each}
+      </section>
+    {/if}
     {#if !SECTIONS.some((sec) => visible.some((s) => s.status === sec.status))}
       <p class="empty">Nothing running. Start a session below.</p>
     {/if}
@@ -331,6 +365,15 @@
     flex-direction: row;
     align-items: center;
     min-height: var(--size-control-lg);
+  }
+
+  .child {
+    font: inherit;
+    text-align: left;
+  }
+
+  .child.merged {
+    opacity: 0.55;
   }
 
   .needs-card {

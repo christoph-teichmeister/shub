@@ -2,6 +2,7 @@
   import { onMount, untrack, type Snippet } from 'svelte';
   import type {
     ButtonDef,
+    ChildWorktree,
     Config,
     ProjectView,
     ServiceContainer,
@@ -34,6 +35,8 @@
   import StatusBadge from '../components/StatusBadge/StatusBadge.svelte';
   import StatusDot from '../components/StatusDot/StatusDot.svelte';
   import { dropPositions, placeSessions, projectBadge } from '../status.ts';
+  import { childStart, placeChildren, sessionsIn } from '../children.ts';
+  import WorktreeRow from '../components/WorktreeRow/WorktreeRow.svelte';
   import TabBar from '../components/TabBar/TabBar.svelte';
   import TerminalView from '../components/TerminalView/TerminalView.svelte';
   import TextField from '../components/TextField/TextField.svelte';
@@ -192,6 +195,14 @@
   const groupBadge = (projects: ProjectView[]) => projectBadge(projects.flatMap((p) => sessionsOf(p.id)));
   const needsYouTotal = $derived(needsYouCount());
   const dormantCount = $derived(app.projects.filter((p) => p.visibility === 'dormant').length);
+
+  // ---------- Child worktrees: created by a session, nested under it ----------
+  const placed = $derived(placeChildren(app.children, app.sessions));
+  async function openChild(w: ChildWorktree) {
+    const request = childStart(w);
+    const s = request && (await startSession(request));
+    if (s) location.hash = sessionHref(s);
+  }
 
   // ---------- Worktrees: the open project's worktrees, searchable, with a terminal or Claude in each ----------
   let wt = $state<{ projectId: string; list: WorktreeInfo[] | null; query: string } | null>(null);
@@ -725,6 +736,40 @@
 
 <svelte:window onkeydowncapture={onKeydown} />
 
+{#snippet sessionRows(list: Session[], projectId: string)}
+  {@const top = list.filter((s) => !placed.nested.has(s.id))}
+  {#each top as s (s.id)}
+    <SessionRow
+      session={s}
+      href={sessionHref(s)}
+      selected={s.id === active?.id}
+      closing={app.closing[s.id]}
+      onmenu={(at) => (menu = { session: s, ...at })}
+      ondragstart={dragSessionStart(s)}
+      ondrop={(after) => dropSession(top, s, after)}
+      onunpin={() => unpinSession(s)}
+    />
+    {#each placed.byOrigin.get(s.id) ?? [] as w (w.path)}{@render childRow(w)}{/each}
+  {/each}
+  {#each placed.orphans.get(projectId) ?? [] as w (w.path)}{@render childRow(w)}{/each}
+{/snippet}
+
+{#snippet childRow(w: ChildWorktree)}
+  <div class="child">
+    {#each sessionsIn(w, app.sessions) as c (c.id)}
+      <SessionRow
+        session={c}
+        href={sessionHref(c)}
+        selected={c.id === active?.id}
+        closing={app.closing[c.id]}
+        onmenu={(at) => (menu = { session: c, ...at })}
+      />
+    {:else}
+      <WorktreeRow worktree={w} onopen={childStart(w) ? () => openChild(w) : undefined} />
+    {/each}
+  </div>
+{/snippet}
+
 <AppShell>
   {#snippet sidebar()}
     <Sidebar collapsed={sidebarCollapsed} ontoggle={toggleSidebar}>
@@ -803,18 +848,7 @@
                 onnewsession={() => newSession(p)}
                 onmenu={(e) => (projectMenu = { project: p, x: e.clientX, y: e.clientY })}
               >
-                {#each list as s (s.id)}
-                  <SessionRow
-                    session={s}
-                    href={sessionHref(s)}
-                    selected={s.id === active?.id}
-                    closing={app.closing[s.id]}
-                    onmenu={(at) => (menu = { session: s, ...at })}
-                    ondragstart={dragSessionStart(s)}
-                    ondrop={(after) => dropSession(list, s, after)}
-                    onunpin={() => unpinSession(s)}
-                  />
-                {/each}
+                {@render sessionRows(list, p.id)}
               </ProjectRow>
             </div>
           {/each}
@@ -842,18 +876,7 @@
                 ondrop={() => dropProject(group.name, p.id)}
                 onmenu={(e) => (projectMenu = { project: p, x: e.clientX, y: e.clientY })}
               >
-                {#each list as s (s.id)}
-                  <SessionRow
-                    session={s}
-                    href={sessionHref(s)}
-                    selected={s.id === active?.id}
-                    closing={app.closing[s.id]}
-                    onmenu={(at) => (menu = { session: s, ...at })}
-                    ondragstart={dragSessionStart(s)}
-                    ondrop={(after) => dropSession(list, s, after)}
-                    onunpin={() => unpinSession(s)}
-                  />
-                {/each}
+                {@render sessionRows(list, p.id)}
               </ProjectRow>
             {/each}
           </SidebarSection>
@@ -1494,6 +1517,13 @@
   .grow {
     flex: 1 1 auto;
     min-width: 0;
+  }
+
+  .child {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    padding-left: var(--space-4);
   }
 
   .hint {

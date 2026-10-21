@@ -6,7 +6,7 @@
   import { checkAppUpdate } from './lib/stores/loader.ts';
   import { fleet, loadMachines } from './lib/stores/machines.svelte.ts';
   import { go, router } from './lib/stores/router.svelte.ts';
-  import { app, connectEvents, loadAll, needsYouCount, ui } from './lib/stores/state.svelte.ts';
+  import { app, connectEvents, loadAll, loadChildren, needsYouCount, ui } from './lib/stores/state.svelte.ts';
   import AppSettings from './lib/views/AppSettings.svelte';
   import FirstRun from './lib/views/FirstRun.svelte';
   import Login from './lib/views/Login.svelte';
@@ -37,12 +37,16 @@
       });
     void loadMachines().then(checkApp);
     const appTimer = setInterval(() => void checkApp(), 30 * 60_000);
+    // Child worktrees: busy ends when a headless run goes quiet, merged needs a fetch now and then.
+    // ponytail: polls even when no child exists; skip when app.children is empty if it ever costs.
+    let ticks = 0;
+    const childTimer = setInterval(() => void loadChildren(++ticks % 20 === 0), 30_000);
     void loadAll().then(() => {
       const s = session ? app.sessions.find((x) => x.id === session) : undefined;
       if (s) go(...(s.projectId ? ['p', s.projectId, s.id] : ['g']));
     });
     const stopEvents = connectEvents();
-    return () => (clearInterval(appTimer), stopEvents());
+    return () => (clearInterval(appTimer), clearInterval(childTimer), stopEvents());
   });
 
   $effect(() => {

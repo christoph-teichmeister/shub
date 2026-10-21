@@ -1,6 +1,7 @@
 // Runs real tmux on a test-only socket (shub-test-<pid>) with bash instead of claude; kills only that server.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -11,6 +12,7 @@ import type { Config, Project, ServerEvent } from '../../shared/api.ts';
 import { installUpgrades } from '../api/upgrade.ts';
 import { EventBus, type Context } from '../context.ts';
 import type { Services } from '../services.ts';
+import { CHILD_MIGRATIONS, childRows, recordChildren } from '../projects/children.ts';
 import { openState } from '../state/index.ts';
 import type { LaunchSpec } from './launch.ts';
 import { encodeCwd } from './old.ts';
@@ -365,4 +367,23 @@ test('a handed-over command runs in the session it names, resuming it first', as
   assert.ok(svc.tmux.has(tmuxName(target.id)), 'the closed target is resumed');
   svc.started(target.id);
   await waitFor(() => pane(target.id).includes('echo routed-2'), 'command once the target is up');
+});
+
+test('worktrees a session created stay linked to it after it closes, unlike its shells', async () => {
+  const repo = join(root, 'repo');
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { stdio: 'pipe' });
+  execFileSync('git', ['init', '-q', '-b', 'main', repo]);
+  git('commit', '-q', '--allow-empty', '-m', 'init');
+  git('worktree', 'add', '-q', '--detach', 'wt');
+  state.migrate('worktrees', CHILD_MIGRATIONS);
+  const creator = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  const payload = { tool_name: 'Bash', cwd: repo, tool_input: { command: 'git worktree add wt' } };
+  await recordChildren(state, creator.id, [{ id: 'p1', path: repo }], payload);
+  svc.close(creator.id, 'chris');
+  assert.equal(svc.get(creator.id)?.status, 'exited');
+  assert.deepEqual(
+    childRows(state).map((r) => [r.worktree_path, r.origin_session_id]),
+    [[join(repo, 'wt'), creator.id]],
+  );
 });
