@@ -200,6 +200,9 @@
   const placed = $derived(placeChildren(app.children, app.sessions));
   // Worktree children start folded under their session (or project); opened ones stay open until a reload.
   let openChildren = $state<Record<string, boolean>>({});
+  const childrenOpen = (key: string, list: ChildWorktree[]) =>
+    openChildren[key] ?? list.some((w) => sessionsIn(w, app.sessions).some((c) => c.id === active?.id));
+  const worktreeCount = (list: ChildWorktree[]) => `${list.length} worktree${list.length === 1 ? '' : 's'}`;
   async function openChild(w: ChildWorktree) {
     const request = childStart(w);
     const s = request && (await startSession(request));
@@ -741,27 +744,44 @@
 {#snippet sessionRows(list: Session[], projectId: string)}
   {@const top = list.filter((s) => !placed.nested.has(s.id))}
   {#each top as s (s.id)}
-    <SessionRow
-      session={s}
-      href={sessionHref(s)}
-      selected={s.id === active?.id}
-      closing={app.closing[s.id]}
-      onmenu={(at) => (menu = { session: s, ...at })}
-      ondragstart={dragSessionStart(s)}
-      ondrop={(after) => dropSession(top, s, after)}
-      onunpin={() => unpinSession(s)}
-    />
-    {@render childGroup(s.id, placed.byOrigin.get(s.id) ?? [])}
+    {@const kids = placed.byOrigin.get(s.id) ?? []}
+    {@const open = childrenOpen(s.id, kids)}
+    <!-- The fold chevron sits in the gutter left of the row, so a folded session takes one line. -->
+    <div class="folder">
+      <SessionRow
+        session={s}
+        href={sessionHref(s)}
+        selected={s.id === active?.id}
+        closing={app.closing[s.id]}
+        onmenu={(at) => (menu = { session: s, ...at })}
+        ondragstart={dragSessionStart(s)}
+        ondrop={(after) => dropSession(top, s, after)}
+        onunpin={() => unpinSession(s)}
+      />
+      {#if kids.length}
+        <button
+          type="button"
+          class="fold"
+          aria-label={worktreeCount(kids)}
+          title="{open ? 'Hide' : 'Show'} {worktreeCount(kids)}"
+          aria-expanded={open}
+          onclick={() => (openChildren[s.id] = !open)}
+        >
+          <Icon name={open ? 'chevron-down' : 'chevron-right'} size="xs" weight={2} />
+        </button>
+      {/if}
+    </div>
+    {#if open}{#each kids as w (w.path)}{@render childRow(w)}{/each}{/if}
   {/each}
   {@render childGroup(projectId, placed.orphans.get(projectId) ?? [])}
 {/snippet}
 
 {#snippet childGroup(key: string, list: ChildWorktree[])}
   {#if list.length}
-    {@const open = openChildren[key] ?? list.some((w) => sessionsIn(w, app.sessions).some((c) => c.id === active?.id))}
+    {@const open = childrenOpen(key, list)}
     <button type="button" class="child-toggle" aria-expanded={open} onclick={() => (openChildren[key] = !open)}>
       <Icon name={open ? 'chevron-down' : 'chevron-right'} size="xs" weight={2} />
-      {list.length} worktree{list.length === 1 ? '' : 's'}
+      {worktreeCount(list)}
     </button>
     {#if open}{#each list as w (w.path)}{@render childRow(w)}{/each}{/if}
   {/if}
@@ -1548,6 +1568,31 @@
   }
 
   .child-toggle:hover {
+    color: var(--fg);
+  }
+
+  .folder {
+    position: relative;
+  }
+
+  .fold {
+    position: absolute;
+    top: 50%;
+    left: calc(-1 * var(--space-5));
+    display: grid;
+    place-items: center;
+    width: var(--space-5);
+    height: var(--space-5);
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transform: translateY(-50%);
+  }
+
+  .fold:hover {
     color: var(--fg);
   }
 
