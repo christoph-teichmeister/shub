@@ -18,11 +18,11 @@
   import ChoiceButton from '../components/ChoiceButton/ChoiceButton.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
   import Icon from '../components/Icon/Icon.svelte';
+  import Markdown from '../components/Markdown/Markdown.svelte';
   import Section from '../components/Section/Section.svelte';
   import SelectField from '../components/SelectField/SelectField.svelte';
   import StatusBadge from '../components/StatusBadge/StatusBadge.svelte';
   import TextField from '../components/TextField/TextField.svelte';
-  import { parseMarkdown, type Inline } from '../markdown.ts';
   import { api } from '../stores/api.ts';
   import { pushEnabled, pushSupported, subscribePush } from '../stores/push.ts';
   import { fleet, removeMachine } from '../stores/machines.svelte.ts';
@@ -365,16 +365,6 @@
     releases = (await api<ReleaseNotes[]>('changelog').catch(toastError)) ?? null;
   }
 
-  /** #/settings/updates/changelog (the "What changed" link of the update toast) opens the changelog. */
-  const changelogLinked = $derived(router.route.name === 'settings' && router.route.rest[1] === 'changelog');
-  $effect(() => {
-    if (changelogLinked) void showChangelog();
-  });
-  function closeChangelog() {
-    releases = null;
-    if (changelogLinked) location.replace(href('settings', 'updates'));
-  }
-
   const update = $derived(app.update);
   /** A failed update, or a switch that waits for a restart; a plain success needs no line. */
   const lastNote = $derived(
@@ -432,30 +422,6 @@
   };
   const when = (iso: string) => new Date(iso).toLocaleString();
 </script>
-
-{#snippet markdown(md: string)}
-  <div class="md">
-    {#each parseMarkdown(md) as block, i (i)}
-      {#if block.kind === 'heading'}
-        <svelte:element this={`h${Math.min(block.level + 1, 6)}`}>{@render text(block.text)}</svelte:element>
-      {:else if block.kind === 'list'}
-        <ul>
-          {#each block.items as item, j (j)}<li>{@render text(item)}</li>{/each}
-        </ul>
-      {:else}
-        <p>{@render text(block.text)}</p>
-      {/if}
-    {/each}
-  </div>
-{/snippet}
-
-{#snippet text(parts: Inline[])}
-  {#each parts as part, i (i)}{#if part.code}<code>{part.text}</code>{:else if part.pr}<a
-        href="https://github.com/christoph-teichmeister/shub/pull/{part.pr}"
-        target="_blank"
-        rel="noreferrer">{part.text}</a
-      >{:else}{part.text}{/if}{/each}
-{/snippet}
 
 <svelte:window onkeydown={onKeydown} />
 
@@ -1057,7 +1023,7 @@
               <div class="item top notice">
                 <span class="grow stack gap">
                   <span class="strong">shub {update.latest} is available</span>
-                  {@render markdown(update.changelog || 'No release notes.')}
+                  <Markdown md={update.changelog || 'No release notes.'} />
                   <span class="row">
                     <Button
                       variant="primary"
@@ -1204,13 +1170,13 @@
   open={!!releases}
   title="Changelog"
   description="What changed in shub {app.update?.current ?? ''} and the releases before it."
-  onclose={closeChangelog}
+  onclose={() => (releases = null)}
 >
   <div class="changelog">
     {#each releases ?? [] as r (r.version)}
       <section>
         <h3 class="row">{r.version} <span class="muted small">{new Date(r.publishedAt).toLocaleDateString()}</span></h3>
-        {@render markdown(r.notes || 'No release notes.')}
+        <Markdown md={r.notes || 'No release notes.'} />
       </section>
     {/each}
     {#if releases && !releases.length}<p class="muted">No releases yet.</p>{/if}
@@ -1838,29 +1804,6 @@
   .changelog h3 {
     margin: 0;
     font-size: var(--text-md);
-  }
-
-  .md {
-    font-size: var(--text-sm);
-    color: var(--fg-2);
-  }
-
-  .md :is(h2, h3, h4, h5, h6) {
-    margin: var(--space-3) 0 var(--space-1);
-    font-size: var(--text-sm);
-    color: var(--fg);
-  }
-
-  .md :is(p, ul) {
-    margin: 0 0 var(--space-2);
-  }
-
-  .md ul {
-    padding-left: var(--space-4);
-  }
-
-  .md code {
-    font-family: var(--font-mono);
   }
 
   .log-list {

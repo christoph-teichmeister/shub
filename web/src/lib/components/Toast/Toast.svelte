@@ -3,6 +3,7 @@
   import Icon from '../Icon/Icon.svelte';
   import type { IconName } from '../Icon/icons.ts';
   import IconButton from '../IconButton/IconButton.svelte';
+  import Markdown from '../Markdown/Markdown.svelte';
 
   interface Props {
     /** Defaults to the app toast store; pass items to render a static stack (styleguide). */
@@ -20,10 +21,10 @@
   {#each items as item (item.id)}
     <div class="toast {item.tone}">
       <span class="icon"><Icon name={ICON[item.tone]} size="sm" weight={2} /></span>
-      <span class="message">{item.message}</span>
-      {#if item.action}
-        <a class="action" href={item.action.href} onclick={() => ondismiss(item.id)}>{item.action.label}</a>
-      {/if}
+      <div class="message">
+        {item.message}
+        {#if item.details}<div class="details"><Markdown md={item.details} /></div>{/if}
+      </div>
       <IconButton label="Dismiss" icon="close" size="xs" tone="muted" onclick={() => ondismiss(item.id)} />
       {#if item.ms}
         <!-- The draining line is the timer: it pauses on hover and dismisses when it runs out. -->
@@ -63,6 +64,10 @@
     animation: slide-in var(--duration-base) var(--ease-standard);
   }
 
+  .toast:has(.details) {
+    align-items: flex-start;
+  }
+
   .icon {
     display: grid;
     flex: none;
@@ -82,9 +87,10 @@
     min-width: 0;
   }
 
-  .action {
-    flex: none;
-    font-weight: 600;
+  .details {
+    max-height: 40vh;
+    margin-top: var(--space-2);
+    overflow-y: auto;
   }
 
   .timer {

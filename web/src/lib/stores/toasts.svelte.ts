@@ -4,8 +4,8 @@ export interface ToastItem {
   tone: 'neutral' | 'error' | 'needs-you';
   /** Time on screen; without it the toast stays until dismissed. */
   ms?: number;
-  /** A link next to the message, e.g. to the details of what the toast reports. */
-  action?: { label: string; href: string };
+  /** Markdown under the message, e.g. the release notes of an update; scrolls when long. */
+  details?: string;
 }
 
 /** Oldest toasts go first beyond this many. */
@@ -19,9 +19,9 @@ export function toast(
   message: string,
   tone: ToastItem['tone'] = 'neutral',
   ms = tone === 'neutral' ? 4000 : 0,
-  action?: ToastItem['action'],
+  details?: string,
 ): void {
-  toasts.push({ id: next++, message, tone, ms: ms || undefined, action });
+  toasts.push({ id: next++, message, tone, ms: ms || undefined, details });
   if (toasts.length > MAX) toasts.splice(0, toasts.length - MAX);
 }
 

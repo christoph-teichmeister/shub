@@ -96,6 +96,7 @@ const API: Record<string, unknown> = {
     checkedAt: '2026-10-19T14:00:00Z',
     previous: '2026.9.0',
   },
+  '/api/updates/changelog': [],
   '/api/sessions/s1/services': [],
   '/api/projects/ai-portal/old-sessions': [],
   '/api/projects/street-tours/old-sessions': [],
@@ -860,24 +861,43 @@ test('update curtain stays opaque until the reloaded page has its data', async (
   expect(errors).toEqual([]);
 });
 
-test('the update toast links to the changelog', async ({ page }) => {
+test('the update toast shows the release notes since the replaced version', async ({ page }) => {
   const { errors } = await mockApi(page, {
+    '/api/updates': {
+      ...(API['/api/updates'] as object),
+      current: '2026.10.2',
+      last: {
+        at: '2026-10-21T10:00:00Z',
+        from: '2026.10.0',
+        to: '2026.10.2',
+        ok: true,
+        message: 'Updated to 2026.10.2.',
+      },
+    },
     '/api/updates/changelog': [
       {
+        version: '2026.10.2',
+        publishedAt: '2026-10-21T09:00:00Z',
+        notes: '### Fixes\n\n- terminal: keep the scroll position',
+      },
+      {
         version: '2026.10.1',
-        publishedAt: '2026-10-19T14:00:00Z',
+        publishedAt: '2026-10-20T09:00:00Z',
         notes: '### Features\n\n- launcher: add shub doctor',
+      },
+      {
+        version: '2026.10.0',
+        publishedAt: '2026-10-19T09:00:00Z',
+        notes: '### Features\n\n- already installed before',
       },
     ],
   });
-  await page.addInitScript(() => sessionStorage.setItem('shub-updated', '2026.10.1'));
+  await page.addInitScript(() => sessionStorage.setItem('shub-updated', '2026.10.2'));
   await page.goto('/#/');
-  await page.getByRole('link', { name: 'What changed' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Changelog' });
-  await expect(dialog.getByRole('listitem').filter({ hasText: 'launcher: add shub doctor' })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
-  await expect(page).toHaveURL(/#\/settings\/updates$/);
+  const toast = page.locator('.toast').filter({ hasText: 'Updated to shub 2026.10.2.' });
+  await expect(toast.getByRole('listitem').filter({ hasText: 'terminal: keep the scroll position' })).toBeVisible();
+  await expect(toast.getByRole('listitem').filter({ hasText: 'launcher: add shub doctor' })).toBeVisible();
+  await expect(toast).not.toContainText('already installed before');
   expect(errors).toEqual([]);
 });
 
