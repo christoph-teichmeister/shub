@@ -647,14 +647,16 @@ test('worktrees a session created sit under it; a click resumes the conversation
   await expect(page.getByRole('button', { name: /review-3548/ })).toBeDisabled();
   await expect(page.getByRole('button', { name: /review-3511/ })).toContainText('merged');
   await page.getByRole('button', { name: /review-3445/ }).click();
-  const start = calls.find((c) => c.method === 'POST' && c.path === '/api/sessions');
-  expect(start?.body).toEqual({
-    projectId: 'ai-portal',
-    kind: 'claude',
-    cwd: `${base}/review-3445`,
-    name: 'review-3445',
-    resumeClaudeSessionId: conversation,
-  });
+  // The click only queues the request, so wait for it to land.
+  await expect
+    .poll(() => calls.find((c) => c.method === 'POST' && c.path === '/api/sessions')?.body)
+    .toEqual({
+      projectId: 'ai-portal',
+      kind: 'claude',
+      cwd: `${base}/review-3445`,
+      name: 'review-3445',
+      resumeClaudeSessionId: conversation,
+    });
   await expect(page).toHaveURL(/#\/p\/ai-portal\/s2$/);
 
   await page.setViewportSize({ width: 390, height: 844 });
