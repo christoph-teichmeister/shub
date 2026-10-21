@@ -120,9 +120,20 @@ export const SIZES = {
   hall: [132, 124],
   you: [112, 92],
   pond: [280, 192],
+  tent: [56, 44],
+  machine: [36, 36],
 } as const;
 
-const CW = 160; // house cell
+// Worktree tents and Docker machines in the gaps beside a house; a neighbour's wall can come within 112 px.
+/** At most this many tents and machines by one house; the rest would stand on the neighbours. */
+export const MAX_TENTS = 3;
+export const MAX_MACHINES = 4;
+/** Bottom centre of the i-th tent: right of the house, each further one up and behind. */
+export const tentSpot = (h: House, i: number) => ({ x: h.x + 72 + i * 6, y: h.y - 8 - i * 14 });
+/** Bottom centre of the i-th machine: left of the house, stacked upwards. */
+export const machineSpot = (h: House, i: number) => ({ x: h.x - 72, y: h.y - 8 - i * 34 });
+
+const CW = 184; // house cell: the house, machines on its left, tents on its right
 const CH = 176;
 const M = 40; // map margin
 const GAP = 70; // between districts
@@ -197,7 +208,7 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
         cols,
         x: 0,
         y: 0,
-        w: 60 + cols * CW,
+        w: 80 + cols * CW,
         h: 160 + rows * CH,
       };
     })

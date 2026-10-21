@@ -1009,14 +1009,15 @@ test('the crab village draws every session as a crab, queues the ones that need 
     crab('g1', null, 'Global Claude', 'working'),
     crab('s1', 'ai-portal', 'Ticket filters #482', 'working', {
       agents: [{ id: 'a1', type: 'Explore' }],
-      context: { tokens: 84_000, window: 200_000 },
+      context: { tokens: 130_000, window: 200_000 },
     }),
     crab('s2', 'ai-portal', 'Export CSV fix', 'needs-you', {
       pendingPermission: { tool: 'Bash', summary: 'git push origin' },
       context: { tokens: 170_000, window: 200_000 },
     }),
     crab('s3', 'vynce', 'MR 311 review', 'waiting', { waitingFor: "Kai's answer on the MR" }),
-    crab('s4', 'shub', 'Image viewer review', 'your-turn'),
+    // Just joined the line: calm, unlike the others there since the morning.
+    crab('s4', 'shub', 'Image viewer review', 'your-turn', { lastActivityAt: new Date().toISOString() }),
     crab('s5', 'shub', 'Session 3', 'new'),
     crab('s6', 'listo', 'Shopping list sync', 'paused'),
     crab('s7', 'dotfiles', 'Prompt theme', 'needs-you', { pendingCommands: [{ command: 'sudo systemctl restart x' }] }),
@@ -1031,6 +1032,36 @@ test('the crab village draws every session as a crab, queues the ones that need 
     '/api/projects': projects,
     '/api/sessions': sessions,
     'POST /api/sessions': { status: 200, json: born },
+    '/api/worktrees/children': [
+      ['agent-a1b2c3', 'worktree-agent-a1b2c3', 'open', true],
+      ['2200', 'feature/#2200-api', 'merged', false],
+    ].map(([name, branch, state, busy]) => ({
+      projectId: 'ai-portal',
+      path: `/home/chris/PycharmProjects/work/ai-portal/.claude/worktrees/${name}`,
+      name,
+      branch,
+      state,
+      lastCommitAt: null,
+      originSessionId: 's1',
+      conversation: null,
+      busy,
+    })),
+    '/api/sessions/s1/services': [
+      ['web', 'running', 'Up 41 minutes (healthy)'],
+      ['postgres', 'running', 'Up 41 minutes'],
+      ['celery', 'exited', 'Exited (1) 3 minutes ago'],
+    ].map(([name, state, status], i) => ({
+      id: `c${i}`,
+      name,
+      project: 'ai-portal',
+      workingDir: project.path,
+      image: name,
+      kind: 'other',
+      state,
+      status,
+      ports: [],
+    })),
+    ...Object.fromEntries(['s3', 's4', 's6', 's7'].map((id) => [`/api/sessions/${id}/services`, []])),
     'POST /api/projects': arcade,
     '/api/projects/import': [
       {
@@ -1063,12 +1094,33 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect(map.getByRole('button', { name: 'Global Claude, global Claude, working' })).toBeVisible();
   await expect(page.getByText('You · 3 in line')).toBeVisible();
 
-  // Focus shows the card; Active only boards nothing up here, every project has a crab but haso.
+  // Signals: a big backpack with sweat and panting at 170k, "!!" after hours in line, a calm newcomer, tents for
+  // the worktrees (the agent's with its crab, the merged one faded), machines for the services (one down).
   const crab2 = map.getByRole('button', { name: /^Export CSV fix/ });
+  await expect(crab2.locator('.pack')).toHaveAttribute('src', '/village/pack2.svg');
+  await expect(crab2.locator('.drop')).toHaveCount(2);
+  await expect(crab2.locator('.huff')).toBeVisible();
+  await expect(crab2.locator('.bubble')).toHaveText('!!');
+  await expect(map.getByRole('button', { name: /^Image viewer review/ }).locator('.bubble')).toHaveText('...');
+  await expect(map.getByRole('button', { name: /^Ticket filters/ }).locator('.drop')).toHaveCount(2);
+  const agentTent = map.getByRole('img', { name: /^Worktree worktree-agent-a1b2c3 \(working\), from "Ticket filters/ });
+  await expect(agentTent.locator('.agent')).toBeVisible();
+  await expect(map.getByRole('img', { name: /^Worktree feature\/#2200-api \(merged\)/ })).toHaveClass(/stale/);
+  await expect(map.getByRole('img', { name: 'web: Up 41 minutes (healthy)' })).toBeVisible();
+  await expect(map.getByRole('img', { name: 'celery: Exited (1) 3 minutes ago' }).locator('.alarm')).toBeVisible();
+  await expect(map.locator('.machine')).toHaveCount(3);
+  // Tall enough for the house with its yard and the queue in one picture.
+  await page.setViewportSize({ width: 1440, height: 1700 });
+  await page.mouse.move(0, 0);
+  await page.screenshot({ path: shot('pr4-signals.png'), clip: { x: 0, y: 0, width: 1440, height: 1290 } });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
+  // Focus shows the card; Active only boards nothing up here, every project has a crab but haso.
   await crab2.focus();
   const card = page.getByRole('tooltip');
   await expect(card).toContainText('Asks: git push origin');
   await expect(card).toContainText('Context 170k / 200k');
+  await expect(card).toContainText(/#1 in line for \d+ (min|h)/);
   await expect(crab2).toHaveAttribute('aria-describedby', 'village-card');
   await page.screenshot({ path: 'test-results/village-card.png' });
   await expect(page.locator('.house')).toHaveCount(6);
@@ -1076,8 +1128,8 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect(page.locator('.house')).toHaveCount(5);
   await page.getByRole('button', { name: 'Active only' }).click();
   await page.mouse.move(0, 0);
-  for (let i = 0; i < 4; i++) await page.getByRole('button', { name: 'Zoom out' }).click();
-  await expect(page.getByText('60 %')).toBeVisible();
+  for (let i = 0; i < 8; i++) await page.getByRole('button', { name: 'Zoom out' }).click();
+  await expect(page.getByText('40 %')).toBeVisible();
   await page.screenshot({ path: 'test-results/village.png' });
 
   await page.getByRole('button', { name: 'Fit' }).click();
