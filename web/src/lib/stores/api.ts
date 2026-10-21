@@ -40,7 +40,11 @@ export async function api<T = unknown>(name: RouteName, options: CallOptions = {
   const { body } = options;
   if (body instanceof Blob) {
     init.body = body;
-    init.headers = { ...init.headers, 'Content-Type': body.type || 'application/octet-stream' };
+    init.headers = {
+      ...init.headers,
+      'Content-Type': body.type || 'application/octet-stream',
+      ...(body instanceof File && { 'X-Filename': encodeURIComponent(body.name) }),
+    };
   } else if (typeof body === 'string') {
     init.body = body;
     init.headers = { ...init.headers, 'Content-Type': 'text/plain; charset=utf-8' };
