@@ -10,7 +10,7 @@ import { guard, type GuardInput } from '../projects/main-checkout.ts';
 import { childCandidates, recordChildren } from '../projects/children.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
 import { isPermissionMode } from '../sessions/launch.ts';
-import { HOOK_EVENTS, isHookEvent, newClaudeSessionId, nextAgents, transition } from './transition.ts';
+import { LAUNCH_HOOK_EVENTS, isHookEvent, newClaudeSessionId, nextAgents, transition } from './transition.ts';
 
 const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
@@ -33,7 +33,7 @@ export function hookSettings(appDir: string, stateDir: string): object {
   appDir = stableAppDir(appDir);
   const script = shellQuote(join(appDir, 'server', 'hooks', 'report.sh'));
   const hooks: Record<string, object[]> = Object.fromEntries(
-    HOOK_EVENTS.map((event) => [
+    LAUNCH_HOOK_EVENTS.map((event) => [
       event,
       [{ hooks: [{ type: 'command', command: `sh ${script} ${event}`, timeout: 5 }] }],
     ]),
@@ -41,6 +41,7 @@ export function hookSettings(appDir: string, stateDir: string): object {
   // Asks shub on every call, so a main checkout protected after the session started is covered too.
   const guard = shellQuote(join(appDir, 'server', 'hooks', 'guard.sh'));
   hooks.PreToolUse = [
+    ...(hooks.PreToolUse as object[]),
     {
       matcher: 'Bash|Edit|Write|MultiEdit|NotebookEdit',
       hooks: [{ type: 'command', command: `sh ${guard}`, timeout: 5 }],
@@ -80,7 +81,10 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
           const sessionId = /^session:(.+)$/.exec(req.caller.id)?.[1];
           const session = sessionId ? services.sessions.get(sessionId) : undefined;
           if (!session) throw new HttpError(403, 'hooks only come from shub sessions');
-          if (!isHookEvent(req.params.event)) throw new HttpError(404, 'unknown hook event');
+          if (!isHookEvent(req.params.event)) {
+            if (LAUNCH_HOOK_EVENTS.includes(req.params.event)) return { ok: true };
+            throw new HttpError(404, 'unknown hook event');
+          }
           const payload = await req.json<Record<string, unknown>>();
           if (isPermissionMode(payload.permission_mode)) {
             services.sessions.setPermissionMode(session.id, payload.permission_mode);
