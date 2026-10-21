@@ -237,7 +237,7 @@ export interface Session {
 export interface ContextFill {
   /** Tokens the model saw on its last call. */
   tokens: number;
-  /** The model's context window: 200k, or 1M for a "[1m]" model. */
+  /** The model's context window as Claude Code reports it to the status line, else guessed from the transcript. */
   window: number;
 }
 

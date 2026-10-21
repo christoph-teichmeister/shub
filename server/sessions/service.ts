@@ -18,7 +18,7 @@ import type {
 import { commandTarget } from '../../shared/commands.ts';
 import { HttpError } from '../api/router.ts';
 import type { Context } from '../context.ts';
-import { hookSettings } from '../hooks/index.ts';
+import { hookSettings, userStatusLine } from '../hooks/index.ts';
 import type { Services, Sessions } from '../services.ts';
 import { defaultMrLookup, findMr, mrName, type MrLookup } from './mr.ts';
 import { defaultTitler, type Titler } from './title.ts';
@@ -403,7 +403,11 @@ export class SessionsService implements Sessions {
       mkdirSync(join(settingsFile, '..'), { recursive: true, mode: 0o700 });
       writeFileSync(
         settingsFile,
-        JSON.stringify(hookSettings(this.#ctx.paths.appDir, this.#ctx.paths.stateDir), null, 2),
+        JSON.stringify(
+          hookSettings(this.#ctx.paths.appDir, this.#ctx.paths.stateDir, userStatusLine(row.cwd)),
+          null,
+          2,
+        ),
       );
       // Stored in clear (stateDir is 0700) so it can be revoked after a restart; auth only keeps its hash.
       let token = row.token;
