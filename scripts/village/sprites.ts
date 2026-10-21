@@ -890,7 +890,7 @@ function pond() {
 }
 
 // ---------------- you at your desk ----------------
-function you(frame: number) {
+function you(frame: number, seated = true) {
   const c = new Px(56, 46);
   for (const [x, y] of ellipsePts(28, 44, 27, 2)) c.set(x, y, '#000000', 0.28);
   // chair back
@@ -898,28 +898,30 @@ function you(frame: number) {
   const SKIN = ['#b8845a', '#d8a47a', '#f0c8a0', '#fbe0c0'];
   const HAIR = ['#2a160c', '#4a2a1a', '#6a3e24'];
   const HOOD = ['#5a3aa0', '#7a52c8', '#9a72e8', '#b89af8'];
-  for (const [x, y] of rrectPts(18, 19, 37, 30, 4)) c.set(x, y, rampPick(HOOD, 0.8 - ((x - 18) / 20) * 0.5));
-  for (let y = 20; y < 26; y++) {
-    c.set(26, y, '#f8f8f2');
-    c.set(30, y, '#f8f8f2');
+  if (seated) {
+    for (const [x, y] of rrectPts(18, 19, 37, 30, 4)) c.set(x, y, rampPick(HOOD, 0.8 - ((x - 18) / 20) * 0.5));
+    for (let y = 20; y < 26; y++) {
+      c.set(26, y, '#f8f8f2');
+      c.set(30, y, '#f8f8f2');
+    }
+    for (const [x, y] of rrectPts(22, 6, 33, 18, 4)) c.set(x, y, rampPick(SKIN, 0.85 - ((x - 22) / 12) * 0.4));
+    for (const [x, y] of rrectPts(21, 3, 34, 9, 4)) c.set(x, y, rampPick(HAIR, 0.9 - ((y - 3) / 7) * 0.6));
+    for (let x = 22; x < 34; x++) if (x % 3 !== 0) c.set(x, 10, HAIR[1]);
+    for (const x of [21, 34]) for (let y = 8; y < 13; y++) c.set(x, y, HAIR[0]);
+    for (let x = 20; x < 36; x++) c.set(x, x >= 23 && x <= 32 ? 3 : 4, '#ae81ff');
+    for (const [x, y] of [...rrectPts(18, 9, 21, 14, 1), ...rrectPts(34, 9, 37, 14, 1)]) c.set(x, y, '#8a5ad8');
+    for (const [x, y] of [
+      [24, 12],
+      [24, 13],
+      [31, 12],
+      [31, 13],
+    ])
+      c.set(x, y, '#2a1410');
+    c.set(27, 16, '#a8584a');
+    c.set(28, 16, '#a8584a');
+    c.set(23, 15, '#f08a8a');
+    c.set(32, 15, '#f08a8a');
   }
-  for (const [x, y] of rrectPts(22, 6, 33, 18, 4)) c.set(x, y, rampPick(SKIN, 0.85 - ((x - 22) / 12) * 0.4));
-  for (const [x, y] of rrectPts(21, 3, 34, 9, 4)) c.set(x, y, rampPick(HAIR, 0.9 - ((y - 3) / 7) * 0.6));
-  for (let x = 22; x < 34; x++) if (x % 3 !== 0) c.set(x, 10, HAIR[1]);
-  for (const x of [21, 34]) for (let y = 8; y < 13; y++) c.set(x, y, HAIR[0]);
-  for (let x = 20; x < 36; x++) c.set(x, x >= 23 && x <= 32 ? 3 : 4, '#ae81ff');
-  for (const [x, y] of [...rrectPts(18, 9, 21, 14, 1), ...rrectPts(34, 9, 37, 14, 1)]) c.set(x, y, '#8a5ad8');
-  for (const [x, y] of [
-    [24, 12],
-    [24, 13],
-    [31, 12],
-    [31, 13],
-  ])
-    c.set(x, y, '#2a1410');
-  c.set(27, 16, '#a8584a');
-  c.set(28, 16, '#a8584a');
-  c.set(23, 15, '#f08a8a');
-  c.set(32, 15, '#f08a8a');
   // desk
   for (let y = 29; y < 33; y++) for (let x = 0; x < 56; x++) c.set(x, y, y === 29 ? WOOD[5] : WOOD[4]);
   for (let y = 33; y < 43; y++)
@@ -932,10 +934,7 @@ function you(frame: number) {
     c.set(x, 27, x % 2 ? '#8a8a92' : '#6a6a74');
   }
   const [hl, hr] = frame === 0 ? [26, 27] : [27, 26];
-  c.set(21, hl, SKIN[2]);
-  c.set(22, hl, SKIN[2]);
-  c.set(33, hr, SKIN[2]);
-  c.set(34, hr, SKIN[2]);
+  if (seated) for (const x of [21, 22, 33, 34]) c.set(x, x < 28 ? hl : hr, SKIN[2]);
   // monitor on the right
   for (let y = 12; y < 27; y++)
     for (let x = 40; x < 54; x++) {
@@ -955,6 +954,44 @@ function you(frame: number) {
   c.set(10, 26, '#d6d6c8');
   c.set(10, 27, '#d6d6c8');
   c.set(8, 24, '#ffffff', 0.5);
+  c.outline(OUTL);
+  return c;
+}
+
+// ---------------- you on your feet ----------------
+/** Front view, 16 x 24: frame 0 stands, 1 and 2 are the two steps of a walk (legs apart, one arm forward). */
+function walker(frame: number) {
+  const c = new Px(16, 24);
+  const SKIN = ['#b8845a', '#d8a47a', '#f0c8a0', '#fbe0c0'];
+  const HAIR = ['#2a160c', '#4a2a1a', '#6a3e24'];
+  const HOOD = ['#5a3aa0', '#7a52c8', '#9a72e8', '#b89af8'];
+  for (const [x, y] of ellipsePts(8, 22, 6, 1.5)) c.set(x, y, '#000000', 0.28);
+  // legs
+  const [l, r] = frame === 0 ? [0, 0] : frame === 1 ? [-1, 1] : [1, -1];
+  for (let y = 17; y < 22; y++) {
+    c.set(5 + (y > 19 ? l : 0), y, '#3a3248');
+    c.set(6 + (y > 19 ? l : 0), y, '#3a3248');
+    c.set(9 + (y > 19 ? r : 0), y, '#2a2436');
+    c.set(10 + (y > 19 ? r : 0), y, '#2a2436');
+  }
+  // hoodie body and arms
+  for (const [x, y] of rrectPts(4, 10, 11, 18, 2)) c.set(x, y, rampPick(HOOD, 0.8 - ((x - 4) / 8) * 0.5));
+  for (let y = 11; y < 16; y++) {
+    c.set(3, y + (frame === 1 ? 1 : 0), HOOD[1]);
+    c.set(12, y + (frame === 2 ? 1 : 0), HOOD[1]);
+  }
+  c.set(3, 16, SKIN[2]);
+  c.set(12, 16, SKIN[2]);
+  // head
+  for (const [x, y] of rrectPts(4, 2, 11, 10, 2)) c.set(x, y, rampPick(SKIN, 0.85 - ((x - 4) / 8) * 0.4));
+  for (const [x, y] of rrectPts(3, 0, 12, 5, 2)) c.set(x, y, rampPick(HAIR, 0.9 - (y / 5) * 0.6));
+  for (const y of [5, 6, 7]) {
+    c.set(4, y, HAIR[0]);
+    c.set(11, y, HAIR[0]);
+  }
+  for (const x of [6, 9]) c.set(x, 7, '#2a1410');
+  c.set(7, 9, '#a8584a');
+  c.set(8, 9, '#a8584a');
   c.outline(OUTL);
   return c;
 }
@@ -1339,6 +1376,8 @@ export function sprites(): Map<string, Px> {
   out.set('pond', pond());
   out.set('you-0', you(0));
   out.set('you-1', you(1));
+  out.set('you-desk', you(0, false));
+  for (const f of [0, 1, 2]) out.set(`you-walk${f}`, walker(f));
   for (const f of [0, 1]) {
     out.set(`fly-orange${f}`, butterfly('#ff9a3c', '#ffd34a', f));
     out.set(`fly-blue${f}`, butterfly('#8cd0ff', '#ffffff', f));

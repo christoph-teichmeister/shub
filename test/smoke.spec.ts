@@ -1257,21 +1257,21 @@ test('the crab village draws every session as a crab, queues the ones that need 
   // A click pins the card with its actions; Allow sends the phone's "1".
   await crab2.click();
   const pinned = page.getByRole('dialog', { name: 'Export CSV fix' });
-  await expect(pinned.getByRole('button', { name: 'Allow A' })).toBeVisible();
+  await expect(pinned.getByRole('button', { name: 'Allow Y' })).toBeVisible();
   await expect(pinned.getByRole('button', { name: 'Compact' })).toBeDisabled();
   await expect(crab2).toHaveClass(/ring/);
   await page.mouse.move(0, 0);
   await page.screenshot({ path: shot('pr3-card.png') });
-  await pinned.getByRole('button', { name: 'Allow A' }).click();
+  await pinned.getByRole('button', { name: 'Allow Y' }).click();
   await expect.poll(() => posted('/api/sessions/s2/keys')).toEqual([{ keys: ['1'] }]);
 
-  // Keyboard triage on the map: arrows walk the queue, D denies, R runs, Esc closes, Enter opens.
+  // Keyboard triage on the map: arrows walk the queue, N denies, R runs, Esc closes, Enter opens.
   await page.keyboard.press('Escape');
   await expect(pinned).toHaveCount(0);
   await expect(map).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('dialog', { name: 'Export CSV fix' })).toBeVisible();
-  await page.keyboard.press('d');
+  await page.keyboard.press('n');
   await expect.poll(() => posted('/api/sessions/s2/keys')).toEqual([{ keys: ['1'] }, { keys: ['3'] }]);
   await page.keyboard.press('j');
   await expect(page.getByRole('dialog', { name: 'Prompt theme' }).getByRole('button', { name: 'Run R' })).toBeVisible();
@@ -1280,6 +1280,37 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await page.keyboard.press('ArrowUp');
   await expect(page.getByRole('dialog', { name: 'Export CSV fix' })).toBeVisible();
   await page.keyboard.press('Escape');
+
+  // WASD stands you up and walks you; the camera follows and a drag lets go of it. D no longer denies.
+  const youAt = async () => {
+    const b = (await map.locator('.obj.me').boundingBox())!;
+    return { x: b.x + b.width / 2, y: b.y + b.height };
+  };
+  await expect(map.locator('.obj.me')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  await map.focus();
+  await page.keyboard.down('d');
+  await expect(map.locator('.obj.me')).toHaveCount(1);
+  await page.waitForTimeout(500);
+  await page.keyboard.up('d');
+  const walked = await youAt();
+  const m = (await map.boundingBox())!;
+  expect(Math.abs(walked.x - (m.x + m.width / 2))).toBeLessThan(m.width / 4); // the camera kept you near the middle
+  await page.keyboard.down('s');
+  await page.waitForTimeout(300);
+  await page.keyboard.up('s');
+  const south = await youAt();
+  expect(south.y).toBeGreaterThan(walked.y - 1);
+  expect(posted('/api/sessions/s2/keys')).toHaveLength(2); // no third key from the d we held
+  await page.mouse.move(m.x + 6, m.y + 6);
+  await page.mouse.down();
+  await page.mouse.move(m.x + 120, m.y + 90, { steps: 4 });
+  await page.mouse.up();
+  const dragged = await youAt();
+  expect(dragged.x).toBeGreaterThan(south.x + 60); // dragging let go of you
+  await page.keyboard.press('Escape'); // keeps focus on the map
+  await page.screenshot({ path: shot('walk.png') });
+  await page.getByRole('button', { name: 'Fit' }).click();
 
   // "+" on a house: a new session with a first prompt; the village stays.
   await page.locator('.house', { hasText: 'ai-portal' }).hover();
