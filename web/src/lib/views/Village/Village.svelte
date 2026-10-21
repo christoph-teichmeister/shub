@@ -200,8 +200,7 @@
   const dim = (group: string | undefined) => (only && group !== only ? 0.3 : 1);
 
   /** Minutes since the status changed: how long a queued crab has been in line. */
-  const waited = (s: Session) =>
-    Math.max(0, Math.floor((now - (app.statusSince[s.id] ?? Date.parse(s.lastActivityAt))) / 60_000));
+  const waited = (s: Session) => Math.max(0, Math.floor((now - Date.parse(s.statusSince)) / 60_000));
   const moodFor = (c: CrabSpot<Session>, p: Pos): Mood | null =>
     c.queuePos < 0 || p.moving ? null : moodOf(waited(c.session));
 

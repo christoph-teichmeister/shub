@@ -213,6 +213,8 @@ export interface Session {
   links: SessionLink[];
   createdAt: string;
   lastActivityAt: string;
+  /** When the session entered its current status; repeated writes of the same status keep it. */
+  statusSince: string;
   /** Permission question waiting on the phone, if any. */
   pendingPermission?: { tool: string; summary: string } | null;
   /** What the session waits for, e.g. "Kai's answer on the MR". While set, a finished turn lands on "waiting"
@@ -676,7 +678,8 @@ export type ServerEvent =
   | { type: 'hello'; apiVersion: number }
   | { type: 'session.started'; session: Session; from?: string }
   | { type: 'session.updated'; session: Session }
-  | { type: 'session.status'; sessionId: string; status: SessionStatus }
+  /** statusSince missing from servers before it existed. */
+  | { type: 'session.status'; sessionId: string; status: SessionStatus; statusSince?: string }
   | { type: 'session.closed'; sessionId: string }
   | { type: 'projects.changed' }
   | { type: 'config.changed' }

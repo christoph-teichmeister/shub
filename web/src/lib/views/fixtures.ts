@@ -18,6 +18,7 @@ export function session(id: string, name: string, status: SessionStatus, extra: 
     links: [],
     createdAt: now,
     lastActivityAt: now,
+    statusSince: now,
     ...extra,
   };
 }
