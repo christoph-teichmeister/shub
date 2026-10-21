@@ -105,6 +105,8 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
           if (req.params.event === 'UserPromptSubmit' && fromUser && prompt && /^Session \d+$/.test(session.name)) {
             services.sessions.nameFromPrompt(session.id, prompt);
           }
+          if (req.params.event === 'UserPromptSubmit' && fromUser && prompt)
+            services.sessions.nameFromMr(session.id, prompt);
           const change = transition(session.status, req.params.event, payload, !!session.waitingFor);
           if (!change) return { ok: true };
           services.sessions.setStatus(

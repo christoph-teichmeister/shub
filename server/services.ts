@@ -98,6 +98,8 @@ export interface Sessions {
   reorder(positions: Record<string, number | null>, tabs?: boolean): Session[];
   /** Name a session after its first prompt: its first words now, a model-written title a moment later. */
   nameFromPrompt(id: string, prompt: string): void;
+  /** A prompt with an MR/PR link pins it on the tab and names a session shub named after the MR/PR. */
+  nameFromMr(id: string, prompt: string): void;
   sendKeys(id: string, keys: string[]): void;
   /** Claude's SessionStart hook fired: types a command that waited for this session to come up. */
   started(id: string): void;
