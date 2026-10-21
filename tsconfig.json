@@ -11,5 +11,15 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["server", "shared", "cli", "examples", "test", "launcher/src", "launcher/test", "scripts/release"]
+  "include": [
+    "server",
+    "shared",
+    "cli",
+    "examples",
+    "test",
+    "launcher/src",
+    "launcher/test",
+    "scripts/release",
+    "scripts/village"
+  ]
 }
