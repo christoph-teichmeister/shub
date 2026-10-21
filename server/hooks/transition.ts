@@ -13,8 +13,10 @@
 //                     Its permission_mode also lets a shift+tab switch show during a turn.
 //   SessionStart:     { source: 'startup'|'resume'|'clear'|'compact' }  no status meaning, but /clear (and
 //                     compact, or a fresh start) can bring a new session_id: see newClaudeSessionId.
+//   SubagentStart:    { agent_id, agent_type }   SubagentStop: { agent_id, agent_type, agent_transcript_path, ... }
+//                     (2.1.306). Tool events from inside a subagent carry its agent_id; the main thread's do not.
 import { homedir } from 'node:os';
-import type { HandedCommand, Session, SessionStatus } from '../../shared/api.ts';
+import type { HandedCommand, Session, SessionStatus, SubagentRun } from '../../shared/api.ts';
 import { RUN_MARKER } from '../sessions/launch.ts';
 
 export const HOOK_EVENTS = [
@@ -24,6 +26,8 @@ export const HOOK_EVENTS = [
   'PermissionRequest',
   'PostToolUse',
   'SessionStart',
+  'SubagentStart',
+  'SubagentStop',
 ] as const;
 export type HookEvent = (typeof HOOK_EVENTS)[number];
 
@@ -223,6 +227,41 @@ export function transition(
     case 'PostToolUse':
       return current === 'needs-you' ? { status: 'working', pendingPermission: null, pendingCommands: null } : null;
     case 'SessionStart':
+    case 'SubagentStart':
+    case 'SubagentStop':
+      return null;
+  }
+}
+
+const ACTIVITY_MAX = 80;
+
+/** The subagents still running after a hook event, or null when the list stays as it is. */
+export function nextAgents(
+  agents: SubagentRun[],
+  event: HookEvent,
+  payload: Record<string, unknown>,
+): SubagentRun[] | null {
+  const id = typeof payload.agent_id === 'string' ? payload.agent_id : '';
+  switch (event) {
+    case 'SubagentStart':
+      if (!id || agents.some((a) => a.id === id)) return null;
+      return [...agents, { id, type: String(payload.agent_type || 'agent') }];
+    case 'SubagentStop':
+      return agents.some((a) => a.id === id) ? agents.filter((a) => a.id !== id) : null;
+    case 'PostToolUse': {
+      const agent = agents.find((a) => a.id === id);
+      if (!agent) return null;
+      const summary = summarizeTool(payload.tool_input);
+      const activity = `${String(payload.tool_name ?? 'tool')}${summary ? `: ${summary}` : ''}`.slice(0, ACTIVITY_MAX);
+      return agents.map((a) => (a === agent ? { ...a, activity } : a));
+    }
+    // A new conversation, or a turn that ended with no agent left in the background: a missed SubagentStop
+    // must not leave a row behind.
+    case 'SessionStart':
+      return agents.length ? [] : null;
+    case 'Stop':
+      return agents.length && backgroundWork(payload.background_tasks) === 'none' ? [] : null;
+    default:
       return null;
   }
 }

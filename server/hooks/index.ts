@@ -10,7 +10,7 @@ import { guard, type GuardInput } from '../projects/main-checkout.ts';
 import { childCandidates, recordChildren } from '../projects/children.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
 import { isPermissionMode } from '../sessions/launch.ts';
-import { HOOK_EVENTS, isHookEvent, newClaudeSessionId, transition } from './transition.ts';
+import { HOOK_EVENTS, isHookEvent, newClaudeSessionId, nextAgents, transition } from './transition.ts';
 
 const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
@@ -85,6 +85,8 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
           if (isPermissionMode(payload.permission_mode)) {
             services.sessions.setPermissionMode(session.id, payload.permission_mode);
           }
+          const agents = nextAgents(session.agents ?? [], req.params.event, payload);
+          if (agents) services.sessions.setAgents(session.id, agents);
           if (req.params.event === 'SessionStart') {
             const claudeSessionId = newClaudeSessionId(session.claudeSessionId, payload);
             if (claudeSessionId) services.sessions.setClaudeSessionId(session.id, claudeSessionId);

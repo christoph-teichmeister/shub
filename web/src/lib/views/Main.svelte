@@ -37,6 +37,7 @@
   import { dropPositions, placeSessions, placeTabs, projectBadge } from '../status.ts';
   import { childStart, placeChildren, sessionsIn } from '../children.ts';
   import WorktreeRow from '../components/WorktreeRow/WorktreeRow.svelte';
+  import AgentRow from '../components/AgentRow/AgentRow.svelte';
   import TabBar from '../components/TabBar/TabBar.svelte';
   import TerminalView from '../components/TerminalView/TerminalView.svelte';
   import TextField from '../components/TextField/TextField.svelte';
@@ -202,7 +203,11 @@
   let openChildren = $state<Record<string, boolean>>({});
   const childrenOpen = (key: string, list: ChildWorktree[]) =>
     openChildren[key] ?? list.some((w) => sessionsIn(w, app.sessions).some((c) => c.id === active?.id));
-  const worktreeCount = (list: ChildWorktree[]) => `${list.length} worktree${list.length === 1 ? '' : 's'}`;
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const worktreeCount = (list: ChildWorktree[]) => plural(list.length, 'worktree');
+  /** What a session's fold hides: its worktrees and its running subagents. */
+  const foldLabel = (kids: ChildWorktree[], agents: unknown[]) =>
+    [kids.length && worktreeCount(kids), agents.length && plural(agents.length, 'subagent')].filter(Boolean).join(', ');
   async function openChild(w: ChildWorktree) {
     const request = childStart(w);
     const s = request && (await startSession(request));
@@ -797,6 +802,7 @@
   {@const top = list.filter((s) => !placed.nested.has(s.id))}
   {#each top as s (s.id)}
     {@const kids = placed.byOrigin.get(s.id) ?? []}
+    {@const agents = s.agents ?? []}
     {@const open = childrenOpen(s.id, kids)}
     <!-- The fold chevron sits in the gutter left of the row, so a folded session takes one line. -->
     <div class="folder">
@@ -810,12 +816,12 @@
         ondrop={(after) => dropSession(top, s, after)}
         onunpin={() => unpinSession(s)}
       />
-      {#if kids.length}
+      {#if kids.length || agents.length}
         <button
           type="button"
           class="fold"
-          aria-label={worktreeCount(kids)}
-          title="{open ? 'Hide' : 'Show'} {worktreeCount(kids)}"
+          aria-label={foldLabel(kids, agents)}
+          title="{open ? 'Hide' : 'Show'} {foldLabel(kids, agents)}"
           aria-expanded={open}
           onclick={() => (openChildren[s.id] = !open)}
         >
@@ -823,7 +829,10 @@
         </button>
       {/if}
     </div>
-    {#if open}{#each kids as w (w.path)}{@render childRow(w)}{/each}{/if}
+    {#if open}
+      {#each agents as a (a.id)}<div class="child"><AgentRow agent={a} /></div>{/each}
+      {#each kids as w (w.path)}{@render childRow(w)}{/each}
+    {/if}
   {/each}
   {@render childGroup(projectId, placed.orphans.get(projectId) ?? [])}
 {/snippet}

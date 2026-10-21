@@ -228,6 +228,17 @@ export interface Session {
   pendingCommands?: HandedCommand[] | null;
   /** Background shells (servers, tests) still running after Claude's turn ended. */
   shells?: number;
+  /** Subagents running inside the session (no pane of their own), from the SubagentStart/Stop hooks. */
+  agents?: SubagentRun[];
+}
+
+export interface SubagentRun {
+  /** Claude's agent_id. */
+  id: string;
+  /** agent_type, e.g. "Explore" or a forked skill's name. */
+  type: string;
+  /** Its last tool call, e.g. "Bash: npm test". */
+  activity?: string;
 }
 
 /** A command Claude handed over; `session` or `cwd` (absolute) name where it belongs, none = the writing session. */
