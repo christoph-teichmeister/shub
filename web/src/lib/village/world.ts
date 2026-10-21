@@ -32,6 +32,8 @@ export interface District {
   y: number;
   w: number;
   h: number;
+  /** Middle of the gate in the fence towards the road: on the fence line, 2 tiles wide, the spur ends there. */
+  gate: Point;
 }
 
 export interface House {
@@ -81,6 +83,8 @@ export interface World {
   /** Queue spots in front of your desk, first in line first. */
   slots: Point[];
   forest: Rect | null;
+  /** The gates of the districts (`district.gate`), where the spurs meet the fences. */
+  gates: Point[];
   /** Dirt roads, the cobbled queue lane and the plaza, a material per tile. */
   ground: Ground;
   decor: Decor[];
@@ -211,6 +215,7 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
         y: 0,
         w: snap(80 + cols * CW),
         h: snap(160 + rows * CH),
+        gate: [0, 0] as Point,
       };
     })
     .filter((d) => d.projects.length);
@@ -318,6 +323,8 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
   fill(COBBLE, laneX / TILE - 1, roadY / TILE + 1, laneX / TILE + 1, pr);
   /** Gates: the grid point in the middle of a district's fence towards the road. */
   const gateX = (d: District) => Math.round((d.x + d.w / 2) / TILE) * TILE;
+  for (const d of top) d.gate = [gateX(d), d.y + d.h];
+  for (const d of bottom) d.gate = [gateX(d), d.y];
   const spurs: [Point, Point][] = [
     ...top.map((d): [Point, Point] => [
       [gateX(d), roadY],
@@ -411,5 +418,22 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
     }
   }
 
-  return { W, H, districts, houses, lots, plaza, pond, you, hall, mayor, slots, forest, ground, decor, lanterns };
+  return {
+    W,
+    H,
+    districts,
+    houses,
+    lots,
+    plaza,
+    pond,
+    you,
+    hall,
+    mayor,
+    slots,
+    forest,
+    gates: districts.map((d) => d.gate),
+    ground,
+    decor,
+    lanterns,
+  };
 }

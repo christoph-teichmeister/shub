@@ -598,7 +598,13 @@ type Ground = {
   ring: (d: number, up: boolean, x: number, y: number) => string | null;
   /** Colour and alpha just outside the edge: south of the material (shadow) or else. */
   lip: (south: boolean, x: number, y: number) => Pixel;
+  /** Scattered pixels beyond the lip, d = 2 … 4 steps off the material: the edge fades out instead of cutting. */
+  fringe?: (d: number, x: number, y: number) => Pixel;
 };
+
+/** 4 × 4 ordered-dither thresholds 0–15, for edges that fade out in a pattern. */
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+const bayer = (x: number, y: number) => BAYER[(y & 3) * 4 + (x & 3)];
 
 function autotiles(g: Ground) {
   const atlas = new Px(64, 64);
@@ -626,6 +632,13 @@ function autotiles(g: Ground) {
           if (!on(x + k, y - d) || !on(x + k, y + d) || !on(x - d, y + k) || !on(x + d, y + k)) return d;
       return 4;
     };
+    /** Steps to the nearest material pixel for a pixel outside it (2 to 4), else 0. */
+    const out_ = (x: number, y: number) => {
+      for (let d = 2; d <= 4; d++)
+        for (let k = -d; k <= d; k++)
+          if (on(x + k, y - d) || on(x + k, y + d) || on(x - d, y + k) || on(x + d, y + k)) return d;
+      return 0;
+    };
     const ox = (mask % 4) * 16;
     const oy = Math.floor(mask / 4) * 16;
     for (let y = 16; y < 32; y++)
@@ -638,6 +651,10 @@ function autotiles(g: Ground) {
           atlas.set(ox + tx, oy + ty, g.ring(d, up, gx, gy) ?? g.tex(gx, gy));
         } else if (on(x + 1, y) || on(x - 1, y) || on(x, y + 1) || on(x, y - 1)) {
           const px = g.lip(on(x, y - 1), mod(tx + 8, 16), mod(ty + 8, 16));
+          if (px) atlas.set(ox + tx, oy + ty, ...px);
+        } else if (g.fringe) {
+          const d = out_(x, y);
+          const px = d && g.fringe(d, mod(tx + 8, 16), mod(ty + 8, 16));
           if (px) atlas.set(ox + tx, oy + ty, ...px);
         }
       }
@@ -676,7 +693,9 @@ function dirtTiles() {
       d === 1
         ? (x * 5 + y * 3) % 7 === 0
           ? '#4f8f32'
-          : '#5a3c22'
+          : bayer(x, y) < 9
+            ? '#5a3c22'
+            : '#7a5634'
         : d === 2
           ? up
             ? '#8a6040'
@@ -684,7 +703,10 @@ function dirtTiles() {
           : d === 3 && up
             ? '#a87a4a'
             : null,
-    lip: (_s, x, y) => [(x * 5 + y * 3) % 7 === 0 ? '#7cc04a' : '#3a7024', 1],
+    lip: (_s, x, y) => [(x * 5 + y * 3) % 7 === 0 ? '#7cc04a' : bayer(x, y) < 8 ? '#3a7024' : '#46822c', 1],
+    // Dirt crumbs thrown over the grass, thinning out.
+    fringe: (d, x, y) =>
+      bayer(x, y) < (d === 2 ? 5 : d === 3 ? 2 : 1) ? [(x + y) % 3 ? '#a87a4a' : '#b98a58', 1] : null,
   });
 }
 
@@ -703,8 +725,24 @@ function cobbleTiles() {
   return autotiles({
     tex: (x, y) => t[y][x],
     // A curb: dark outline, a light kerb stone, its shadow.
-    ring: (d, up) => (d === 1 ? '#34302a' : d === 2 ? (up ? '#d8d0bc' : '#b4ad9c') : d === 3 ? '#7a7468' : null),
+    ring: (d, up, x, y) =>
+      d === 1
+        ? bayer(x, y) < 11
+          ? '#34302a'
+          : '#5e584c'
+        : d === 2
+          ? up
+            ? '#d8d0bc'
+            : '#b4ad9c'
+          : d === 3
+            ? '#7a7468'
+            : null,
     lip: (south) => (south ? ['#000000', 0.3] : null),
+    // Loose stones strewn over the dirt beyond the curb, fewer the further out.
+    fringe: (d, x, y) =>
+      bayer(x * 3 + y, y * 3 + x) < (d === 2 ? 4 : d === 3 ? 2 : 1)
+        ? [(x * 7 + y) % 3 ? '#8a8478' : '#a8a294', 1]
+        : null,
   });
 }
 
@@ -736,6 +774,19 @@ function fenceV() {
     v.set(x, 1, x >= 1 && x <= 4 ? WOOD[5] : OUTL);
   }
   return v;
+}
+
+// A gate post: a stout log with a cap, 8 × 20; two of them frame the gap in a district's fence.
+function gatepost() {
+  const g = new Px(8, 20);
+  for (const [x, y] of ellipsePts(4, 18.5, 4, 1.5)) g.set(x, y, '#000000', 0.25);
+  for (let y = 2; y < 19; y++)
+    for (let x = 1; x < 7; x++) g.set(x, y, x === 1 ? WOOD[4] : x < 4 ? WOOD[3] : x < 6 ? WOOD[2] : WOOD[1]);
+  for (let y = 7; y < 19; y += 5) for (let x = 2; x < 6; x++) g.set(x, y, WOOD[1]);
+  for (let x = 0; x < 8; x++) g.set(x, 1, x === 0 || x === 7 ? OUTL : WOOD[5]);
+  for (let x = 1; x < 7; x++) g.set(x, 0, OUTL);
+  g.outline(OUTL);
+  return g;
 }
 
 // ---------------- pond ----------------
@@ -1238,6 +1289,7 @@ export function sprites(): Map<string, Px> {
   out.set('tiles-cobble', cobbleTiles());
   out.set('fence-h', fenceH());
   out.set('fence-v', fenceV());
+  out.set('gatepost', gatepost());
   out.set('pond', pond());
   out.set('you-0', you(0));
   out.set('you-1', you(1));
