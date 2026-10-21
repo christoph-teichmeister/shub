@@ -287,7 +287,7 @@
 <Dialog
   open={ui.shortcuts}
   title="Shortcuts"
-  description="All on Alt, so they never clash with Claude Code or the shell (Ctrl K, Ctrl J, Ctrl C stay theirs)."
+  description="Almost all on Alt (the village keys work on its map), so they never clash with Claude Code or the shell (Ctrl K, Ctrl J, Ctrl C stay theirs)."
   onclose={() => (ui.shortcuts = false)}
 >
   <dl class="shortcuts">
