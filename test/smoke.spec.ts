@@ -1028,26 +1028,29 @@ test('the crab village draws every session as a crab, queues the ones that need 
     '/tmp/claude-1000/-home-chris-PycharmProjects-private-shub/614b3dc8-8ed3-4e2d-bf15-8823e62eb0ee/scratchpad';
   const shot = (name: string) => `${process.env.VILLAGE_SHOTS ? SCRATCH : 'test-results'}/${name}`;
   const born = crab('s9', 'ai-portal', 'Fix the export', 'new');
+  const children = (
+    [
+      ['agent-a1b2c3', 'worktree-agent-a1b2c3', 'open', true],
+      ['2200', 'feature/#2200-api', 'merged', false],
+    ] as const
+  ).map(([name, branch, state, busy]) => ({
+    projectId: 'ai-portal',
+    path: `/home/chris/PycharmProjects/work/ai-portal/.claude/worktrees/${name}`,
+    name,
+    branch,
+    state: state as string,
+    lastCommitAt: null,
+    originSessionId: 's1',
+    conversation: null,
+    busy,
+  }));
   const arcade = { ...project, id: 'crab-arcade', name: 'crab-arcade', group: 'Games', buttons: [], order: 9 };
   const { errors, calls } = await mockApi(page, {
     '/api/config': { ...config, groups, projects },
     '/api/projects': projects,
     '/api/sessions': sessions,
     'POST /api/sessions': { status: 200, json: born },
-    '/api/worktrees/children': [
-      ['agent-a1b2c3', 'worktree-agent-a1b2c3', 'open', true],
-      ['2200', 'feature/#2200-api', 'merged', false],
-    ].map(([name, branch, state, busy]) => ({
-      projectId: 'ai-portal',
-      path: `/home/chris/PycharmProjects/work/ai-portal/.claude/worktrees/${name}`,
-      name,
-      branch,
-      state,
-      lastCommitAt: null,
-      originSessionId: 's1',
-      conversation: null,
-      busy,
-    })),
+    '/api/worktrees/children': children,
     '/api/sessions/s1/services': [
       ['web', 'running', 'Up 41 minutes (healthy)'],
       ['postgres', 'running', 'Up 41 minutes'],
@@ -1132,6 +1135,20 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect(map.locator('.firefly')).toHaveCount(22);
   await expect(map.locator('.house img[src="/village/house-lit.svg"]')).toHaveCount(5);
   await page.screenshot({ path: shot('pr5-night.png'), clip: { x: 0, y: 0, width: 1440, height: 1290 } });
+  // A window taller than the map: the viewport ends with the map, no untinted grass below or beside it.
+  await page.setViewportSize({ width: 1440, height: 1400 });
+  const spare = () =>
+    map.evaluate((el) => {
+      const sized = el.firstElementChild as HTMLElement;
+      return Math.max(el.clientWidth - sized.offsetWidth, el.clientHeight - sized.offsetHeight);
+    });
+  await expect.poll(spare).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: shot('strip-night.png') });
+  for (let i = 0; i < 4; i++) await page.getByRole('button', { name: 'Zoom out' }).click();
+  await expect.poll(spare).toBeLessThanOrEqual(0);
+  await page.getByRole('button', { name: 'Fit' }).click();
+  await time.getByRole('button', { name: 'Day' }).click();
+  await page.screenshot({ path: shot('strip-day.png') });
   await time.getByRole('button', { name: 'Now' }).click();
   await expect(time.getByRole('button', { name: 'Now' })).toHaveAttribute('aria-pressed', 'true');
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -1228,6 +1245,12 @@ test('the crab village draws every session as a crab, queues the ones that need 
   events!.send(JSON.stringify({ type: 'session.status', sessionId: 's5', status: 'your-turn' }));
   await expect(newbie.locator('.conf')).toHaveCount(9);
   await expect(newbie.locator('.conf')).toHaveCount(0, { timeout: 6000 });
+  // Its worktree merged: the big confetti for the crab that made it.
+  const maker = map.getByRole('button', { name: /^Ticket filters/ });
+  children[0].state = 'merged';
+  events!.send(JSON.stringify({ type: 'worktrees.changed' }));
+  await expect(maker.locator('.conf')).toHaveCount(18);
+  await expect(maker.locator('.conf')).toHaveCount(0, { timeout: 6000 });
 
   await page.keyboard.press('Alt+KeyV');
   await expect(page.getByRole('heading', { name: 'ai-portal', level: 1 })).toBeVisible();
