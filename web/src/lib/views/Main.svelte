@@ -198,6 +198,8 @@
 
   // ---------- Child worktrees: created by a session, nested under it ----------
   const placed = $derived(placeChildren(app.children, app.sessions));
+  // Worktree children start folded under their session (or project); opened ones stay open until a reload.
+  let openChildren = $state<Record<string, boolean>>({});
   async function openChild(w: ChildWorktree) {
     const request = childStart(w);
     const s = request && (await startSession(request));
@@ -749,9 +751,20 @@
       ondrop={(after) => dropSession(top, s, after)}
       onunpin={() => unpinSession(s)}
     />
-    {#each placed.byOrigin.get(s.id) ?? [] as w (w.path)}{@render childRow(w)}{/each}
+    {@render childGroup(s.id, placed.byOrigin.get(s.id) ?? [])}
   {/each}
-  {#each placed.orphans.get(projectId) ?? [] as w (w.path)}{@render childRow(w)}{/each}
+  {@render childGroup(projectId, placed.orphans.get(projectId) ?? [])}
+{/snippet}
+
+{#snippet childGroup(key: string, list: ChildWorktree[])}
+  {#if list.length}
+    {@const open = openChildren[key] ?? list.some((w) => sessionsIn(w, app.sessions).some((c) => c.id === active?.id))}
+    <button type="button" class="child-toggle" aria-expanded={open} onclick={() => (openChildren[key] = !open)}>
+      <Icon name={open ? 'chevron-down' : 'chevron-right'} size="xs" weight={2} />
+      {list.length} worktree{list.length === 1 ? '' : 's'}
+    </button>
+    {#if open}{#each list as w (w.path)}{@render childRow(w)}{/each}{/if}
+  {/if}
 {/snippet}
 
 {#snippet childRow(w: ChildWorktree)}
@@ -1517,6 +1530,25 @@
   .grow {
     flex: 1 1 auto;
     min-width: 0;
+  }
+
+  .child-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-left: var(--space-4);
+    padding: var(--space-0-5) var(--space-2);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: var(--text-sm);
+    cursor: pointer;
+  }
+
+  .child-toggle:hover {
+    color: var(--fg);
   }
 
   .child {
