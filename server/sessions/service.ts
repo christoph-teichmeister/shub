@@ -50,6 +50,8 @@ const MIGRATIONS = [
   'ALTER TABLE sessions ADD COLUMN tab_position INTEGER',
   'ALTER TABLE sessions ADD COLUMN agents TEXT',
   'ALTER TABLE sessions ADD COLUMN context TEXT',
+  'ALTER TABLE sessions ADD COLUMN status_since TEXT',
+  'UPDATE sessions SET status_since = last_activity_at',
 ];
 const WAIT_EVERY_MIN = 5;
 /** Failed checks in a row before the user hears the check does not work. */
@@ -107,6 +109,7 @@ interface Row {
   tab_position: number | null;
   agents: string | null;
   context: string | null;
+  status_since: string;
 }
 
 const toSession = (r: Row): Session => ({
@@ -123,6 +126,7 @@ const toSession = (r: Row): Session => ({
   links: JSON.parse(r.links),
   createdAt: r.created_at,
   lastActivityAt: r.last_activity_at,
+  statusSince: r.status_since,
   pendingPermission: r.pending_permission ? JSON.parse(r.pending_permission) : null,
   waitingFor: r.waiting_for,
   waitCheck: r.wait_check ? JSON.parse(r.wait_check) : null,
@@ -294,8 +298,8 @@ export class SessionsService implements Sessions {
     this.#db
       .prepare(
         `INSERT INTO sessions (id, kind, project_id, name, cwd, status, claude_session_id, permission_mode, started_by,
-         parent_id, links, created_at, last_activity_at, pending_permission, token)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         parent_id, links, created_at, last_activity_at, status_since, pending_permission, token)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -315,6 +319,7 @@ export class SessionsService implements Sessions {
         startedBy,
         parent?.id ?? null,
         '[]',
+        at,
         at,
         at,
         null,
@@ -528,20 +533,23 @@ export class SessionsService implements Sessions {
     const keep = status === 'needs-you';
     const pending = pendingPermission !== undefined ? pendingPermission : keep ? session.pendingPermission : null;
     const commands = pendingCommands !== undefined ? pendingCommands : keep ? session.pendingCommands : null;
+    const at = now();
+    const since = status === session.status ? session.statusSince : at;
     this.#db
       .prepare(
-        'UPDATE sessions SET status = ?, pending_permission = ?, pending_commands = ?, shells = ?, background_until = ?, last_activity_at = ? WHERE id = ?',
+        'UPDATE sessions SET status = ?, status_since = ?, pending_permission = ?, pending_commands = ?, shells = ?, background_until = ?, last_activity_at = ? WHERE id = ?',
       )
       .run(
         status,
+        since,
         pending ? JSON.stringify(pending) : null,
         commands?.length ? JSON.stringify(commands) : null,
         shells,
         background ? Date.now() + background : null,
-        now(),
+        at,
         id,
       );
-    this.#ctx.bus.emit({ type: 'session.status', sessionId: id, status });
+    this.#ctx.bus.emit({ type: 'session.status', sessionId: id, status, statusSince: since });
     this.#emitUpdated(id);
   }
 

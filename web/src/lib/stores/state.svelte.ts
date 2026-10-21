@@ -54,8 +54,6 @@ export const app = $state({
   devicesVersion: 0,
   /** Bumped per session on services.changed so views can refetch. */
   servicesVersion: {} as Record<string, number>,
-  /** When this client saw each session's status change (ms); lastActivityAt stands in until then. */
-  statusSince: {} as Record<string, number>,
   /** When this client saw a session's turn end (big: one of its worktrees got merged), for the village's confetti. */
   cheers: {} as Record<string, { at: number; big: boolean }>,
   /** Sessions on their way out: tab and sidebar row fade and say "Closing" until they are dropped. */
@@ -234,11 +232,12 @@ function upsert<T extends { id: string }>(list: T[], item: T): void {
   else list.push(item);
 }
 
-function setStatus(sessionId: string, status: SessionStatus): void {
+function setStatus(sessionId: string, status: SessionStatus, statusSince?: string): void {
   const s = app.sessions.find((x) => x.id === sessionId);
   if (!s || s.status === status) return;
   s.status = status;
-  app.statusSince[sessionId] = Date.now();
+  // Older servers send no statusSince: the change happened just now.
+  s.statusSince = statusSince ?? new Date().toISOString();
   if (status === 'your-turn') app.cheers[sessionId] = { at: Date.now(), big: false };
 }
 
@@ -250,7 +249,7 @@ export function handleEvent(e: ServerEvent): void {
     case 'session.updated':
       return upsert(app.sessions, e.session);
     case 'session.status':
-      return setStatus(e.sessionId, e.status);
+      return setStatus(e.sessionId, e.status, e.statusSince);
     case 'session.closed':
       void loadChildren();
       // Also for closes from another device: let the fade-out play before the session goes.

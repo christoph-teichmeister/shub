@@ -4,7 +4,7 @@ import type { Session, SessionStatus } from '../../../../shared/api.ts';
 import { COMPACT_AT, WARN_AT } from '../status.ts';
 import type { District, House, World } from './world.ts';
 
-export type CrabSession = Pick<Session, 'id' | 'kind' | 'projectId' | 'status' | 'lastActivityAt'>;
+export type CrabSession = Pick<Session, 'id' | 'kind' | 'projectId' | 'status' | 'statusSince'>;
 export type Pose = 'idle' | 'work' | 'sleep';
 
 export interface CrabSpot<S extends CrabSession = CrabSession> {
@@ -59,9 +59,7 @@ export function queueOrder(
   const next: Record<string, number> = {};
   let n = Math.max(0, ...Object.values(joined));
   for (const s of inLine) if (joined[s.id] != null) next[s.id] = joined[s.id];
-  const arrivals = inLine
-    .filter((s) => next[s.id] == null)
-    .sort((a, b) => a.lastActivityAt.localeCompare(b.lastActivityAt));
+  const arrivals = inLine.filter((s) => next[s.id] == null).sort((a, b) => a.statusSince.localeCompare(b.statusSince));
   for (const s of arrivals) next[s.id] = ++n;
   const rank = (s: CrabSession) => (s.status === 'needs-you' ? 0 : 1);
   const order = inLine.sort((a, b) => rank(a) - rank(b) || next[a.id] - next[b.id]).map((s) => s.id);

@@ -21,7 +21,7 @@ const crab = (status: SessionStatus, projectId: string | null = 'a', at = '2026-
   kind: projectId ? 'claude' : 'global',
   projectId,
   status,
-  lastActivityAt: at,
+  statusSince: at,
 });
 
 test('each status has its spot: desk, lounger, wandering, the mayor', () => {

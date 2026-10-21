@@ -344,6 +344,23 @@ test('a finished turn remembers its running shells until the next status', async
   assert.equal(svc.get(s.id)?.shells, 0);
 });
 
+test('statusSince moves only when the status changes', async () => {
+  const tick = () => new Promise((r) => setTimeout(r, 5));
+  const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  assert.equal(s.statusSince, s.createdAt);
+  await tick();
+  svc.setStatus(s.id, 'working');
+  const since = svc.get(s.id)!.statusSince;
+  assert.ok(since > s.statusSince);
+  await tick();
+  svc.setStatus(s.id, 'working');
+  assert.equal(svc.get(s.id)?.statusSince, since);
+  assert.ok(svc.get(s.id)!.lastActivityAt > since);
+  await tick();
+  svc.setStatus(s.id, 'your-turn');
+  assert.ok(svc.get(s.id)!.statusSince > since);
+});
+
 test('a wait check runs at once, keeps waiting on NOT YET and hands back on DONE', async () => {
   const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
   svc.setStatus(s.id, 'your-turn');

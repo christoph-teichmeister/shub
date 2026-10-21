@@ -29,6 +29,7 @@ const session: Session = {
   links: [],
   createdAt: '2026-10-19T14:02:00Z',
   lastActivityAt: '2026-10-19T14:02:00Z',
+  statusSince: '2026-10-19T14:02:00Z',
 };
 
 const dormant: ProjectView = {
@@ -1003,6 +1004,7 @@ test('the crab village draws every session as a crab, queues the ones that need 
     name,
     status,
     lastActivityAt: `2026-10-21T10:0${id.length}:00Z`,
+    statusSince: `2026-10-21T10:0${id.length}:00Z`,
     ...extra,
   });
   const sessions = [
@@ -1017,7 +1019,7 @@ test('the crab village draws every session as a crab, queues the ones that need 
     }),
     crab('s3', 'vynce', 'MR 311 review', 'waiting', { waitingFor: "Kai's answer on the MR" }),
     // Just joined the line: calm, unlike the others there since the morning.
-    crab('s4', 'shub', 'Image viewer review', 'your-turn', { lastActivityAt: new Date().toISOString() }),
+    crab('s4', 'shub', 'Image viewer review', 'your-turn', { statusSince: new Date().toISOString() }),
     crab('s5', 'shub', 'Session 3', 'new'),
     crab('s6', 'listo', 'Shopping list sync', 'paused'),
     crab('s7', 'dotfiles', 'Prompt theme', 'needs-you', { pendingCommands: [{ command: 'sudo systemctl restart x' }] }),
