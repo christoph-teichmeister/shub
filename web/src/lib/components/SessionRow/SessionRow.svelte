@@ -53,9 +53,6 @@
     <span class="name">{session.name}</span>
     <span class="status">{closing ? 'Closing' : statusLabel(session)}</span>
   </a>
-  {#if onunpin && session.position != null && !closing}
-    <IconButton label="Unpin {session.name}" icon="pin" size="xs" tone="muted" onclick={onunpin} />
-  {/if}
   {#if onmenu && !closing}
     <span class="actions"
       ><IconButton
@@ -69,6 +66,10 @@
         }}
       /></span
     >
+  {/if}
+  <!-- Last, so the hover menu opening beside it never shifts it. -->
+  {#if onunpin && session.position != null && !closing}
+    <IconButton label="Unpin {session.name}" icon="pin" size="xs" tone="muted" onclick={onunpin} />
   {/if}
 </div>
 
