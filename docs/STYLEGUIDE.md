@@ -67,6 +67,15 @@ Inline stroke SVG on a 16 px grid, `currentColor`, round caps (`components/Icon/
 
 Short, plain, sentence case ("New session", "Split view on", "Nothing needs you"). No trailing periods on buttons and labels, no exclamation marks. Name the thing, then the action ("Close BLM-412 export?"). Shortcuts are written `Alt K`.
 
+## Crab Village
+
+The village (`#/village`, `views/Village/`) has a parchment-and-wood look of its own, the same in every theme.
+
+- **Tokens**: the `village-*` group in `tokens.ts` (also in the theme editor): `village-bg`, `-grass`, `-parchment`, `-parchment-line`, `-paper`, `-wood`, `-wood-dark`, `-ink`, `-ink-muted`, `-gold`, `-sky`, `-alarm`, and for the time of day `-tint-morning`, `-tint-evening`, `-tint-night`, `-glow`, `-firefly`, `-cloud` (tints, glow and clouds carry their alpha: `rgb(… / 52%)`). One sprite pixel is `--village-px` (2 px); size map things in multiples of it.
+- **Sprites**: pixel grids drawn in code by `scripts/village/sprites.ts`, written as SVGs (one `<rect>` per colour run) to `web/public/village/` and committed. Sprite colours live in the SVGs, not in tokens. Hats and roofs come as a mask (filled with the project colour) plus a detail layer.
+- **Adding a sprite**: write a function that returns its grid next to the others, register it in `sprites()` under its file name, run `node scripts/village/sprites.ts`, commit the new SVG. `scripts/village/sprites.test.ts` fails when the committed files differ from a fresh run. Add its size to `SIZES` in `village/world.ts` when the layout needs it.
+- **Layout and motion**: `village/world.ts` lays the map out (pure, seeded); `village/crabs.ts` places the crabs; `village/ambience.ts` holds time of day, ambient life and celebrations as functions of the 140 ms step counter. Overlays (tint, glows, clouds) never catch pointer events. With `prefers-reduced-motion` the step stops (a still scene, no confetti) and a 30 s timer keeps times current; a hidden tab pauses it.
+
 ## Components
 
 - One folder per component: `web/src/lib/components/<Name>/<Name>.svelte` plus `README.md` (props table and the states it has). Helpers that belong to one component live in its folder (e.g. `Icon/icons.ts`).

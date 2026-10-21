@@ -5,7 +5,8 @@
 //   band:        the main road, with a spur up or down to every district gate
 //   bottom row:  pond · districts · plaza (your desk, the queue, the town hall) · districts
 //
-// Ambient extras (lanterns, ducks, tents, machines) attach to the spots this returns; they are not laid out here.
+// Lantern posts stand along the paths and round the plaza; the other extras (ducks, tents, machines) attach to the
+// spots this returns and are not laid out here.
 
 export type Point = [number, number];
 export type Outfit = 'work' | 'private' | 'everyday' | 'projects';
@@ -86,6 +87,8 @@ export interface World {
   forest: Rect | null;
   paths: VillagePath[];
   decor: Decor[];
+  /** Bottom centres of the lantern posts, off the paths and out of the districts. */
+  lanterns: Point[];
 }
 
 export interface WorldInput {
@@ -122,6 +125,9 @@ export const SIZES = {
   pond: [280, 192],
   tent: [56, 44],
   machine: [36, 36],
+  lantern: [18, 48],
+  /** The "+ New project" button, roughly. */
+  lot: [150, 44],
 } as const;
 
 // Worktree tents and Docker machines in the gaps beside a house; a neighbour's wall can come within 112 px.
@@ -260,21 +266,23 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
   const houses: Record<string, House> = {};
   const lots: World['lots'] = [];
   for (const d of districts) {
-    const cell = (i: number, id: string) => {
-      const h = hash(id);
+    const cell = (i: number, id: string | null) => {
+      const h = id === null ? 0 : hash(id);
       const c = i % d.cols;
       const r = Math.floor(i / d.cols);
       return {
-        x: d.x + 30 + c * CW + CW / 2 + ((h % 25) - 12),
-        y: d.y + 100 + r * CH + 110 + (c % 2) * 20 + (((h >> 5) % 13) - 6),
+        x: d.x + 30 + c * CW + CW / 2 + (id === null ? 0 : (h % 25) - 12),
+        y: d.y + 100 + r * CH + 110 + (c % 2) * 20 + (id === null ? 0 : ((h >> 5) % 13) - 6),
       };
     };
     d.projects.forEach((p, i) => {
       const at = cell(i, p.id);
       houses[p.id] = { ...at, project: p, district: d, active: active.has(p.id), desk: { x: at.x + 26, y: at.y + 86 } };
     });
-    const lot = cell(d.projects.length, `${d.id}-lot`);
-    lots.push({ x: lot.x, y: lot.y + 10, district: d });
+    // No jitter, and a little to the right: the house before it may lean its way with tents on its right.
+    const n = d.projects.length;
+    const lot = cell(n, null);
+    lots.push({ x: lot.x + (n % d.cols ? 20 : 0), y: lot.y + 10, district: d });
   }
 
   // Main road across the band, a spur to every gate, a stem down to the plaza.
@@ -296,17 +304,49 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
   paths.push({ kind: 'path', width: 40, pts: [roadAt(plazaCx), [plazaCx, plaza.y - plaza.h / 2 + 20]] });
   paths.push({ kind: 'cobble', width: 34, pts: [[you.x, you.y - 100], ...slots] });
 
-  // Decoration on every free spot of a loose grid; a forest between the first two districts.
   const segs = paths.flatMap((p) => p.pts.slice(1).map((b, i) => [p.pts[i], b, p.width / 2] as const));
   const hallBox = { x: hall.x - 80, y: hall.y - 130, w: 160, h: 140 };
   const youBox = { x: you.x - 70, y: you.y - 110, w: 140, h: 120 };
+  const lanterns: Point[] = [];
   const free = (px: number, py: number) =>
     !districts.some((d) => inRect(px, py, d, 26)) &&
     ((px - plaza.x) / (plaza.w / 2 + 40)) ** 2 + ((py - plaza.y) / (plaza.h / 2 + 50)) ** 2 > 1 &&
     ((px - pond.x) / (SIZES.pond[0] / 2 + 20)) ** 2 + ((py - pond.y) / (SIZES.pond[1] / 2 + 30)) ** 2 > 1 &&
     !inRect(px, py, hallBox, 10) &&
     !inRect(px, py, youBox, 10) &&
-    !segs.some(([a, b, half]) => distToSegment(px, py, a, b) < half + 18);
+    !segs.some(([a, b, half]) => distToSegment(px, py, a, b) < half + 18) &&
+    !lanterns.some(([lx, ly]) => Math.hypot(px - lx, py - ly) < 56);
+  // A post is tall: its lamp must stay clear of fences and paths too.
+  const freePost = (px: number, py: number) => free(px, py) && free(px, py - SIZES.lantern[1] + 8);
+
+  // Lantern posts: beside the middle of every dirt path segment (whichever side is free), and round the plaza.
+  for (const p of paths) {
+    if (p.kind !== 'path') continue;
+    p.pts.slice(1).forEach((b, i) => {
+      const a = p.pts[i];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      const off = p.width / 2 + 22;
+      const [nx, ny] = [(-(b[1] - a[1]) / len) * off, ((b[0] - a[0]) / len) * off];
+      const [mx, my] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const spot = (
+        [
+          [mx + nx, my + ny],
+          [mx - nx, my - ny],
+        ] as Point[]
+      ).find(([x, y]) => freePost(x, y) && inRect(x, y, { x: 0, y: 60, w: W, h: H - 60 }));
+      if (spot) lanterns.push([Math.round(spot[0]), Math.round(spot[1])]);
+    });
+  }
+  for (const deg of [200, 160, 340, 20]) {
+    const r = (deg * Math.PI) / 180;
+    const spot: Point = [
+      Math.round(plaza.x + Math.cos(r) * (plaza.w / 2 + 44)),
+      Math.round(plaza.y + Math.sin(r) * (plaza.h / 2 + 54)),
+    ];
+    if (freePost(...spot) && spot[1] < H - 10) lanterns.push(spot);
+  }
+
+  // Decoration on every free spot of a loose grid; a forest between the first two districts.
   const decor: Decor[] = [];
   const add = (sprite: string, w: number, h: number, px: number, py: number) =>
     decor.push({ sprite, w, h, x: Math.round(px), y: Math.round(py) });
@@ -332,5 +372,5 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
     }
   }
 
-  return { W, H, districts, houses, lots, plaza, pond, you, hall, mayor, slots, forest, paths, decor };
+  return { W, H, districts, houses, lots, plaza, pond, you, hall, mayor, slots, forest, paths, decor, lanterns };
 }

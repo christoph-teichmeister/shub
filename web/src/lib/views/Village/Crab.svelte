@@ -4,7 +4,8 @@
 
 <script lang="ts">
   // One session as a crab on the map: body frame, hat in the project colour, status bubble, subagents as babies,
-  // its context as a backpack (sweat, panting) and its impatience in the queue (hops, foot-tap dust).
+  // its context as a backpack (sweat, panting), its impatience in the queue (hops, foot-tap dust) and confetti when
+  // it celebrates.
   import type { Outfit } from '../../village/world.ts';
 
   interface Props {
@@ -29,6 +30,8 @@
     lift: number;
     /** Foot-tapping in the queue. */
     dust: boolean;
+    /** A celebration's confetti, offsets in px from above the crab. */
+    confetti: { x: number; y: number; color: string; opacity: number }[];
     /** The view's step counter, for the drops, puffs and dust. */
     t: number;
     label: string;
@@ -56,6 +59,7 @@
     pant,
     lift,
     dust,
+    confetti,
     t,
     label,
     describedby,
@@ -109,12 +113,29 @@
     {/if}
     {#if pant}<span class="huff" style:opacity={t % 4 < 2 ? 0.9 : 0.2}></span>{/if}
   </span>
+  {#each confetti as p, i (i)}
+    <span
+      class="conf"
+      style:transform="translate({p.x}px, {p.y}px)"
+      style:background={p.color}
+      style:opacity={p.opacity}
+    ></span>
+  {/each}
   {#each babies as baby, i (i)}
     <span class="baby" style:left="calc(var(--village-px) * {-13 - i * 12})">{@render crab(baby, 'small')}</span>
   {/each}
 </button>
 
 <style>
+  .conf {
+    position: absolute;
+    top: calc(var(--village-px) * 5);
+    left: calc(var(--village-px) * 12);
+    width: calc(var(--village-px) * 2.5);
+    height: calc(var(--village-px) * 2.5);
+    pointer-events: none;
+  }
+
   .crab {
     position: absolute;
     transform: translate(-50%, -100%);

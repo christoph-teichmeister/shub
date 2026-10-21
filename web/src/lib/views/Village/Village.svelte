@@ -21,7 +21,9 @@
     type CrabSpot,
     type Mood,
   } from '../../village/crabs.ts';
-  import { buildWorld, type VillageProject } from '../../village/world.ts';
+  import { CHEER_STEPS, cheerFrame, isDark, timeOfDay, TIMES, type TimeOfDay } from '../../village/ambience.ts';
+  import { buildWorld, type Point, type VillageProject } from '../../village/world.ts';
+  import Ambience from './Ambience.svelte';
   import Crab, { type Bubble } from './Crab.svelte';
   import CrabCard, { type CardAction } from './CrabCard.svelte';
   import House from './House.svelte';
@@ -46,6 +48,8 @@
   let building = $state<{ group: string | null } | null>(null);
   let viewport = $state<HTMLElement>();
   let t = $state(0);
+  /** The clock, moved on every step (every 30 s with reduced motion): time in line, time of day, confetti. */
+  let now = $state(Date.now());
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const sessions = $derived(crabSessions(app.sessions));
@@ -121,6 +125,26 @@
     if (app.ready) seen = new Set(queue);
   });
 
+  // ---------- time of day ----------
+  // "Now" follows the clock; a pinned time stays in localStorage.
+  const TIME_KEY = 'shub-village-time';
+  let pinnedTime = $state<TimeOfDay | null>(null);
+  try {
+    const v = localStorage.getItem(TIME_KEY);
+    pinnedTime = TIMES.find((x) => x === v) ?? null;
+  } catch {}
+  function setTime(v: TimeOfDay | null) {
+    pinnedTime = v;
+    try {
+      if (v) localStorage.setItem(TIME_KEY, v);
+      else localStorage.removeItem(TIME_KEY);
+    } catch {}
+  }
+  const clockTime = $derived(timeOfDay(new Date(now).getHours()));
+  const tod = $derived(pinnedTime ?? clockTime);
+  const dark = $derived(isDark(tod));
+  const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
+
   // ---------- walking ----------
   type Pos = { x: number; y: number; dir: number; moving: boolean };
   let pos = $state<Record<string, Pos>>({});
@@ -131,6 +155,7 @@
     // Crabs there on the first step stand at their spot; later ones come out of their house's door.
     const fresh = t > 0;
     t++;
+    now = Date.now();
     for (const c of spots) {
       const p = pos[c.session.id];
       if (!p) {
@@ -153,18 +178,30 @@
     }
   }
   onMount(() => {
-    if (still) return;
-    const timer = setInterval(step, STEP_MS);
+    // Still: no walking, but the minutes in line and the time of day move on.
+    const timer = still ? setInterval(() => (now = Date.now()), 30_000) : setInterval(step, STEP_MS);
     return () => clearInterval(timer);
   });
 
   // ---------- what each crab shows ----------
   const projectById = $derived(new Map(app.projects.map((p) => [p.id, p])));
+  const workingIn = $derived(new Set(sessions.filter((s) => s.status === 'working').map((s) => s.projectId)));
+  /** After dark: a glow on every lit window and on your desk lamp. */
+  const lights = $derived<Point[]>(
+    dark
+      ? [
+          ...Object.values(world.houses)
+            .filter((h) => h.active)
+            .map((h): Point => [h.x, h.y - 30]),
+          [world.you.x + 36, world.you.y - 60],
+        ]
+      : [],
+  );
   const dim = (group: string | undefined) => (only && group !== only ? 0.3 : 1);
 
   /** Minutes since the status changed: how long a queued crab has been in line. */
   const waited = (s: Session) =>
-    Math.max(0, Math.floor((Date.now() - (app.statusSince[s.id] ?? Date.parse(s.lastActivityAt))) / 60_000));
+    Math.max(0, Math.floor((now - (app.statusSince[s.id] ?? Date.parse(s.lastActivityAt))) / 60_000));
   const moodFor = (c: CrabSpot<Session>, p: Pos): Mood | null =>
     c.queuePos < 0 || p.moving ? null : moodOf(waited(c.session));
 
@@ -185,6 +222,13 @@
     if (status === 'waiting') return { text: zz, tone: 'waiting' };
     if (asleep(status)) return { text: zz, tone: 'paused' };
     return null;
+  }
+
+  /** A hop and confetti for a turn that just ended (big for a merged worktree); none with reduced motion. */
+  function cheer(id: string) {
+    const c = still ? undefined : app.cheers[id];
+    const n = c ? Math.floor((now - c.at) / STEP_MS) : -1;
+    return c && n >= 0 && n < CHEER_STEPS ? cheerFrame(n, c.big) : null;
   }
 
   function lift(mood: Mood | null, i: number): number {
@@ -383,6 +427,20 @@
       {/each}
     </div>
     <span class="grow"></span>
+    <div class="row seg" role="group" aria-label="Time of day">
+      <button
+        type="button"
+        class="btn small"
+        aria-pressed={pinnedTime === null}
+        title="Follow the clock ({clockTime})"
+        onclick={() => setTime(null)}>Now</button
+      >
+      {#each TIMES as d (d)}
+        <button type="button" class="btn small" aria-pressed={pinnedTime === d} onclick={() => setTime(d)}
+          >{cap(d)}</button
+        >
+      {/each}
+    </div>
     <button type="button" class="btn small" onclick={() => (building = { group: null })}>+ New project</button>
     <div class="row" role="group" aria-label="Show district">
       {#each [null, ...world.districts.map((d) => d.id)] as id (id)}
@@ -490,9 +548,12 @@
           />
         {/each}
         {#each Object.values(world.houses) as h (h.project.id)}
+          {@const working = workingIn.has(h.project.id)}
           <House
             house={h}
-            working={sessions.some((s) => s.projectId === h.project.id && s.status === 'working')}
+            {working}
+            lit={working || (dark && h.active)}
+            {t}
             dim={dim(h.district.id)}
             onplus={() => {
               pinned = null;
@@ -539,6 +600,7 @@
           {@const outfit = c.district?.outfit ?? 'mayor'}
           {@const mood = moodFor(c, p)}
           {@const bag = c.pose === 'sleep' ? null : backpack(c.session.context?.tokens)}
+          {@const party = cheer(c.session.id)}
           <Crab
             x={p.x}
             y={p.y}
@@ -554,8 +616,9 @@
             pack={bag?.size ?? null}
             sweat={!!bag?.sweat}
             pant={!!bag?.pant}
-            lift={lift(mood, i)}
+            lift={party?.hop || lift(mood, i)}
             dust={mood === 'tap'}
+            confetti={party?.confetti ?? []}
             {t}
             label={label(c)}
             describedby={hovered === c.session.id ? 'village-card' : undefined}
@@ -567,6 +630,7 @@
             onleave={() => hovered === c.session.id && (hovered = null)}
           />
         {/each}
+        <Ambience {world} {tod} {t} {lights} />
       </div>
       {#if card}
         {@const project = card.c.session.projectId ? projectById.get(card.c.session.projectId) : undefined}

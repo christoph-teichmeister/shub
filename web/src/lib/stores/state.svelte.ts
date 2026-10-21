@@ -15,6 +15,7 @@ import type {
   UpdateStatus,
 } from '../../../../shared/api.ts';
 import { API_VERSION, TERMINAL_SETTINGS_DEFAULTS, terminalSettingsError } from '../../../../shared/api.ts';
+import { newlyMerged } from '../children.ts';
 import { applyTheme, findTheme } from '../tokens/tokens.ts';
 import { api, ApiError, wsTarget } from './api.ts';
 import { href } from './router.svelte.ts';
@@ -55,6 +56,8 @@ export const app = $state({
   servicesVersion: {} as Record<string, number>,
   /** When this client saw each session's status change (ms); lastActivityAt stands in until then. */
   statusSince: {} as Record<string, number>,
+  /** When this client saw a session's turn end (big: one of its worktrees got merged), for the village's confetti. */
+  cheers: {} as Record<string, { at: number; big: boolean }>,
   /** Sessions on their way out: tab and sidebar row fade and say "Closing" until they are dropped. */
   closing: {} as Record<string, boolean>,
   /** Bumped whenever the theme is re-applied (canvas consumers re-read tokens). */
@@ -178,10 +181,12 @@ export async function loadConfig(): Promise<void> {
 }
 export const loadProjects = async () => (app.projects = (await guard(api<ProjectView[]>('projects'))) ?? app.projects);
 export const loadSessions = async () => (app.sessions = (await guard(api<Session[]>('sessions'))) ?? app.sessions);
-export const loadChildren = async (fetch = false) =>
-  (app.children =
-    (await guard(api<ChildWorktree[]>('worktreeChildren', { query: fetch ? { fetch: '1' } : undefined }))) ??
-    app.children);
+export async function loadChildren(fetch = false): Promise<void> {
+  const list = await guard(api<ChildWorktree[]>('worktreeChildren', { query: fetch ? { fetch: '1' } : undefined }));
+  if (!list) return;
+  for (const id of newlyMerged(app.children, list)) app.cheers[id] = { at: Date.now(), big: true };
+  app.children = list;
+}
 export const loadApprovals = async () => (app.approvals = (await guard(api<Approval[]>('approvals'))) ?? app.approvals);
 export const loadPlugins = async () => (app.plugins = (await guard(api<PluginInfo[]>('plugins'))) ?? app.plugins);
 /** The server version this page's code came with; another one means an update ran, so reload to get its frontend. */
@@ -234,6 +239,7 @@ function setStatus(sessionId: string, status: SessionStatus): void {
   if (!s || s.status === status) return;
   s.status = status;
   app.statusSince[sessionId] = Date.now();
+  if (status === 'your-turn') app.cheers[sessionId] = { at: Date.now(), big: false };
 }
 
 export function handleEvent(e: ServerEvent): void {

@@ -40,6 +40,12 @@ const UI_TOKEN_NAMES = [
   'village-gold', // pressed buttons, focus ring
   'village-sky', // "waiting" dream bubble
   'village-alarm', // context from 160k
+  'village-tint-morning', // map tint, mornings
+  'village-tint-evening', // map tint, evenings
+  'village-tint-night', // map tint, nights
+  'village-glow', // lanterns and lit windows after dark
+  'village-firefly',
+  'village-cloud', // cloud shadows drifting over the map
 ] as const;
 
 type UiTokens = Record<(typeof UI_TOKEN_NAMES)[number], string>;
@@ -137,6 +143,12 @@ export const TOKEN_GROUPS: { title: string; tokens: { name: TokenName; label: st
       { name: 'village-gold', label: 'Pressed button, focus ring' },
       { name: 'village-sky', label: 'Waiting bubble' },
       { name: 'village-alarm', label: 'Context from 160k' },
+      { name: 'village-tint-morning', label: 'Morning tint' },
+      { name: 'village-tint-evening', label: 'Evening tint' },
+      { name: 'village-tint-night', label: 'Night tint' },
+      { name: 'village-glow', label: 'Lantern glow' },
+      { name: 'village-firefly', label: 'Fireflies' },
+      { name: 'village-cloud', label: 'Cloud shadows' },
     ],
   },
   {
@@ -165,6 +177,12 @@ const village = {
   'village-gold': '#e8b04a',
   'village-sky': '#bfe4f6',
   'village-alarm': '#d0342c',
+  'village-tint-morning': 'rgb(255 190 140 / 14%)',
+  'village-tint-evening': 'rgb(255 110 50 / 22%)',
+  'village-tint-night': 'rgb(16 24 72 / 52%)',
+  'village-glow': 'rgb(255 214 120 / 60%)',
+  'village-firefly': '#e8ff7a',
+  'village-cloud': 'rgb(16 40 10 / 13%)',
 };
 
 const monokai: UiTokens = {

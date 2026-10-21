@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ChildWorktree, Session } from '../shared/api.ts';
-import { childLabel, childStart, placeChildren } from '../web/src/lib/children.ts';
+import { childLabel, childStart, newlyMerged, placeChildren } from '../web/src/lib/children.ts';
 
 const child = (over: Partial<ChildWorktree> = {}): ChildWorktree => ({
   projectId: 'p',
@@ -43,4 +43,12 @@ test('an orphan someone resumed leaves the closed sessions: its session shows at
   const { orphans, nested } = placeChildren([b], [session('p-4', '/r/wt/b')]);
   assert.equal(orphans.size, 0);
   assert.equal(nested.size, 0);
+});
+
+test('a worktree counts as newly merged only on the change to merged, not when it first shows up merged', () => {
+  const a = child({ state: 'open' });
+  const b = child({ path: '/r/.claude/worktrees/b', state: 'merged', originSessionId: 'p-2' });
+  assert.deepEqual(newlyMerged([], [a, b]), []);
+  assert.deepEqual(newlyMerged([a, b], [{ ...a, state: 'merged' }, b]), ['p-1']);
+  assert.deepEqual(newlyMerged([{ ...a, state: 'merged' }], [{ ...a, state: 'merged' }]), []);
 });

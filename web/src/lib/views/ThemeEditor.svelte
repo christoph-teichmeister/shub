@@ -228,6 +228,12 @@
               </span>
               <span class="v-bubble">zZ</span>
               <span class="v-sign on">Fit</span>
+              <span class="v-sky" aria-hidden="true">
+                <span style:background="var(--village-tint-morning)"></span>
+                <span style:background="var(--village-tint-evening)"></span>
+                <span class="v-night"><i></i></span>
+                <span style:background="var(--village-cloud)"></span>
+              </span>
             </div>
             <div class="p-menu">
               <span>Rename</span>
@@ -549,6 +555,31 @@
     width: 85%;
     height: 100%;
     background: var(--village-alarm);
+  }
+
+  /* Morning, evening and night (a lantern glow and a firefly) over the grass, and a cloud shadow. */
+  .v-sky {
+    display: flex;
+    gap: var(--space-1);
+  }
+
+  .v-sky > span {
+    width: var(--size-control-sm);
+    height: var(--size-control-sm);
+    border: var(--ring) solid var(--village-wood-dark);
+    border-radius: var(--radius-xs);
+  }
+
+  .v-night {
+    display: grid;
+    place-items: center;
+    background: radial-gradient(circle, var(--village-glow) 0, transparent 70%), var(--village-tint-night);
+  }
+
+  .v-night i {
+    width: var(--space-1);
+    height: var(--space-1);
+    background: var(--village-firefly);
   }
 
   .v-bubble {
