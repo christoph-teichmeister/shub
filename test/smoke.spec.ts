@@ -524,7 +524,7 @@ test('phone runs a command Claude handed over after a second tap', async ({ page
   await chip.getByRole('button', { name: 'Tap again to run' }).click();
   await expect
     .poll(() => calls.find((c) => c.path === '/api/sessions/s1/command')?.body)
-    .toEqual({ index: 0, action: 'run', enter: true });
+    .toEqual({ index: 0, action: 'run' });
   expect(errors).toEqual([]);
 });
 

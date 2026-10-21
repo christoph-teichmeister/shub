@@ -586,7 +586,7 @@ export const ROUTES = {
   sessionClaudeHere: 'POST /api/sessions/:id/claude-here', // shell id -> Session | { approval }: Claude in the shell's current folder
   sessionPause: 'POST /api/sessions/:id/pause',
   sessionResume: 'POST /api/sessions/:id/resume',
-  sessionCommand: 'POST /api/sessions/:id/command', // { index, action: 'run' | 'dismiss', enter? } pendingCommands
+  sessionCommand: 'POST /api/sessions/:id/command', // { index, action: 'run' | 'dismiss' } pendingCommands
   sessionKeys: 'POST /api/sessions/:id/keys', // { keys: "1" | "Escape" | ... } phone quick keys
   sessionPaste: 'POST /api/sessions/:id/paste', // text or multipart image -> path inserted
   sessionLink: 'POST /api/sessions/:id/links', // SessionLink

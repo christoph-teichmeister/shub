@@ -10,7 +10,7 @@
 
   interface Props {
     session: Session;
-    /** Phone: Run asks for a second tap, then sends Enter too (Enter on the phone keyboard is fiddly). */
+    /** Phone: Run asks for a second tap, so a stray tap on the small screen runs nothing. */
     phone?: boolean;
     /** Opens a plain terminal (in `cwd` when the command names a folder) and returns its session id; the chip
      *  types the command in, not run (sudo, logins). */
@@ -24,8 +24,7 @@
   let armed = $state<number | null>(null);
 
   function answer(index: number, action: 'run' | 'dismiss') {
-    const enter = action === 'run' && phone;
-    void api('sessionCommand', { params: { id: session.id }, body: { index, action, enter } }).catch(toastError);
+    void api('sessionCommand', { params: { id: session.id }, body: { index, action } }).catch(toastError);
   }
 
   function run(index: number) {
