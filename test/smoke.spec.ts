@@ -750,7 +750,7 @@ test('active group keeps a project for 10 minutes after its last session closes'
   expect(errors).toEqual([]);
 });
 
-test('the tab ✕ hides a session from the tab bar but not the sidebar', async ({ page }) => {
+test('the tab – hides a session from the tab bar but not the sidebar', async ({ page }) => {
   const other: Session = { ...session, id: 's2', name: 'Docs pass', status: 'your-turn' };
   const { errors, calls } = await mockApi(page, {
     '/api/sessions': [session, other],
@@ -765,7 +765,7 @@ test('the tab ✕ hides a session from the tab bar but not the sidebar', async (
   const tab = (name: string) => page.getByRole('tab', { name });
   const row = (name: string) => page.getByRole('link', { name: new RegExp(name) });
 
-  await tab('MR 2136 review').hover(); // the ✕ shows on hover
+  await tab('MR 2136 review').click(); // only the open tab has its buttons
   await page.getByRole('button', { name: 'Hide MR 2136 review tab (stays in the sidebar)' }).click();
   await expect(tab('MR 2136 review')).toHaveCount(0);
   await expect(row('MR 2136 review')).toBeVisible();
@@ -786,6 +786,29 @@ test('the tab ✕ hides a session from the tab bar but not the sidebar', async (
   await expect(tab('Docs pass')).toHaveAttribute('aria-selected', 'true');
 
   expect(calls.filter((c) => c.method === 'DELETE')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('the tab bar + menu starts a session, a terminal or a project button; the tab ✕ closes', async ({ page }) => {
+  const other: Session = { ...session, id: 's2', name: 'Docs pass', status: 'your-turn' };
+  const { errors, calls } = await mockApi(page, {
+    '/api/sessions': [session, other],
+    '/api/sessions/s2/services': [],
+  });
+  await page.goto('/#/p/ai-portal/s2');
+  await expect(page.getByRole('heading', { name: 'ai-portal', level: 1 })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Close Docs pass' }).click();
+  await expect.poll(() => calls.filter((c) => c.method === 'DELETE').map((c) => c.path)).toEqual(['/api/sessions/s2']);
+
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  const menu = page.getByRole('menu', { name: 'New in ai-portal' });
+  await expect(menu.getByRole('menuitem')).toHaveText([/New Claude session/, /New terminal/, /Worktree start…/]);
+  await menu.getByRole('menuitem', { name: /New terminal/ }).click();
+  await expect(menu).toHaveCount(0);
+  const start = calls.find((c) => c.method === 'POST' && c.path === '/api/sessions');
+  expect(start?.body).toEqual({ projectId: 'ai-portal', kind: 'shell' });
+
   expect(errors).toEqual([]);
 });
 

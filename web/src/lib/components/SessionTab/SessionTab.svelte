@@ -13,8 +13,10 @@
     renaming?: boolean;
     onselect?: () => void;
     onrename?: (name: string) => void;
-    /** The ✕: takes the tab out of the bar, the session keeps running. */
+    /** The –: takes the tab out of the bar, the session keeps running. */
     onhide?: () => void;
+    /** The ✕: ends the session. */
+    onclose?: () => void;
     /** Right-click or the tab's menu button; `at` is where the menu opens. */
     onmenu?: (at: { x: number; y: number }) => void;
     /** Drag and drop to reorder; `after` when dropped on the right half. */
@@ -29,11 +31,14 @@
     onselect,
     onrename,
     onhide,
+    onclose,
     onmenu,
     ondragstart,
     ondrop,
   }: Props = $props();
   let over = $state<'before' | 'after' | null>(null);
+  // ✕ turns red under the pointer: it sits next to hide, so a slip shows before the click.
+  let closeHot = $state(false);
   const half = (e: DragEvent) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     return e.clientX > r.left + r.width / 2 ? 'after' : 'before';
@@ -123,35 +128,54 @@
   {#each session.links.slice(0, 1) as link (link.url)}
     <a class="chip" href={link.url} target="_blank" rel="noreferrer">{link.label}</a>
   {/each}
-  {#if onmenu}
-    <span class="reveal"
-      ><IconButton
-        label="Menu for {session.name}"
-        icon="more"
-        size="xs"
-        tone="muted"
-        onclick={(e) => {
-          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-          onmenu({ x: r.left, y: r.bottom });
-        }}
-      /></span
-    >
-  {/if}
-  {#if onhide}
-    <span class="reveal"
-      ><IconButton
-        label="Hide {session.name} tab (stays in the sidebar)"
-        icon="close"
-        size="xs"
-        tone="muted"
-        onclick={onhide}
-      /></span
-    >
+  {#if onmenu || onhide || onclose}
+    <span class="actions">
+      {#if onmenu}
+        <span
+          ><IconButton
+            label="Menu for {session.name}"
+            icon="more"
+            size="xs"
+            tone="muted"
+            onclick={(e) => {
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              onmenu({ x: r.left, y: r.bottom });
+            }}
+          /></span
+        >
+      {/if}
+      {#if onhide}
+        <span
+          ><IconButton
+            label="Hide {session.name} tab (stays in the sidebar)"
+            icon="minus"
+            size="xs"
+            tone="muted"
+            onclick={onhide}
+          /></span
+        >
+      {/if}
+      {#if onclose}
+        <span role="presentation" onpointerenter={() => (closeHot = true)} onpointerleave={() => (closeHot = false)}
+          ><IconButton
+            label="Close {session.name}"
+            icon="close"
+            size="xs"
+            tone={closeHot ? 'stop' : 'muted'}
+            onclick={onclose}
+          /></span
+        >
+      {/if}
+    </span>
   {/if}
 </div>
 
 <style>
+  /* Tabs shrink as one when the bar runs out of room (names end in …); the open one keeps its width. */
   .tab {
+    flex: 0 1 auto;
+    min-width: var(--size-tab-min);
+    overflow: hidden;
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -165,10 +189,15 @@
   }
 
   .selected {
+    flex-shrink: 0;
     border-color: var(--line);
     border-bottom-color: var(--term-bg);
     background: var(--term-bg);
     color: var(--fg);
+  }
+
+  .tab:not(.selected) {
+    padding-right: var(--space-3-5);
   }
 
   .tab:not(.selected):hover {
@@ -185,6 +214,7 @@
   }
 
   .label {
+    min-width: 0;
     max-width: var(--size-tab-label);
     height: 100%;
     overflow: hidden;
@@ -223,10 +253,6 @@
     color: var(--danger);
   }
 
-  .reveal {
-    visibility: hidden;
-  }
-
   .over-before {
     box-shadow: inset var(--ring) 0 0 var(--primary);
   }
@@ -247,9 +273,14 @@
     color: var(--fg-2);
   }
 
-  .tab.selected .reveal,
-  .tab:hover .reveal,
-  .tab:focus-within .reveal {
-    visibility: visible;
+  .actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+  }
+
+  /* Only the open tab has buttons: on a shrunk tab they would cover the name. Right-click still opens the menu. */
+  .tab:not(.selected) .actions {
+    display: none;
   }
 </style>

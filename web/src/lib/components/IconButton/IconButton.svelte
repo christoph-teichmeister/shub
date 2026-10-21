@@ -125,7 +125,8 @@
     color: var(--status-your-turn);
   }
 
-  .stop {
+  .stop,
+  .stop:hover {
     color: var(--danger);
   }
 
