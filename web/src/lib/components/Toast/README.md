@@ -8,4 +8,4 @@ Stack of short messages, bottom right, announced politely. Call `toast(message, 
 | `ondismiss` | `(id) => void` | removes from store |
 | `fixed`     | `boolean`      | `true`             |
 
-States: neutral, error (pink border), needs-you (orange; only for "a session needs you").
+States: neutral (green check, leaves after 4 s), error (pink, warning icon), needs-you (orange bell; only for "a session needs you"). Errors and needs-you stay until dismissed; hovering pauses the timer line. At most three at once, oldest goes first.
