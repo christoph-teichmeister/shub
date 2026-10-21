@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
   import type { ProjectView, Session } from '../../../../../shared/api.ts';
   import { projectBadge } from '../../status.ts';
+  import Icon from '../Icon/Icon.svelte';
   import IconButton from '../IconButton/IconButton.svelte';
   import ProjectIcon from '../ProjectIcon/ProjectIcon.svelte';
   import StatusBadge from '../StatusBadge/StatusBadge.svelte';
@@ -38,6 +39,27 @@
   }: Props = $props();
   const badge = $derived(projectBadge(sessions));
   let over = $state(false);
+
+  // Folding hides the session rows; remembered per browser like SidebarSection, storage may throw (private window).
+  const key = $derived(`shub.collapsed.project.${project.id}`);
+  let collapsed = $state(false);
+  $effect(() => {
+    try {
+      collapsed = localStorage.getItem(key) === '1';
+    } catch {
+      collapsed = false;
+    }
+  });
+  const foldable = $derived(!!children && sessions.length > 0);
+  function toggle() {
+    collapsed = !collapsed;
+    try {
+      if (collapsed) localStorage.setItem(key, '1');
+      else localStorage.removeItem(key);
+    } catch {
+      // not remembered, still toggles
+    }
+  }
 </script>
 
 <div class="project">
@@ -56,6 +78,19 @@
     ondragleave={() => (over = false)}
     ondrop={ondrop ? (e) => (e.stopPropagation(), (over = false), ondrop(e)) : undefined}
   >
+    {#if foldable}
+      <!-- Takes the icon's place on hover: the sidebar scrolls, so a gutter left of the row would be clipped. -->
+      <button
+        type="button"
+        class="fold"
+        aria-expanded={!collapsed}
+        aria-label="{collapsed ? 'Show' : 'Hide'} sessions of {project.name}"
+        title="{collapsed ? 'Show' : 'Hide'} sessions"
+        onclick={toggle}
+      >
+        <Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size="xs" weight={2} />
+      </button>
+    {/if}
     <a class="link" {href} aria-current={selected ? 'page' : undefined}>
       <ProjectIcon icon={project.resolvedIcon} name={project.name} />
       <span class="name">{project.name}</span>
@@ -75,7 +110,7 @@
       <IconButton label="Project settings for {project.name}" icon="gear" href={settingsHref} variant="filled" />
     </span>
   </div>
-  {#if children}<div class="sessions">{@render children()}</div>{/if}
+  {#if children && !(foldable && collapsed)}<div class="sessions">{@render children()}</div>{/if}
 </div>
 
 <style>
@@ -86,6 +121,7 @@
   }
 
   .row {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--space-1);
@@ -121,6 +157,31 @@
     padding: var(--space-1-5) 0;
     color: inherit;
     text-decoration: none;
+  }
+
+  .fold {
+    position: absolute;
+    left: var(--space-2-5);
+    z-index: 1;
+    display: none;
+    place-items: center;
+    width: var(--size-tile);
+    height: var(--size-tile);
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--raised);
+    color: var(--fg-2);
+    cursor: pointer;
+  }
+
+  .fold:hover {
+    color: var(--fg);
+  }
+
+  .row:hover .fold,
+  .row:focus-within .fold {
+    display: grid;
   }
 
   .missing .link {
