@@ -34,7 +34,7 @@
   import SplitView from '../components/SplitView/SplitView.svelte';
   import StatusBadge from '../components/StatusBadge/StatusBadge.svelte';
   import StatusDot from '../components/StatusDot/StatusDot.svelte';
-  import { dropPositions, placeSessions, projectBadge } from '../status.ts';
+  import { dropPositions, placeSessions, placeTabs, projectBadge } from '../status.ts';
   import { childStart, placeChildren, sessionsIn } from '../children.ts';
   import WorktreeRow from '../components/WorktreeRow/WorktreeRow.svelte';
   import TabBar from '../components/TabBar/TabBar.svelte';
@@ -66,7 +66,7 @@
   const project = $derived<ProjectView | null>(
     route.name === 'project' ? (app.projects.find((p) => p.id === route.projectId) ?? null) : null,
   );
-  const sessions = $derived(project ? placeSessions(sessionsOf(project.id), false) : []);
+  const sessions = $derived(project ? placeTabs(sessionsOf(project.id)) : []);
   const tabs = $derived(sessions.filter((s) => !hiddenTabs.includes(s.id)));
   const active = $derived<Session | null>(
     (route.name === 'project' && sessions.find((s) => s.id === route.sessionId)) || tabs[0] || null,
@@ -543,6 +543,9 @@
               ? { id: 'ready', label: 'Stop waiting', description: s.waitingFor }
               : { id: 'wait', label: 'Wait for…' },
           ]),
+      ...(!s.projectId
+        ? []
+        : [s.position == null ? { id: 'pin', label: 'Pin to top' } : { id: 'unpin', label: 'Unpin' }]),
       ...(hiddenTabs.includes(s.id) ? [] : [{ id: 'hide', label: 'Hide tab' }]),
       { id: 'pause', label: s.status === 'paused' ? 'Resume session' : 'Pause session' },
       ...plugin,
@@ -566,6 +569,8 @@
     else if (id === 'close') close(s);
     else if (id === 'claude-here') void claudeHere(s);
     else if (id === 'hide') hideTab(s);
+    else if (id === 'pin') pinSession(s);
+    else if (id === 'unpin') unpinSession(s);
     else if (id.startsWith('button:')) {
       const b = project?.buttons.find((x) => x.id === id.slice(7));
       if (b) void runButton(b);
@@ -673,16 +678,25 @@
   }
 
   let dragSession: string | null = null;
-  /** Drop the dragged session next to `target` in `list` (the project's sessions in tab or sidebar order). */
-  function dropSession(list: Session[], target: Session, after: boolean) {
+  /**
+   * Drop the dragged session next to `target` in `list` (the project's sessions in tab or sidebar order).
+   * Tabs only change the tab order; in the sidebar a dragged session is pinned on top.
+   */
+  function dropSession(list: Session[], target: Session, after: boolean, tabs = false) {
     const id = dragSession;
     dragSession = null;
     if (!id || !list.some((s) => s.id === id)) return; // another project's session
     const i = list.indexOf(target) + (after ? 1 : 0);
-    const positions = dropPositions(list, id, list[i]?.id ?? null);
+    const positions = dropPositions(list, id, list[i]?.id ?? null, tabs);
     if (!Object.keys(positions).length) return;
-    for (const s of list) if (s.id in positions) s.position = positions[s.id];
-    void api('sessionsReorder', { body: { positions } }).catch(toastError);
+    for (const s of list) if (s.id in positions) s[tabs ? 'tabPosition' : 'position'] = positions[s.id];
+    void api('sessionsReorder', { body: { positions, tabs } }).catch(toastError);
+  }
+  /** Pins a session below the project's pinned ones. */
+  function pinSession(s: Session) {
+    const last = Math.max(-1, ...sessionsOf(s.projectId).map((x) => x.position ?? -1));
+    s.position = last + 1;
+    void api('sessionsReorder', { body: { positions: { [s.id]: s.position } } }).catch(toastError);
   }
   function unpinSession(s: Session) {
     s.position = null;
@@ -906,7 +920,7 @@
           entries={activeProjects.length ? undefined : []}
         >
           {#each activeProjects as p (p.id)}
-            {@const list = placeSessions(sessionsOf(p.id), true)}
+            {@const list = placeSessions(sessionsOf(p.id))}
             {@const g = grace(p.id)}
             <div style:opacity={g?.opacity}>
               <ProjectRow
@@ -932,7 +946,7 @@
             ondrop={() => dropProject(group.name, null)}
           >
             {#each group.projects as p (p.id)}
-              {@const list = placeSessions(sessionsOf(p.id), true)}
+              {@const list = placeSessions(sessionsOf(p.id))}
               <ProjectRow
                 project={p}
                 sessions={list}
@@ -1087,7 +1101,7 @@
             onclose={() => close(s)}
             onmenu={(at) => (menu = { session: s, ...at })}
             ondragstart={dragSessionStart(s)}
-            ondrop={(after) => dropSession(sessions, s, after)}
+            ondrop={(after) => dropSession(sessions, s, after, true)}
           />
         {/each}
       {/if}

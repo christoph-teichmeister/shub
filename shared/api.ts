@@ -220,8 +220,10 @@ export interface Session {
   waitingFor?: string | null;
   /** Background check while waiting: a small model reads (never writes) whether it happened, every few minutes. */
   waitCheck?: WaitCheck | null;
-  /** Place in its project's list the user dragged it to; null follows the default order. */
+  /** Pinned: place among the pinned sessions on top of its project's sidebar list; null sorts by status. */
   position?: number | null;
+  /** Place in its project's tab bar the user dragged it to; null follows after, oldest first. */
+  tabPosition?: number | null;
   /** Shell commands Claude asked you to run at the end of its turn (status needs-you until run or dismissed). */
   pendingCommands?: HandedCommand[] | null;
   /** Background shells (servers, tests) still running after Claude's turn ended. */
@@ -585,7 +587,7 @@ export const ROUTES = {
   sessions: 'GET /api/sessions',
   sessionStart: 'POST /api/sessions', // StartSessionRequest -> Session | { approval: Approval }
   sessionUpdate: 'PATCH /api/sessions/:id', // { name } rename, { waitingFor: string | null, waitCheck?, waitEveryMinutes?, waitOnDone? } wait / stop
-  sessionsReorder: 'POST /api/sessions/reorder', // { positions: { [id]: number | null } } -> Session[], user only
+  sessionsReorder: 'POST /api/sessions/reorder', // { positions: { [id]: number | null }, tabs?: true } -> Session[], user only
   sessionClose: 'DELETE /api/sessions/:id',
   sessionClaudeHere: 'POST /api/sessions/:id/claude-here', // shell id -> Session | { approval }: Claude in the shell's current folder
   sessionPause: 'POST /api/sessions/:id/pause',

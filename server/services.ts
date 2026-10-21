@@ -92,7 +92,7 @@ export interface Sessions {
   /** A hook reported the mode Claude runs in (needed for "inherit", or after Shift+Tab). */
   setPermissionMode(id: string, mode: PermissionMode): void;
   rename(id: string, name: string, actor: string): Session;
-  reorder(positions: Record<string, number | null>): Session[];
+  reorder(positions: Record<string, number | null>, tabs?: boolean): Session[];
   /** Name a session after its first prompt: its first words now, a model-written title a moment later. */
   nameFromPrompt(id: string, prompt: string): void;
   sendKeys(id: string, keys: string[]): void;
