@@ -18,8 +18,11 @@ const cli: Caller = { kind: 'cli', id: 'cli', rights: rightsFor('cli') };
 const session: Caller = { kind: 'session', id: 'session:s1', rights: ['read'] };
 
 // Fake launcher: answers `update --check` per channel, records every other call.
-const FAKE_LAUNCHER = `import { appendFileSync } from 'node:fs';
+const FAKE_LAUNCHER = `import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 const args = process.argv.slice(2);
+const lag = process.env.FAKE_OUT + '.lag';
+const lagging = existsSync(lag) && Number(readFileSync(lag, 'utf8')) > 0;
+if (lagging) writeFileSync(lag, String(Number(readFileSync(lag, 'utf8')) - 1));
 if (args.includes('--check')) {
   if (process.env.FAKE_FAIL) {
     console.error('shub: GET https://api.github.com/repos/x/releases failed: 403 rate limit exceeded');
@@ -27,7 +30,8 @@ if (args.includes('--check')) {
   }
   const beta = args.at(-1) === 'beta';
   const latest = beta ? '2026.11.0-beta.1' : '2026.10.1';
-  console.log(JSON.stringify({ current: '2026.10.0', channel: args.at(-1), latest, changelog: '## ' + latest + '\\n\\nnotes' }));
+  if (lagging) console.log(JSON.stringify({ current: '2026.10.0', channel: args.at(-1) }));
+  else console.log(JSON.stringify({ current: '2026.10.0', channel: args.at(-1), latest, changelog: '## ' + latest + '\\n\\nnotes' }));
 } else appendFileSync(process.env.FAKE_OUT, JSON.stringify(args) + '\\n');
 `;
 
@@ -74,7 +78,7 @@ function setup(withLauncher: boolean, extraEnv: NodeJS.ProcessEnv = {}) {
       .split('\n')
       .map((l) => JSON.parse(l));
   };
-  return { module, call, events, logged, home, calls, services };
+  return { module, call, events, logged, home, calls, services, out };
 }
 
 const changed = async (events: ServerEvent[], n = 1) => {
@@ -141,6 +145,39 @@ test('a message on the release feed starts a check right away', async () => {
     stream!.write('{"event":"keepalive"}\n{"event":"message","message":"2026.10.1"}\n');
     await changed(events, 2);
     assert.equal(events.filter((e) => e.type === 'updates.changed').length, 2);
+  } finally {
+    module.stop!();
+    feed.closeAllConnections();
+    feed.close();
+  }
+});
+
+test('a release message checks again while GitHub does not list the new version yet', async () => {
+  let stream: ServerResponse | undefined;
+  const feed = createServer((_req, res) => {
+    res.write('{"event":"open"}\n');
+    stream = res;
+  });
+  await new Promise<void>((r) => feed.listen(0, '127.0.0.1', r));
+  const { port } = feed.address() as { port: number };
+  const { module, call, events, out } = setup(true, {
+    SHUB_RELEASE_FEED: `http://127.0.0.1:${port}/json`,
+    SHUB_UPDATE_GAP_MS: '50',
+  });
+  try {
+    module.start!();
+    await changed(events);
+    for (let i = 0; i < 100 && !stream; i++) await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 100));
+
+    const before = events.filter((e) => e.type === 'updates.changed').length;
+    writeFileSync(`${out}.lag`, '2');
+    stream!.write('{"event":"message","message":"2026.10.1"}\n');
+    await changed(events, before + 3);
+    assert.equal(readFileSync(`${out}.lag`, 'utf8'), '0', 'two lagging checks, then the third finds it');
+    assert.equal((await call('GET /api/updates', user)).latest, '2026.10.1');
+    await new Promise((r) => setTimeout(r, 200));
+    assert.equal(events.filter((e) => e.type === 'updates.changed').length, before + 3, 'found: no more checks');
   } finally {
     module.stop!();
     feed.closeAllConnections();
