@@ -847,6 +847,7 @@ test('a tab menu parks the session with a background check', async ({ page }) =>
     .getByLabel('Prompt', { exact: true })
     .fill('Kai answered: {summary}. Verify it, then address his comments.');
   if (process.env.SHUB_SHOT) await page.screenshot({ path: process.env.SHUB_SHOT });
+  await expect(dialog.getByRole('button', { name: 'Wait and check' })).toBeInViewport({ ratio: 1 });
   await dialog.getByRole('button', { name: 'Wait and check' }).click();
   await expect(dialog).toHaveCount(0);
   expect(calls.find((c) => c.method === 'PATCH' && c.path === '/api/sessions/s1')?.body).toEqual({
