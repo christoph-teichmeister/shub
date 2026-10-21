@@ -25,6 +25,7 @@
   import { clampPan, clampZoom, fitWorld, minZoom, zoomAt, type Pan } from '../../village/camera.ts';
   import { findPath, goalKey } from '../../village/path.ts';
   import { autotiles, LAYERS, TILE } from '../../village/tiles.ts';
+  import { advance, blocked, direction, SPEED, standSpot } from '../../village/walk.ts';
   import { buildWorld, type Point, type VillageProject } from '../../village/world.ts';
   import Ambience from './Ambience.svelte';
   import Crab, { type Bubble } from './Crab.svelte';
@@ -43,6 +44,8 @@
   let zoom = $state(1);
   let pan = $state<Pan>({ x: 0, y: 0 });
   let fitted = $state(true);
+  /** The camera follows you while you walk; dragging the map lets go, walking takes it up again. */
+  let following = $state(false);
   let vw = $state(0);
   let vh = $state(0);
   let hovered = $state<string | null>(null);
@@ -201,7 +204,85 @@
   onMount(() => {
     // Still: no walking, but the minutes in line and the time of day move on.
     const timer = still ? setInterval(() => (now = Date.now()), 30_000) : setInterval(step, STEP_MS);
-    return () => clearInterval(timer);
+    viewport?.focus({ preventScroll: true });
+    // You walk on your own frame loop (smooth); a hidden tab does not get frames.
+    let raf = 0;
+    let last = 0;
+    const frame = (ts: number) => {
+      raf = requestAnimationFrame(frame);
+      const dt = last ? Math.min(ts - last, 50) : 0;
+      last = ts;
+      const [vx, vy] = direction(held.has('left'), held.has('right'), held.has('up'), held.has('down'));
+      if (vx || vy) go(vx, vy, (SPEED * dt) / 1000);
+      else me.moving = false;
+      follow(dt);
+    };
+    if (!still) raf = requestAnimationFrame(frame);
+    const blur = () => held.clear();
+    addEventListener('blur', blur);
+    return () => {
+      clearInterval(timer);
+      cancelAnimationFrame(raf);
+      removeEventListener('blur', blur);
+    };
+  });
+
+  // ---------- you ----------
+  // You start seated at your desk; WASD stands you up and walks you (walk.ts keeps you out of walls and fences).
+  let seated = $state(true);
+  let me = $state({
+    x: untrack(() => world.you.x),
+    y: untrack(() => world.you.y),
+    dir: 1,
+    /** Distance walked, for the walk frames. */
+    dist: 0,
+    moving: false,
+  });
+  const held = new Set<string>();
+  const HELD: Record<string, string> = {
+    a: 'left',
+    d: 'right',
+    w: 'up',
+    s: 'down',
+    ArrowLeft: 'left',
+    ArrowRight: 'right',
+    ArrowUp: 'up',
+    ArrowDown: 'down',
+  };
+  function go(vx: number, vy: number, dist: number) {
+    if (seated) {
+      seated = false;
+      [me.x, me.y] = standSpot(world);
+    }
+    const r = advance(world, me.x, me.y, vx, vy, dist);
+    me.x = r.x;
+    me.y = r.y;
+    me.dist += r.moved;
+    me.moving = r.moved > 0;
+    if (vx) me.dir = vx < 0 ? -1 : 1;
+    following = true;
+    fitted = false;
+  }
+  /** The camera glides to you (at once with reduced motion), kept inside the pan clamp. */
+  function follow(dt: number) {
+    if (!following || !vw) return;
+    const goal = clampPan({ x: vw / 2 - me.x * zoom, y: vh / 2 - me.y * zoom }, zoom, world, vw, vh);
+    const k = still ? 1 : 1 - Math.exp(-dt / 120);
+    const [dx, dy] = [goal.x - pan.x, goal.y - pan.y];
+    if (Math.abs(dx) < 0.3 && Math.abs(dy) < 0.3) {
+      if (dx || dy) pan = goal;
+      return;
+    }
+    pan = { x: pan.x + dx * k, y: pan.y + dy * k };
+  }
+  // A new map (a project came or went) keeps you where you stand unless that is now inside something.
+  $effect(() => {
+    const w = world;
+    untrack(() => {
+      if (!seated && !blocked(w, me.x, me.y)) return;
+      seated = true;
+      [me.x, me.y] = [w.you.x, w.you.y];
+    });
   });
 
   // ---------- what each crab shows ----------
@@ -278,6 +359,7 @@
   function fit() {
     ({ zoom, pan } = fitWorld(world, vw, vh));
     fitted = true;
+    following = false;
   }
   /** The zoom at which the world just covers the window: no further out, so no bare bar shows. */
   const minZ = $derived(vw && vh ? minZoom(world, vw, vh) : 0.1);
@@ -341,6 +423,7 @@
     }
     pan = clampPan({ x: drag.px + dx, y: drag.py + dy }, zoom, world, vw, vh);
     fitted = false;
+    following = false;
   }
   function onUp() {
     if (drag?.on) {
@@ -411,8 +494,8 @@
     // The keys the phone sends: 1 yes, 3 no.
     if (s.pendingPermission)
       out.push(
-        { label: 'Allow', kbd: 'A', primary: true, run: () => void sendKeys(s.id, ['1']) },
-        { label: 'Deny', kbd: 'D', run: () => void sendKeys(s.id, ['3']) },
+        { label: 'Allow', kbd: 'Y', primary: true, run: () => void sendKeys(s.id, ['1']) },
+        { label: 'Deny', kbd: 'N', run: () => void sendKeys(s.id, ['3']) },
       );
     const cmds = runnable(s);
     cmds.forEach(({ index, command }, i) =>
@@ -465,6 +548,18 @@
     const el = e.target as HTMLElement;
     if (el !== viewport && !el.classList.contains('crab')) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    // WASD walks you; the arrows too once you are up (seated, they walk the queue).
+    const dir = HELD[k];
+    if (dir && (k.length === 1 || !seated)) {
+      e.preventDefault();
+      held.add(dir);
+      if (still && !e.repeat) {
+        const [vx, vy] = direction(dir === 'left', dir === 'right', dir === 'up', dir === 'down');
+        go(vx, vy, TILE);
+        follow(0);
+      }
+      return;
+    }
     const step = WALK_KEYS[k];
     if (step) {
       e.preventDefault();
@@ -477,11 +572,16 @@
     if (!s) return;
     const first = runnable(s)[0];
     if (k === 'Enter') open(s);
-    else if (k === 'a' && s.pendingPermission) void sendKeys(s.id, ['1']);
-    else if (k === 'd' && s.pendingPermission) void sendKeys(s.id, ['3']);
+    else if (k === 'y' && s.pendingPermission) void sendKeys(s.id, ['1']);
+    else if (k === 'n' && s.pendingPermission) void sendKeys(s.id, ['3']);
     else if (k === 'r' && first) run(s, first.index);
     else return;
     e.preventDefault();
+  }
+
+  function onMapKeyUp(e: KeyboardEvent) {
+    const dir = HELD[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+    if (dir) held.delete(dir);
   }
 
   /** A click on the bare map closes the card and the popover. */
@@ -628,6 +728,8 @@
       aria-describedby="village-keys"
       tabindex="0"
       onkeydown={onMapKey}
+      onkeyup={onMapKeyUp}
+      onfocusout={(e) => !viewport?.contains(e.relatedTarget as Node | null) && held.clear()}
       onclick={onMapClick}
       onclickcapture={onClickCapture}
       onpointerdown={onDown}
@@ -740,9 +842,28 @@
           >Town hall · global Claude</span
         >
         <div class="obj you" style:left="{world.you.x}px" style:top="{world.you.y}px" style:z-index={world.you.y}>
-          <span class="plate">You · {queue.length} in line</span>
-          <img src="/village/you-{still ? 0 : Math.floor(t / 3) % 2}.svg" alt="You, at your desk" />
+          <img
+            src="/village/you-{!seated ? 'desk' : still ? 0 : Math.floor(t / 3) % 2}.svg"
+            alt={seated ? 'You, at your desk' : 'Your desk'}
+          />
         </div>
+        {#if !seated}
+          <img
+            class="obj me"
+            src="/village/you-walk{me.moving && !still ? 1 + (Math.floor(me.dist / 14) % 2) : 0}.svg"
+            alt="You"
+            style:left="{me.x}px"
+            style:top="{me.y}px"
+            style:z-index={Math.round(me.y)}
+            style:--flip={me.dir}
+          />
+        {/if}
+        <span
+          class="plate yours"
+          style:left="{me.x}px"
+          style:top="{me.y - (seated ? 96 : 52)}px"
+          style:z-index={Math.round(me.y) + 1}>You · {queue.length} in line</span
+        >
         {#each spots as c, i (c.session.id)}
           {@const p = at(c)}
           {#if onScreen(p.x, p.y) || pinned === c.session.id}
@@ -821,10 +942,11 @@
     <span><b class="your-turn">...</b> your turn</span>
     <span><b class="waiting">zZ</b> waiting · <b class="paused-tag">zZ</b> paused</span>
     <span id="village-keys"
-      >Click a crab to pin its card, drag to pan, wheel to zoom. Map keys: <kbd>↑</kbd><kbd>↓</kbd> queue ·
-      <kbd>Enter</kbd>
-      open · <kbd>A</kbd><kbd>D</kbd>
-      allow, deny · <kbd>R</kbd> run · <kbd>Esc</kbd> close · <kbd>Alt V</kbd> back</span
+      >Click a crab to pin its card, drag to pan, wheel to zoom. Map keys: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd
+        >D</kbd
+      >
+      walk · <kbd>↑</kbd><kbd>↓</kbd> queue (seated) · <kbd>Enter</kbd> open · <kbd>Y</kbd><kbd>N</kbd> allow, deny ·
+      <kbd>R</kbd> run · <kbd>Esc</kbd> close · <kbd>Alt V</kbd> back</span
     >
   </footer>
   {#if building}
@@ -1203,6 +1325,16 @@
     flex-direction: column;
     align-items: center;
     gap: var(--space-0-5);
+  }
+
+  .me {
+    width: calc(var(--village-px) * 16);
+    height: calc(var(--village-px) * 24);
+    transform: translate(-50%, -100%) scaleX(var(--flip, 1));
+  }
+
+  .world > .plate.yours {
+    transform: translate(-50%, -100%);
   }
 
   .you img {
