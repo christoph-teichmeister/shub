@@ -715,7 +715,9 @@ test('worktrees a session created sit under it; a click resumes the conversation
   expect(errors).toEqual([]);
 });
 
-test('a terminal tab opens with Alt T and starts Claude where it was cd-ed to, typed or clicked', async ({ page }) => {
+test('a terminal tab opens with Alt Shift T and starts Claude where it was cd-ed to, typed or clicked', async ({
+  page,
+}) => {
   const shell: Session = {
     ...session,
     id: 'sh1',
@@ -743,7 +745,7 @@ test('a terminal tab opens with Alt T and starts Claude where it was cd-ed to, t
   });
   await page.goto('/#/p/ai-portal/s1');
   await expect(page.getByRole('tab', { name: 'MR 2136 review' })).toBeVisible();
-  await page.keyboard.press('Alt+t');
+  await page.keyboard.press('Alt+Shift+t');
   await expect(page.getByRole('tab', { name: 'Terminal 1' })).toHaveAttribute('aria-selected', 'true');
   const start = calls.find((c) => c.method === 'POST' && c.path === '/api/sessions');
   expect(start?.body).toEqual({ projectId: 'ai-portal', kind: 'shell' });
