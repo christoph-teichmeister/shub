@@ -468,11 +468,11 @@
   function newMenuItems(p: ProjectView): MenuItem[] {
     return [
       { id: 'claude', label: 'New Claude session', hint: 'Alt N' },
-      { id: 'terminal', label: 'New terminal', hint: 'Alt T' },
+      { id: 'terminal', label: 'New terminal tab', hint: root ? 'Alt Shift T' : 'Alt T' },
       ...(root
         ? [
             { id: 'pane-claude', label: 'Claude in this session', separator: true },
-            { id: 'pane-shell', label: 'Terminal in this session', hint: 'Alt Shift T' },
+            { id: 'pane-shell', label: 'Terminal in this session', hint: 'Alt T' },
           ]
         : []),
       ...p.buttons.map((b, i) => ({
@@ -765,7 +765,7 @@
           panelOpen = !panelOpen;
           break;
         case 'KeyT':
-          void (e.shiftKey ? newShell() : newTerminal());
+          void (e.shiftKey || !root ? newTerminal() : newShell());
           break;
         case 'KeyR':
           if (active) renamingId = active.id;
