@@ -1286,6 +1286,13 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect(map.locator('.obj.me')).toHaveCount(0);
   await page.getByRole('button', { name: 'Zoom in' }).click();
   await expect(map).toBeFocused(); // a click on a zoom button hands the keys back to the map
+  // So does every other header button; from the keyboard the focus stays on the button.
+  const now = page.getByRole('button', { name: 'Now', exact: true });
+  await now.focus();
+  await page.keyboard.press('Enter');
+  await expect(now).toBeFocused();
+  await now.click();
+  await expect(map).toBeFocused();
   await page.keyboard.down('d');
   await expect(map.locator('.obj.me')).toHaveCount(1);
   await page.waitForTimeout(500);
