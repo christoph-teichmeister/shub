@@ -1218,6 +1218,14 @@
               <TerminalView sessionId={s.id} accent={project.accent} label={s.name} compact />
             {/snippet}
           </SplitView>
+        {:else if active?.status === 'paused'}
+          <EmptyState title="Session paused" body={active.name}>
+            <Button
+              variant="primary"
+              onclick={() => void api('sessionResume', { params: { id: active.id } }).catch(toastError)}
+              >Wake it up?</Button
+            >
+          </EmptyState>
         {:else if active}
           {#key active.id}
             <TerminalView sessionId={active.id} accent={project.accent} label={active.name} focused={!ui.drawer} />
