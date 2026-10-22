@@ -14,7 +14,7 @@ const MAX = 3;
 let next = 1;
 export const toasts = $state<ToastItem[]>([]);
 
-/** Errors and needs-you stay until closed; confirmations leave after `ms` (paused while hovered). */
+/** Errors and needs-you stay until closed; confirmations leave after `ms` (paused while hovered); pass 0 to keep one. */
 export function toast(
   message: string,
   tone: ToastItem['tone'] = 'neutral',

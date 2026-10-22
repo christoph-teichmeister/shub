@@ -36,7 +36,7 @@
         requestAnimationFrame(() => {
           arrived = null;
           void releaseNotes(v).then((notes) =>
-            notes ? toast(`Updated to shub ${v}.`, 'neutral', 0, notes) : toast(`Updated to shub ${v}.`),
+            notes ? toast(`Updated to shub ${v}.`, 'neutral', 15000, notes) : toast(`Updated to shub ${v}.`),
           );
         }),
       ),
