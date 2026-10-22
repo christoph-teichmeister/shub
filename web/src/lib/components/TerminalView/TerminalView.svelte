@@ -164,10 +164,12 @@
     t.onData((d) => send(d));
     t.onBinary((d) => send(Uint8Array.from(d, (c) => c.charCodeAt(0))));
     t.onResize(sendResize);
-    // Select to copy.
+    // Select to copy (not for the Ctrl+A highlight, which is only a cue).
+    let allSelected = false;
     t.onSelectionChange(() => {
       const s = t.getSelection();
-      if (s) navigator.clipboard?.writeText(s).catch(() => {});
+      if (!s) allSelected = false; // a click dropped the cue: disarm
+      if (s && !allSelected) navigator.clipboard?.writeText(s).catch(() => {});
     });
     // Apps that own the mouse (Claude's fullscreen UI) copy their own selection with OSC 52 `ESC]52;<sel>;<base64>`.
     // tmux forwards it with an empty <sel>. Write only: a `?` read request is ignored, so no app can read the clipboard.
@@ -193,22 +195,26 @@
       Backspace: '\u0017',
       Delete: '\u001bd',
     };
-    // Ctrl+A arms "select all" for the input line (nothing is highlighted or copied); the next plain Backspace/Delete
+    // Ctrl+A arms "select all" for the input line (highlights the cursor row as a cue, nothing is copied); the next plain Backspace/Delete
     // then clears the line (^E ^U: end of line, kill to start) instead of being sent as a single backspace.
-    let allSelected = false;
     t.attachCustomKeyEventHandler((e) => {
       if (e.type === 'keydown') {
         const plain = !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey;
         if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 'a') {
           allSelected = true;
+          t.select(0, t.buffer.active.baseY + t.buffer.active.cursorY, t.cols);
           return false;
         }
         if (allSelected && plain && (e.key === 'Backspace' || e.key === 'Delete')) {
           send('\u0005\u0015');
           allSelected = false;
+          t.clearSelection();
           return false;
         }
-        if (!['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) allSelected = false;
+        if (allSelected && !['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
+          allSelected = false;
+          t.clearSelection();
+        }
       }
       if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.key in wordKeys) {
         if (e.type === 'keydown') send(wordKeys[e.key]);
