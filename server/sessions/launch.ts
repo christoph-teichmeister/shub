@@ -99,6 +99,13 @@ export const defaultLauncher: Launcher = (spec) => {
     const shell = process.env.SHELL || '/bin/bash';
     return basename(shell) === 'bash' && spec.shellRc ? [shell, '--rcfile', spec.shellRc, '-i'] : [shell, '-l'];
   }
+  // When Claude exits (Ctrl+C twice, /exit) the pane drops into a login shell instead of ending the session;
+  // closing the session (Alt+W) still kills tmux.
+  return ['/bin/sh', '-c', 'claude "$@"; exec "${SHELL:-/bin/bash}" -l', 'sh', ...claudeArgs(spec).slice(1)];
+};
+
+/** `claude ...` argv without the shell fallback. */
+export const claudeArgs = (spec: LaunchSpec): string[] => {
   const id = spec.resume ? ['--resume', spec.claudeSessionId!] : ['--session-id', spec.claudeSessionId!];
   // Passed unless the setting says "inherit": the user's own default may be a prompt-skipping one.
   const mode = spec.permissionMode === 'inherit' ? [] : ['--permission-mode', spec.permissionMode];
