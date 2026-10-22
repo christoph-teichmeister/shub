@@ -1398,9 +1398,11 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await page.keyboard.press('e');
   await page.screenshot({ path: shot('talk.png') });
   await expect(page.getByRole('dialog')).toHaveCount(1);
-  // Keys of the queue are the desk's: standing here, N sends nothing.
+  // E pinned the crab nearest in the line, which one depends on where the last tap stopped (CI is slower than a
+  // laptop). Away from the desk N acts on that card only: a deny for the crab asking, nothing for the other.
+  const pinnedAsks = (await page.getByRole('dialog', { name: 'Export CSV fix' }).count()) === 1;
   await page.keyboard.press('n');
-  expect(posted('/api/sessions/s2/keys')).toHaveLength(2);
+  await expect.poll(() => posted('/api/sessions/s2/keys')).toHaveLength(pinnedAsks ? 3 : 2);
   await page.keyboard.press('Escape');
   await tapUntil('a', async () => (await meAt()).x < (await desk()).x - 82);
   await tapUntil('s', async () => (await prompt.count()) > 0 && /sit/.test(await prompt.innerText()));
