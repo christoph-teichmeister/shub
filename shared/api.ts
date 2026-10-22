@@ -630,7 +630,7 @@ export const ROUTES = {
   sessionUpdate: 'PATCH /api/sessions/:id', // { name } rename, { waitingFor: string | null, waitCheck?, waitEveryMinutes?, waitOnDone? } wait / stop
   sessionsReorder: 'POST /api/sessions/reorder', // { positions: { [id]: number | null }, tabs?: true } -> Session[], user only
   sessionClose: 'DELETE /api/sessions/:id',
-  sessionClaudeHere: 'POST /api/sessions/:id/claude-here', // shell id -> Session | { approval }: Claude in the shell's current folder
+  sessionClaudeHere: 'POST /api/sessions/:id/claude-here', // shell id, { prompt? } -> Session | { approval }: Claude in the shell's current folder
   sessionPause: 'POST /api/sessions/:id/pause',
   sessionResume: 'POST /api/sessions/:id/resume',
   sessionCommand: 'POST /api/sessions/:id/command', // { index, action: 'run' | 'dismiss' } pendingCommands

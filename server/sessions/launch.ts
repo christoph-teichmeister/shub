@@ -80,14 +80,18 @@ export const RUN_HINT =
   `the sessions with their ids and folders.`;
 
 /**
- * bash rc for shub terminals: what a login shell loads, then `claude` without arguments starts a tracked shub
- * session in a new tab (`shub claude`). With arguments it is the real claude, without this terminal's id.
+ * bash rc for shub terminals: what a login shell loads, then `claude` without arguments, or with one prompt
+ * argument (`claude "fix the build"`: not a flag, has a space), starts a tracked shub session in a new tab
+ * (`shub claude`). Anything else (flags, subcommands like `claude update`) is the real claude, without this
+ * terminal's id.
  */
 export const shellRc = (shub: string): string => `# Written by shub for its terminals.
 [ -r /etc/profile ] && . /etc/profile
 for f in ~/.bash_profile ~/.bash_login ~/.profile; do [ -r "$f" ] && { . "$f"; break; }; done
 claude() {
-  if [ $# -eq 0 ]; then ${shub} claude; else env -u SHUB_SESSION_ID claude "$@"; fi
+  if [ $# -eq 0 ]; then ${shub} claude
+  elif [ $# -eq 1 ] && [[ "$1" != -* && "$1" == *" "* ]]; then ${shub} claude "$1"
+  else env -u SHUB_SESSION_ID claude "$@"; fi
 }
 `;
 

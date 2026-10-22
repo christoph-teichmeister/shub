@@ -239,6 +239,23 @@ test('a terminal tab starts Claude in the folder it was cd-ed to, inside the pro
   );
   await json('DELETE', `/api/sessions/${typed.id}`);
 
+  // `claude "a prompt"` too, with that prompt (it names the session).
+  await json('POST', `/api/sessions/${shell.id}/keys`, { keys: ['claude "fix the login bug"', 'Enter'] });
+  const prompted = await waitFor(
+    async () =>
+      (await json<Session[]>('GET', '/api/sessions')).find(
+        (s) => s.kind === 'claude' && s.projectId === project.id && s.name === 'fix the login bug',
+      ),
+    'claude "prompt" typed in the terminal',
+  );
+  assert.equal(prompted.cwd, repo);
+  await json('DELETE', `/api/sessions/${prompted.id}`);
+  assert.equal(
+    (await api('POST', `/api/sessions/${shell.id}/claude-here`, { prompt: 42 })).status,
+    400,
+    'prompt must be a string',
+  );
+
   await cd(dirs.state);
   assert.equal((await api('POST', `/api/sessions/${shell.id}/claude-here`)).status, 400, 'outside the project');
   assert.equal((await api('POST', `/api/sessions/${claude.id}/claude-here`)).status, 404, 'terminals only');

@@ -108,11 +108,13 @@ function routes(sessions: SessionsService, services: Services, router: Router, s
     const shell = sessions.get(req.params.id);
     if (shell?.kind !== 'shell') throw new HttpError(404, 'no such terminal');
     const cwd = sessions.currentPath(shell.id);
+    const { prompt } = await req.json<{ prompt?: unknown }>();
+    if (prompt !== undefined && typeof prompt !== 'string') throw new HttpError(400, 'prompt: string');
     return startRoute(
       sessions,
       services,
       req.caller,
-      { projectId: shell.projectId, kind: 'claude', cwd, from: shell.id },
+      { projectId: shell.projectId, kind: 'claude', cwd, from: shell.id, ...(prompt ? { prompt } : {}) },
       res,
     );
   });
