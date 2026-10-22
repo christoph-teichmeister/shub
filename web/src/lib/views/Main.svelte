@@ -1103,19 +1103,18 @@
           </div>
         {/if}
         <div class="footbar">
-          <a class="user" href={href('settings')}>
-            <span class="avatar" aria-hidden="true"
-              >{(app.me?.name ?? 'You').slice(0, 1).toUpperCase()}{#if app.update?.latest}<span class="update-dot"
-                ></span>{/if}</span
-            >
-            {#if app.update?.latest}<span class="visually-hidden">Update available</span>{/if}
+          <div class="user">
+            <span class="avatar" aria-hidden="true">{(app.me?.name ?? 'You').slice(0, 1).toUpperCase()}</span>
             <span class="grow user-text">
               <span class="user-name">{app.me?.name ?? 'You'}</span>
               <span class="user-sub">{app.connected ? 'Connected' : 'Offline, reconnecting'}</span>
             </span>
-            <span class="gear"><Icon name="gear" /></span>
-            <span class="visually-hidden">Settings</span>
-          </a>
+          </div>
+          <a class="rail-item" href={href('settings')} title="Settings"
+            ><Icon name="gear" />{#if app.update?.latest}<span class="update-dot"></span><span class="visually-hidden"
+                >Update available</span
+              >{/if}<span class="visually-hidden">Settings</span></a
+          >
           <button type="button" class="rail-item" title="Shortcuts (Alt ?)" onclick={() => (ui.shortcuts = true)}
             >?<span class="visually-hidden">Shortcuts</span></button
           >
@@ -1866,24 +1865,6 @@
     padding: var(--space-1) var(--space-1-5);
     border-radius: var(--radius-md);
     color: var(--muted);
-    text-decoration: none;
-  }
-
-  .gear {
-    display: inline-flex;
-    padding: var(--space-1-5);
-    border-radius: var(--radius-md);
-  }
-
-  .user:hover,
-  .user:focus-visible {
-    color: var(--fg);
-  }
-
-  .user:hover .gear,
-  .user:focus-visible .gear {
-    outline: var(--hairline) solid var(--line);
-    background: var(--raised);
   }
 
   .avatar {
@@ -1908,6 +1889,11 @@
     border-radius: var(--radius-round);
     background: var(--pink);
     box-shadow: 0 0 0 var(--hairline) var(--bg);
+  }
+
+  .footbar .update-dot {
+    top: var(--space-1-5);
+    right: var(--space-1-5);
   }
 
   .user-text {
