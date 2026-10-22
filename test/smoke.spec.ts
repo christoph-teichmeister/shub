@@ -55,6 +55,7 @@ const config = {
 
 const API: Record<string, unknown> = {
   '/api/health': { ok: true, version: '2026.10.0', apiVersion: 1, machine: 'laptop' },
+  '/api/usage': { fiveHour: { used: 42, resetsAt: 1_900_000_000 }, sevenDay: { used: 95 } },
   '/api/config': config,
   '/api/projects': [project, dormant],
   '/api/sessions': [session],
@@ -164,6 +165,8 @@ test('app shell, wordmark and projects render', async ({ page }) => {
   await expect(nav.getByRole('link', { name: 'street-tours' })).toHaveCount(0);
   await expect(nav.getByText('1 needs you')).toBeVisible();
   await expect(page).toHaveTitle('(1) shub');
+  await expect(page.getByTitle(/^5h limit: 42% used/)).toBeVisible();
+  await expect(page.getByTitle(/^7d limit: 95% used/)).toBeVisible();
 
   await nav.getByRole('link', { name: 'ai-portal' }).click();
   await expect(page.getByRole('heading', { name: 'ai-portal', level: 1 })).toBeVisible();
