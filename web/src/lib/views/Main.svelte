@@ -448,7 +448,18 @@
 
   function close(s: Session) {
     const run = () => void closeSession(s.id);
-    if (s.status === 'working')
+    // Ending a session ends its panes too.
+    const panes = childrenOf(s.id);
+    const list = panes.map((c) => `${c.name}${c.status === 'working' ? ' (working)' : ''}`).join(', ');
+    if (panes.length)
+      confirm = {
+        title: `Close ${s.name} and its ${panes.length === 1 ? 'pane' : `${panes.length} panes`}?`,
+        body: `${list} end${panes.length === 1 ? 's' : ''} with it.`,
+        action: 'Close all',
+        danger: true,
+        run,
+      };
+    else if (s.status === 'working')
       confirm = { title: `Close ${s.name}?`, body: 'It is still working.', action: 'Close', danger: true, run };
     else run();
   }

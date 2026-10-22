@@ -594,6 +594,14 @@ test("a session's terminal and second Claude are panes in its control center, no
   // The pane that works shows on the session's row.
   await expect(nav.getByRole('link', { name: /MR 2136 review/ })).toContainText('working');
 
+  // Closing the session asks first, because its panes end with it; closing a pane does not.
+  await page.getByRole('button', { name: 'Close MR 2136 review' }).click();
+  const ask = page.getByRole('dialog');
+  await expect(ask).toContainText('Close MR 2136 review and its pane?');
+  await expect(ask).toContainText('Second Claude (working)');
+  await ask.getByRole('button', { name: 'Cancel' }).click();
+  expect(calls.filter((c) => c.method === 'DELETE')).toEqual([]);
+
   await page.getByRole('button', { name: /^New/ }).click();
   await page.getByRole('menuitem', { name: 'Terminal in this session' }).click();
   await expect(page.getByRole('tab', { name: 'shell' })).toHaveAttribute('aria-selected', 'true');
