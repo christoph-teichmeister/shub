@@ -230,6 +230,14 @@ export class SessionsService implements Sessions {
     return this.#rows().map(toSession);
   }
 
+  /** Claude conversations of closed sessions: killed with the session, so their last write is no sign of work. */
+  closedClaudeIds(): Set<string> {
+    const rows = this.#db
+      .prepare(`SELECT claude_session_id AS id FROM sessions WHERE status = 'exited' AND claude_session_id IS NOT NULL`)
+      .all() as { id: string }[];
+    return new Set(rows.map((r) => r.id));
+  }
+
   get(id: string): Session | undefined {
     const row = this.#row(id);
     return row && toSession(row);

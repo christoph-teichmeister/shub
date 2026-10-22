@@ -315,6 +315,7 @@ function projectRoutes(services: Services, router: Router): void {
     const live = services.sessions.list();
     const held = new Set(live.flatMap((s) => (s.claudeSessionId ? [s.claudeSessionId] : [])));
     const procs = claudeCwds();
+    const closed = services.sessions.closedClaudeIds();
     const byProject = new Map<string, ChildRow[]>();
     for (const r of childRows(services.state))
       byProject.set(r.project_id ?? '', [...(byProject.get(r.project_id ?? '') ?? []), r]);
@@ -334,7 +335,9 @@ function projectRoutes(services: Services, router: Router): void {
           ...info,
           originSessionId: tracked.get(info.path)!.origin_session_id,
           conversation: newest?.claudeSessionId ?? null,
-          busy: procs.has(info.path) || (!!newest && Date.now() - newest.mtime < BUSY_MS),
+          busy:
+            procs.has(info.path) ||
+            (!!newest && !closed.has(newest.claudeSessionId) && Date.now() - newest.mtime < BUSY_MS),
         });
       }
     }

@@ -75,6 +75,8 @@ export type PermissionAction =
 export interface Sessions {
   list(): Session[];
   get(id: string): Session | undefined;
+  /** Claude conversations of closed sessions: killed with the session, so their last write is no sign of work. */
+  closedClaudeIds(): Set<string>;
   /** Permission checks happen before; this just starts. */
   /** byUser: the user (web or CLI) asked, so the app's default permission mode applies. */
   start(request: StartSessionRequest, startedBy: string, byUser?: boolean): Promise<Session>;
