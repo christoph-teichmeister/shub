@@ -236,6 +236,16 @@ export interface Session {
   context?: ContextFill | null;
 }
 
+/** Claude subscription limits from Claude Code's status line: percent used and when the window resets (epoch seconds). */
+export interface UsageLimit {
+  used: number;
+  resetsAt?: number;
+}
+export interface Usage {
+  fiveHour?: UsageLimit;
+  sevenDay?: UsageLimit;
+}
+
 export interface ContextFill {
   /** Tokens the model saw on its last call. */
   tokens: number;
@@ -582,6 +592,7 @@ export interface ReleaseNotes {
 
 export const ROUTES = {
   health: 'GET /api/health',
+  usage: 'GET /api/usage', // -> Usage | {}: the last 5h/7d limits any session's status line reported
   bundle: 'GET /api/bundle', // { name, manifest, sums?, signature? } for a phone app's loader; 404 in dev builds
   login: 'POST /api/auth/login', // { token } -> sets cookie
   logout: 'POST /api/auth/logout',
@@ -692,6 +703,7 @@ export type ServerEvent =
   | { type: 'devices.changed' }
   /** A session created a worktree (GET /api/worktrees/children). */
   | { type: 'worktrees.changed' }
+  | { type: 'usage.updated'; usage: Usage }
   | {
       type: 'plugin.action';
       plugin: string;

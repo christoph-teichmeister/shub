@@ -1072,6 +1072,24 @@
       {/snippet}
 
       {#snippet footer()}
+        {#if app.usage.fiveHour || app.usage.sevenDay}
+          <div class="usage">
+            {#each [['5h', app.usage.fiveHour], ['7d', app.usage.sevenDay]] as const as [label, l] (label)}
+              {#if l}
+                <span
+                  class="meter"
+                  class:warn={l.used >= 70}
+                  class:danger={l.used >= 90}
+                  title={`${label} limit: ${Math.round(l.used)}% used${l.resetsAt ? `, resets ${new Date(l.resetsAt * 1000).toLocaleString()}` : ''}`}
+                >
+                  <span class="meter-label">{label}</span>
+                  <span class="meter-bar"><span style:width={`${Math.min(100, l.used)}%`}></span></span>
+                  <span class="meter-pct">{Math.round(l.used)}%</span>
+                </span>
+              {/if}
+            {/each}
+          </div>
+        {/if}
         <div class="footbar">
           <a class="user" href={href('settings')}>
             <span class="avatar" aria-hidden="true"
@@ -1731,6 +1749,45 @@
     margin: 0;
     padding: 0 var(--space-1-5);
     color: var(--muted);
+  }
+
+  .usage {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-1-5) 0;
+    font-size: var(--text-xs);
+    color: var(--muted);
+    border-top: var(--hairline) solid var(--line);
+  }
+
+  .meter {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1-5);
+  }
+
+  .meter-bar {
+    flex: 1 1 auto;
+    height: var(--space-1);
+    border-radius: var(--radius-round);
+    background: var(--raised);
+    overflow: hidden;
+  }
+
+  .meter-bar > span {
+    display: block;
+    height: 100%;
+    background: var(--status-your-turn);
+  }
+
+  .meter.warn .meter-bar > span {
+    background: var(--yellow);
+  }
+
+  .meter.danger .meter-bar > span {
+    background: var(--pink);
   }
 
   .footbar {

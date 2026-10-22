@@ -13,6 +13,7 @@ import type {
   StartSessionRequest,
   TerminalSettings,
   UpdateStatus,
+  Usage,
 } from '../../../../shared/api.ts';
 import { API_VERSION, TERMINAL_SETTINGS_DEFAULTS, terminalSettingsError } from '../../../../shared/api.ts';
 import { newlyMerged } from '../children.ts';
@@ -40,6 +41,8 @@ export const app = $state({
   jump: null as { from: string; to: Session } | null,
   approvals: [] as Approval[],
   plugins: [] as PluginInfo[],
+  /** GET /api/usage: the 5h/7d subscription limits for the sidebar footer. */
+  usage: {} as Usage,
   /** GET /api/updates: the Settings notice and the dot on the user chip. */
   update: null as UpdateStatus | null,
   /** GET /api/auth/me: `{caller, device, local}`; `name` if the server ever sends one. */
@@ -227,6 +230,7 @@ export async function loadAll(): Promise<void> {
     loadApprovals(),
     loadPlugins(),
     loadUpdate(),
+    guard(api<Usage>('usage')).then((u) => (app.usage = u ?? {})),
     guard(api<{ name?: string }>('me')).then((me) => (app.me = me ?? null)),
     guard(api<{ apiVersion: number }>('health')).then((h) => {
       app.apiMismatch = h && h.apiVersion !== API_VERSION ? h.apiVersion : null;
@@ -280,6 +284,9 @@ export function handleEvent(e: ServerEvent): void {
       return upsert(app.approvals, e.approval);
     case 'services.changed':
       app.servicesVersion[e.sessionId] = (app.servicesVersion[e.sessionId] ?? 0) + 1;
+      return;
+    case 'usage.updated':
+      app.usage = e.usage;
       return;
     case 'worktrees.changed':
       void loadChildren();
