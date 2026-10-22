@@ -193,20 +193,18 @@
       Backspace: '\u0017',
       Delete: '\u001bd',
     };
-    // Ctrl+A selects everything (and copies it); the next plain Backspace/Delete then clears the input line
-    // (^E ^U: end of line, kill to start) instead of being sent as a single backspace.
+    // Ctrl+A arms "select all" for the input line (nothing is highlighted or copied); the next plain Backspace/Delete
+    // then clears the line (^E ^U: end of line, kill to start) instead of being sent as a single backspace.
     let allSelected = false;
     t.attachCustomKeyEventHandler((e) => {
       if (e.type === 'keydown') {
         const plain = !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey;
         if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 'a') {
-          t.selectAll();
           allSelected = true;
           return false;
         }
         if (allSelected && plain && (e.key === 'Backspace' || e.key === 'Delete')) {
           send('\u0005\u0015');
-          t.clearSelection();
           allSelected = false;
           return false;
         }
