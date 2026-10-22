@@ -444,6 +444,18 @@ test('worktrees a session created stay linked to it after it closes, unlike its 
   );
 });
 
+test('closedClaudeIds lists the conversations of closed sessions only', async () => {
+  const live = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  const gone = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  const [a, b] = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'];
+  svc.setClaudeSessionId(live.id, a);
+  svc.setClaudeSessionId(gone.id, b);
+  svc.close(gone.id, 'chris');
+  assert.ok(svc.closedClaudeIds().has(b));
+  assert.ok(!svc.closedClaudeIds().has(a));
+  svc.close(live.id, 'chris');
+});
+
 test('an MR/PR link pins a chip and names a session shub named, never a given name', async () => {
   const s = await svc.start({ kind: 'claude', projectId: 'p1', prompt: 'review it' }, 'chris');
   const mr = 'https://gitlab.example.com/ai/portal/-/merge_requests/5';
