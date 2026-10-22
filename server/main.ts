@@ -14,6 +14,7 @@ import * as hooks from './hooks/index.ts';
 import * as docker from './docker/index.ts';
 import * as skills from './skills/index.ts';
 import * as projects from './projects/index.ts';
+import * as notes from './notes/index.ts';
 import * as plugins from './plugins/index.ts';
 import * as updates from './updates/index.ts';
 import * as api from './api/index.ts';
@@ -42,6 +43,7 @@ use(null, hooks.create(ctx, services));
 use('docker', docker.create(ctx, services));
 use('skills', skills.create(ctx, services));
 use(null, projects.create(ctx, services));
+use(null, notes.create(ctx, services));
 use('plugins', plugins.create(ctx, services));
 use(null, updates.create(ctx, services));
 

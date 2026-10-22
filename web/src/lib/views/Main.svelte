@@ -13,6 +13,7 @@
     WorktreeInfo,
   } from '../../../../shared/api.ts';
   import AppShell from '../components/AppShell/AppShell.svelte';
+  import NotesPanel from '../components/NotesPanel/NotesPanel.svelte';
   import BottomPanel from '../components/BottomPanel/BottomPanel.svelte';
   import Button from '../components/Button/Button.svelte';
   import Checkbox from '../components/Checkbox/Checkbox.svelte';
@@ -312,6 +313,7 @@
   // ---------- local UI state ----------
   let split = $state(false);
   let panelOpen = $state(false);
+  let notesOpen = $state(false);
   let renamingId = $state<string | null>(null);
   let menu = $state<{ session: Session; x: number; y: number } | null>(null);
   let worktreeMenu = $state<{ worktree: ChildWorktree; x: number; y: number } | null>(null);
@@ -766,6 +768,9 @@
         case 'KeyD':
           panelOpen = !panelOpen;
           break;
+        case 'KeyM':
+          notesOpen = !notesOpen;
+          break;
         case 'KeyT':
           void (e.shiftKey || !root ? newTerminal() : newShell());
           break;
@@ -1179,6 +1184,14 @@
           <Button
             size="sm"
             variant="ghost"
+            icon="book"
+            pressed={notesOpen}
+            title="Notes: a Markdown draft you and Claude write together (Alt M)"
+            onclick={() => (notesOpen = !notesOpen)}><span class="label">Notes</span></Button
+          >
+          <Button
+            size="sm"
+            variant="ghost"
             icon="services"
             pressed={panelOpen}
             title="Services (Alt D)"
@@ -1198,27 +1211,40 @@
       {/snippet}
     </TabBar>
 
-    {#if split && panes.length}
-      <SplitView sessions={panes} selectedId={active?.id} onselect={(id) => go('p', project.id, id)}>
-        {#snippet pane(s)}
-          <TerminalView sessionId={s.id} accent={project.accent} label={s.name} compact />
-        {/snippet}
-      </SplitView>
-    {:else if active}
-      {#key active.id}
-        <TerminalView sessionId={active.id} accent={project.accent} label={active.name} focused={!ui.drawer} />
-      {/key}
-      <CommandChip session={active} onterminal={newShell} />
-    {:else}
-      <EmptyState
-        title="No session yet"
-        body={sessions.length
-          ? 'Open a session from the sidebar or start one with Alt N.'
-          : 'Start one here or with Alt N.'}
-      >
-        <Button variant="primary" onclick={() => newSession()}>New session</Button>
-      </EmptyState>
-    {/if}
+    <div class="work">
+      <div class="term">
+        {#if split && panes.length}
+          <SplitView sessions={panes} selectedId={active?.id} onselect={(id) => go('p', project.id, id)}>
+            {#snippet pane(s)}
+              <TerminalView sessionId={s.id} accent={project.accent} label={s.name} compact />
+            {/snippet}
+          </SplitView>
+        {:else if active}
+          {#key active.id}
+            <TerminalView sessionId={active.id} accent={project.accent} label={active.name} focused={!ui.drawer} />
+          {/key}
+          <CommandChip session={active} onterminal={newShell} />
+        {:else}
+          <EmptyState
+            title="No session yet"
+            body={sessions.length
+              ? 'Open a session from the sidebar or start one with Alt N.'
+              : 'Start one here or with Alt N.'}
+          >
+            <Button variant="primary" onclick={() => newSession()}>New session</Button>
+          </EmptyState>
+        {/if}
+      </div>
+      {#if notesOpen && root}
+        {#key root.id}
+          <NotesPanel
+            sessionId={root.id}
+            claudeId={root.kind === 'claude' ? root.id : undefined}
+            onhide={() => (notesOpen = false)}
+          />
+        {/key}
+      {/if}
+    </div>
 
     {#if panelOpen && root}
       <BottomPanel
@@ -1534,6 +1560,20 @@
 </Dialog>
 
 <style>
+  .work {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+  }
+
+  .term {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
   .page-scroll {
     flex: 1 1 auto;
     min-height: 0;
