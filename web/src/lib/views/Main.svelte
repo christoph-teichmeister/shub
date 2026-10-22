@@ -40,6 +40,7 @@
   import WorktreeRow from '../components/WorktreeRow/WorktreeRow.svelte';
   import AgentRow from '../components/AgentRow/AgentRow.svelte';
   import TabBar from '../components/TabBar/TabBar.svelte';
+  import PausedPanel from '../components/PausedPanel/PausedPanel.svelte';
   import TerminalView from '../components/TerminalView/TerminalView.svelte';
   import TextField from '../components/TextField/TextField.svelte';
   import Wordmark from '../components/Wordmark/Wordmark.svelte';
@@ -1215,9 +1216,15 @@
         {#if split && panes.length}
           <SplitView sessions={panes} selectedId={active?.id} onselect={(id) => go('p', project.id, id)}>
             {#snippet pane(s)}
-              <TerminalView sessionId={s.id} accent={project.accent} label={s.name} compact />
+              {#if s.status === 'paused'}
+                <PausedPanel session={s} />
+              {:else}
+                <TerminalView sessionId={s.id} accent={project.accent} label={s.name} compact />
+              {/if}
             {/snippet}
           </SplitView>
+        {:else if active?.status === 'paused'}
+          <PausedPanel session={active} />
         {:else if active}
           {#key active.id}
             <TerminalView sessionId={active.id} accent={project.accent} label={active.name} focused={!ui.drawer} />
