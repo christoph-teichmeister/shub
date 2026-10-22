@@ -12,7 +12,8 @@ import {
   type CrabSession,
   type Walker,
 } from '../web/src/lib/village/crabs.ts';
-import { buildWorld, inRect } from '../web/src/lib/village/world.ts';
+import { findPath } from '../web/src/lib/village/path.ts';
+import { buildWorld, inRect, type Point } from '../web/src/lib/village/world.ts';
 
 const world = buildWorld({
   groups: ['work', 'private'],
@@ -161,6 +162,70 @@ test('a crab jumping the line walks down past the waiting ones without touching 
   // Once it has passed, the line is back in its slots.
   for (const [i, c] of line.entries()) assert.deepEqual([Math.round(c.x), Math.round(c.y)], [0, slots[i]]);
   assert.equal(first.y, 56);
+});
+
+test('two crabs leaving the same spot walk the lane in single file, the one further back in line behind', () => {
+  // Both set off down the lane at x = 16 from about the same spot; the one further back in line starts a step ahead.
+  const front: Walker = { x: 16, y: 0, v: [0, 1], queuePos: 0 };
+  const back: Walker = { x: 16, y: 4, v: [0, 1], queuePos: 1 };
+  for (let s = 0; s < 40; s++) {
+    for (const c of [front, back]) {
+      // Each walks 8 px a step towards its spot down the lane (the back one's spot 56 px above the front one's).
+      const goal = c === front ? 400 : 344;
+      const dy = Math.min(8, Math.max(-8, goal - c.y));
+      c.y += dy;
+      c.x += Math.sign(16 - c.x) * Math.min(8, Math.abs(16 - c.x));
+      c.v = [0, Math.sign(dy)];
+    }
+    giveWay([front, back]);
+    assert.ok(Math.abs(back.x - 16) < 16, `step ${s}: walks beside the other at x = ${back.x}, off the lane`);
+    assert.ok(back.y <= front.y - SPACE + 1e-9, `step ${s}: not behind the front one (${back.y} vs ${front.y})`);
+  }
+  assert.deepEqual([front.y, back.y], [320, 268]);
+});
+
+test('two crabs going from one desk to the queue on their routes never walk side by side and reach their slots', () => {
+  const w = buildWorld({
+    groups: ['work'],
+    projects: [{ id: 'a', name: 'a', group: 'work', color: '#fff' }],
+    active: new Set(['a']),
+    activeOnly: false,
+  });
+  const desk = w.houses.a.desks[0];
+  // As the view walks them (Village.svelte step()): 8 px a step along the route, then giveWay. The one further back in
+  // line sets off a little ahead.
+  const crabs = [0, 1].map((queuePos) => {
+    const from: Point = [desk.x + queuePos * 6, desk.y - 14 + queuePos * 4];
+    const pts = findPath(w, from, w.slots[queuePos]);
+    return { w: { x: from[0], y: from[1], v: [0, 0], queuePos } as Walker, pts };
+  });
+  for (let s = 0; s < 400; s++) {
+    for (const { w: c, pts } of crabs) {
+      const [x0, y0] = [c.x, c.y];
+      for (let left = 8; left > 0 && pts.length;) {
+        const [dx, dy] = [pts[0][0] - c.x, pts[0][1] - c.y];
+        const d = Math.hypot(dx, dy);
+        if (d <= left) [[c.x, c.y], left] = [pts.shift()!, left - d];
+        else [c.x, c.y, left] = [c.x + (dx / d) * left, c.y + (dy / d) * left, 0];
+      }
+      const n = Math.hypot(c.x - x0, c.y - y0) || 1;
+      c.v = [(c.x - x0) / n, (c.y - y0) / n];
+      if (!pts.length) pts.push(w.slots[c.queuePos]);
+    }
+    const [a, b] = crabs.map((c) => c.w);
+    giveWay([a, b]);
+    // Side by side: close, both still on the way (not on the last hop into their slots, which stand side by side),
+    // and the line between them across both their headings.
+    const [dx, dy] = [b.x - a.x, b.y - a.y];
+    const d = Math.hypot(dx, dy) || 1;
+    const across = (v: [number, number]) => (v[0] || v[1]) && Math.abs(dx * v[0] + dy * v[1]) / d < 0.5;
+    const onTheWay = crabs.every((c) => c.pts.length > 1);
+    assert.ok(
+      !(onTheWay && d < 1.5 * SPACE && across(a.v) && across(b.v)),
+      `step ${s}: side by side at ${[a.x, a.y]} / ${[b.x, b.y]}`,
+    );
+  }
+  for (const { w: c } of crabs) assert.deepEqual([c.x, c.y], w.slots[c.queuePos]);
 });
 
 test('every working crab sits at a desk of its own, and the district makes room for them', () => {

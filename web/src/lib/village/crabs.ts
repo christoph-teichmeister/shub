@@ -96,8 +96,9 @@ export interface Walker {
 /**
  * Keeps queue crabs off each other while they walk the lane: a queue crab gives way to every crab ahead of it in
  * line and to every crab outside the queue (one leaving it, say). Behind or beside such a crab it hangs back at
- * SPACE; in its way it steps aside across its path, so it gets past. Moves the queue crabs in place, the front of the
- * line first, so the result is the same every time. The others never move.
+ * SPACE; in its way it steps aside across its path, so it gets past. One walking the same way falls in behind it on
+ * its track instead, so two crabs setting off together walk in single file, never side by side. Moves the queue
+ * crabs in place, the front of the line first, so the result is the same every time. The others never move.
  */
 export function giveWay(ws: Walker[]): void {
   const rank = (w: Walker) => (w.queuePos < 0 ? -1 : w.queuePos);
@@ -110,7 +111,10 @@ export function giveWay(ws: Walker[]): void {
       if (d >= SPACE) continue;
       const [vx, vy] = a.v;
       const along = dx * vx + dy * vy;
-      if (along > 0) {
+      if (vx * b.v[0] + vy * b.v[1] > 0.5) {
+        // Walking the same way (within 60°), ahead, beside or behind: falls in behind it, single file on its track.
+        [b.x, b.y] = [a.x - vx * SPACE, a.y - vy * SPACE];
+      } else if (along > 0) {
         // In its way: to the side of its path, the side b is already on (left when dead ahead).
         const side = dx * -vy + dy * vx < 0 ? -1 : 1;
         [b.x, b.y] = [a.x + vx * along - vy * side * SPACE, a.y + vy * along + vx * side * SPACE];
