@@ -650,8 +650,8 @@
       if (id) void pin(id);
       return;
     }
-    // The queue keys are the desk's: they only work while you sit there.
-    if (!seated) return;
+    // The queue keys are the desk's: away from it they only act on the card you pinned with E.
+    if (!seated && !pinned) return;
     const id = pinned ?? (el !== viewport ? hovered : null);
     const s = sessions.find((x) => x.id === id);
     if (!s) return;
