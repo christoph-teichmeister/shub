@@ -17,6 +17,7 @@
   import ProjectIcon from '../components/ProjectIcon/ProjectIcon.svelte';
   import ServicesTree from '../components/ServicesTree/ServicesTree.svelte';
   import StatusDot from '../components/StatusDot/StatusDot.svelte';
+  import PausedPanel from '../components/PausedPanel/PausedPanel.svelte';
   import TerminalView from '../components/TerminalView/TerminalView.svelte';
   import Wordmark from '../components/Wordmark/Wordmark.svelte';
   import { statusLabel } from '../status.ts';
@@ -159,7 +160,11 @@
     {/if}
 
     {#key open.id}
-      <TerminalView sessionId={open.id} accent={p?.accent} label={open.name} compact />
+      {#if open.status === 'paused'}
+        <PausedPanel session={open} />
+      {:else}
+        <TerminalView sessionId={open.id} accent={p?.accent} label={open.name} compact />
+      {/if}
     {/key}
 
     <CommandChip
