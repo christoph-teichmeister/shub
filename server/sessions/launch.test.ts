@@ -8,6 +8,7 @@ import type { ButtonDef } from '../../shared/api.ts';
 import {
   autoName,
   buttonPrompt,
+  claudeArgs,
   defaultLauncher,
   RUN_HINT,
   isSimpleInput,
@@ -65,7 +66,7 @@ test('claude argv names the mode and puts the prompt after --', () => {
     settingsFile: '/s.json',
     permissionMode: 'default' as const,
   };
-  assert.deepEqual(defaultLauncher({ ...spec, prompt: '-p evil', resume: false }), [
+  assert.deepEqual(claudeArgs({ ...spec, prompt: '-p evil', resume: false }), [
     'claude',
     '--session-id',
     'u',
@@ -78,15 +79,15 @@ test('claude argv names the mode and puts the prompt after --', () => {
     '--',
     '-p evil',
   ]);
-  assert.deepEqual(defaultLauncher({ ...spec, prompt: 'x', resume: true }).slice(0, 3), ['claude', '--resume', 'u']);
-  assert.deepEqual(defaultLauncher({ ...spec, permissionMode: 'auto', resume: false }).slice(-2), [
+  assert.deepEqual(claudeArgs({ ...spec, prompt: 'x', resume: true }).slice(0, 3), ['claude', '--resume', 'u']);
+  assert.deepEqual(claudeArgs({ ...spec, permissionMode: 'auto', resume: false }).slice(-2), [
     '--permission-mode',
     'auto',
   ]);
 });
 
 test('inherit passes no --permission-mode flag', () => {
-  const argv = defaultLauncher({
+  const argv = claudeArgs({
     kind: 'claude',
     claudeSessionId: 'u',
     settingsFile: '/s.json',
@@ -148,4 +149,17 @@ test('in a shub terminal, bare `claude` runs `shub claude`; with arguments the r
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('claude sessions fall back to a login shell when claude exits', () => {
+  const argv = defaultLauncher({
+    kind: 'claude',
+    claudeSessionId: 'u',
+    settingsFile: '/s.json',
+    permissionMode: 'default',
+    resume: false,
+  });
+  assert.deepEqual(argv.slice(0, 2), ['/bin/sh', '-c']);
+  assert.match(argv[2], /^claude "\$@"; exec /);
+  assert.deepEqual(argv.slice(4, 7), ['--session-id', 'u', '--settings']);
 });
