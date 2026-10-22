@@ -81,6 +81,47 @@ export function clampTo(d: District, x: number, y: number): [number, number] {
   return [Math.min(Math.max(x, d.x + 40), d.x + d.w - 40), Math.min(Math.max(y, d.y + 70), d.y + d.h - 12)];
 }
 
+/** A crab is this wide: a crab in the queue keeps this far from the others while it walks. */
+export const SPACE = 52;
+
+export interface Walker {
+  x: number;
+  y: number;
+  /** Unit direction of this step's move, [0, 0] when it stood. */
+  v: [number, number];
+  /** Place in the queue, -1 when not queued. */
+  queuePos: number;
+}
+
+/**
+ * Keeps queue crabs off each other while they walk the lane: a queue crab gives way to every crab ahead of it in
+ * line and to every crab outside the queue (one leaving it, say). Behind or beside such a crab it hangs back at
+ * SPACE; in its way it steps aside across its path, so it gets past. Moves the queue crabs in place, the front of the
+ * line first, so the result is the same every time. The others never move.
+ */
+export function giveWay(ws: Walker[]): void {
+  const rank = (w: Walker) => (w.queuePos < 0 ? -1 : w.queuePos);
+  // ponytail: pairwise, and a crab pushed aside may land on one further back that then moves too; fine for a queue
+  for (const b of ws.filter((w) => w.queuePos >= 0).sort((p, q) => p.queuePos - q.queuePos))
+    for (const a of ws) {
+      if (a === b || rank(a) >= rank(b)) continue;
+      const [dx, dy] = [b.x - a.x, b.y - a.y];
+      const d = Math.hypot(dx, dy);
+      if (d >= SPACE) continue;
+      const [vx, vy] = a.v;
+      const along = dx * vx + dy * vy;
+      if (along > 0) {
+        // In its way: to the side of its path, the side b is already on (left when dead ahead).
+        const side = dx * -vy + dy * vx < 0 ? -1 : 1;
+        [b.x, b.y] = [a.x + vx * along - vy * side * SPACE, a.y + vy * along + vx * side * SPACE];
+      } else {
+        // Behind, beside or on top of it: back off along the line between them (up the lane when on top).
+        const [ux, uy] = d ? [dx / d, dy / d] : vx || vy ? [-vx, -vy] : [0, -1];
+        [b.x, b.y] = [a.x + ux * SPACE, a.y + uy * SPACE];
+      }
+    }
+}
+
 /**
  * Target spot and pose of every crab. `queue` is queueOrder().order; `t` is the view's step counter, which
  * moves the wanderers. Sessions of projects without a house (filtered out, unknown) get no crab.

@@ -1289,7 +1289,7 @@ test('the crab village draws every session as a crab, queues the ones that need 
   };
   await expect(map.locator('.obj.me')).toHaveCount(0);
   await page.getByRole('button', { name: 'Zoom in' }).click();
-  await map.focus();
+  await expect(map).toBeFocused(); // a click on a zoom button hands the keys back to the map
   await page.keyboard.down('d');
   await expect(map.locator('.obj.me')).toHaveCount(1);
   await page.waitForTimeout(500);
@@ -1320,7 +1320,7 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await page.keyboard.press('e'); // nothing in reach where you stand
   await expect(page.getByRole('dialog', { name: 'Export CSV fix' })).toHaveCount(0);
   for (let i = 0; i < 6; i++) await page.getByRole('button', { name: 'Zoom in' }).click();
-  await map.focus();
+  await expect(map).toBeFocused();
   /** Map px: where you and the first crab in line are (the elements' left and top). */
   const mapPos = (l: Locator) => l.evaluate((e) => ({ x: parseFloat(e.style.left), y: parseFloat(e.style.top) }));
   const desk = () => mapPos(map.locator('.obj.you'));

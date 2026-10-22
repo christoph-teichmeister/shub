@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { blockers } from '../web/src/lib/village/path.ts';
 import {
   buildWorld,
   inRect,
@@ -258,6 +259,14 @@ test('the "+ New project" lot keeps clear of the houses, tents and machines of i
       for (const r of things) assert.ok(!overlaps(lot, r), `${n} houses: lot on ${h.project.id} ${JSON.stringify(r)}`);
     }
   }
+});
+
+test('a walkable gap lies between your desk and the town hall', () => {
+  each((w, n) => {
+    const [hall, desk] = blockers(w).slice(-2);
+    assert.ok(hall.x - (desk.x + desk.w) >= TILE, `${n} groups: ${hall.x - (desk.x + desk.w)} px`);
+    assert.ok(hall.x + hall.w <= w.plaza.x + w.plaza.w, `${n} groups: the hall stays on the plaza`);
+  });
 });
 
 test('queue crabs stand apart and clear of your name plate', () => {
