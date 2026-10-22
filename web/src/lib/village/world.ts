@@ -275,8 +275,9 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
   const plaza = { x: plazaCx - PLAZA / 2, y: Hc - 9 * TILE, w: PLAZA, h: 8 * TILE };
   const laneX = plazaCx - TILE; // the grid line down the middle of the two lane columns
   const you = { x: laneX, y: Hc - 40 };
-  const hall = { x: plazaCx + 118, y: Hc - 116 };
-  const mayor = { x: plazaCx + 30, y: Hc - 104 };
+  // The hall stands 44 px clear of your desk's room (path.ts `blockers`): wide enough to walk between them.
+  const hall = { x: plazaCx + 150, y: Hc - 116 };
+  const mayor = { x: hall.x - 88, y: Hc - 104 };
   const slots: Point[] = [];
   for (let i = 0; i < QUEUE; i++) slots.push([laneX, Hc - QUEUE_FIRST - i * QUEUE_STEP]);
   const pond = { x: M + POND / 2 - 10, y: rowY + 150 };

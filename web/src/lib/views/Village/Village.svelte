@@ -15,6 +15,7 @@
     backpack,
     crabSessions,
     crabSpots,
+    giveWay,
     moodOf,
     queueOrder,
     walkQueue,
@@ -167,6 +168,8 @@
     const fresh = t > 0;
     t++;
     now = Date.now();
+    /** This step's move per crab, for giveWay. */
+    const moved = new Map<string, Point>();
     for (const c of spots) {
       const p = pos[c.session.id];
       if (!p) {
@@ -183,6 +186,9 @@
         r = { goal, world, pts: findPath(world, [p.x, p.y], [c.x, c.y]) };
         routes.set(c.session.id, r);
       }
+      // A queue crab that stepped aside for another walks back to its spot.
+      if (!r.pts.length && c.queuePos >= 0) r.pts.push([c.x, c.y]);
+      const [x0, y0] = [p.x, p.y];
       let left = WALK;
       while (left > 0 && r.pts.length) {
         const dx = r.pts[0][0] - p.x;
@@ -198,8 +204,21 @@
           left = 0;
         }
       }
-      p.moving = Math.hypot(c.x - p.x, c.y - p.y) > 3;
+      moved.set(c.session.id, [p.x - x0, p.y - y0]);
     }
+    // Queue crabs do not walk through each other: the one further back gives way.
+    const ws = spots.map((c) => {
+      const p = pos[c.session.id];
+      const [mx, my] = moved.get(c.session.id) ?? [0, 0];
+      const n = Math.hypot(mx, my) || 1;
+      return { x: p.x, y: p.y, v: [mx / n, my / n] as Point, queuePos: c.queuePos };
+    });
+    giveWay(ws);
+    spots.forEach((c, i) => {
+      const p = pos[c.session.id];
+      [p.x, p.y] = [ws[i].x, ws[i].y];
+      p.moving = Math.hypot(c.x - p.x, c.y - p.y) > 3;
+    });
   }
   onMount(() => {
     // Still: no walking, but the minutes in line and the time of day move on.
@@ -395,6 +414,12 @@
     fitted = false;
   }
   const nudge = (d: number) => zoomTo(Math.round((zoom + d) * 10) / 10);
+  /** A zoom button's click: after a mouse click the keys go back to the map, so WASD walks on; from the keyboard
+   * (Enter, Space: no click count) the focus stays on the button. */
+  const zoomClick = (f: () => void) => (e: MouseEvent) => {
+    f();
+    if (e.detail) viewport?.focus({ preventScroll: true });
+  };
   // Fitted follows the window and the map; a free camera only keeps the map covering the window.
   $effect(() => {
     if (!vw || !vh) return;
@@ -739,9 +764,9 @@
       onclick={toggleChime}>Chime</button
     >
     <div class="row seg" role="group" aria-label="Zoom">
-      <button type="button" class="btn small" aria-pressed={fitted} onclick={fit}>Fit</button>
-      <button type="button" class="btn small" aria-label="Zoom out" onclick={() => nudge(-0.1)}>−</button>
-      <button type="button" class="btn small" aria-label="Zoom in" onclick={() => nudge(0.1)}>+</button>
+      <button type="button" class="btn small" aria-pressed={fitted} onclick={zoomClick(fit)}>Fit</button>
+      <button type="button" class="btn small" aria-label="Zoom out" onclick={zoomClick(() => nudge(-0.1))}>−</button>
+      <button type="button" class="btn small" aria-label="Zoom in" onclick={zoomClick(() => nudge(0.1))}>+</button>
     </div>
     <span class="muted">{Math.round(zoom * 100)} %</span>
   </header>

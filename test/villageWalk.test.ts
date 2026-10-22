@@ -69,6 +69,18 @@ test('a house stops you and a diagonal into the wall slides along it', () => {
   assert.ok(slide.x < h.x - 48 + 1, 'still outside the wall');
 });
 
+test('you can walk down between your desk and the town hall', () => {
+  const mid = (w.you.x + 56 + 16 + w.hall.x - 66) / 2; // between the desk's room and the hall's wall
+  const y = w.hall.y - 140; // above both, on the plaza
+  // Not only down a hair-thin line: a little off the middle either way gets through too.
+  for (const x of [mid - 10, mid, mid + 10]) {
+    assert.equal(blocked(w, x, y), false);
+    const r = go(x, y, 0, 1, 180);
+    assert.ok(r.y > w.hall.y + 20, `from x ${x}: stopped at ${r.y}, the hall ends at ${w.hall.y}`);
+    assert.ok(Math.abs(r.x - x) < 1e-6, 'walked straight down');
+  }
+});
+
 test('a big frame cannot jump over a fence', () => {
   const d = w.districts[0];
   const x = d.x + d.w / 2 + 200;

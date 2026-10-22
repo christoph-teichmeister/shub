@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { SessionStatus } from '../shared/api.ts';
-import { backpack, crabSpots, moodOf, queueOrder, walkQueue, type CrabSession } from '../web/src/lib/village/crabs.ts';
+import {
+  backpack,
+  crabSpots,
+  giveWay,
+  moodOf,
+  queueOrder,
+  SPACE,
+  walkQueue,
+  type CrabSession,
+  type Walker,
+} from '../web/src/lib/village/crabs.ts';
 import { buildWorld, inRect } from '../web/src/lib/village/world.ts';
 
 const world = buildWorld({
@@ -103,4 +113,52 @@ test('impatience in the queue: calm, tap at 5 min, wave at 15, angry at 30', () 
     'angry',
     'angry',
   ]);
+});
+
+test('queue crabs give way: the one further back hangs back or steps aside, never overlaps', () => {
+  const w = (x: number, y: number, queuePos: number, v: [number, number] = [0, 0]): Walker => ({ x, y, v, queuePos });
+  // Behind a crab ahead in line, or on top of it: hang back at SPACE (up the lane when on top).
+  let [a, b] = [w(0, 0, 0, [0, 1]), w(0, -20, 1, [0, 1])];
+  giveWay([a, b]);
+  assert.deepEqual([a.x, a.y, b.x, b.y], [0, 0, 0, -SPACE]);
+  [a, b] = [w(0, 0, 0), w(0, 0, 1)];
+  giveWay([b, a]);
+  assert.deepEqual([a.x, a.y, b.x, b.y], [0, 0, 0, -SPACE]);
+  // In the way of one walking down the lane: steps aside to the side it is on; the front crab never moves.
+  [a, b] = [w(0, 0, 0, [0, 1]), w(5, 20, 1)];
+  giveWay([a, b]);
+  assert.deepEqual([a.x, a.y, b.x, b.y], [0, 0, SPACE, 20]);
+  // A crab leaving the queue (not queued) gets past too; crabs outside the queue are never moved.
+  const [out, q] = [w(0, 0, -1, [0, -1]), w(0, -10, 3)];
+  giveWay([q, out]);
+  assert.deepEqual([out.x, out.y], [0, 0]);
+  assert.ok(Math.hypot(q.x - out.x, q.y - out.y) >= SPACE - 1e-9);
+  const [far, near] = [w(0, 0, -1), w(0, 200, 0)];
+  giveWay([far, near]);
+  assert.deepEqual([near.x, near.y], [0, 200]);
+});
+
+test('a crab jumping the line walks down past the waiting ones without touching them', () => {
+  // The line stands on x = 0, 56 px apart (front at the bottom); the new first crab comes down the lane at x = 16
+  // (a tile centre) to the slot in front of them.
+  const slots = [0, -56, -112, -168];
+  const line: Walker[] = slots.map((y, i) => ({ x: 0, y, v: [0, 0], queuePos: i + 1 }));
+  const first: Walker = { x: 16, y: -400, v: [0, 1], queuePos: 0 };
+  for (let s = 0; s < 120; s++) {
+    // Each step: the first crab walks 8 px down; the others walk up to 8 px back towards their slot.
+    if (first.y < 56) first.y += 8;
+    else first.v = [0, 0];
+    for (const [i, c] of line.entries()) {
+      const [dx, dy] = [0 - c.x, slots[i] - c.y];
+      const d = Math.hypot(dx, dy);
+      const k = d > 8 ? 8 / d : 1;
+      [c.x, c.y] = [c.x + dx * k, c.y + dy * k];
+    }
+    giveWay([...line, first]);
+    for (const c of line)
+      assert.ok(Math.hypot(c.x - first.x, c.y - first.y) >= SPACE - 1e-9, `step ${s}: crab ${c.queuePos} overlaps`);
+  }
+  // Once it has passed, the line is back in its slots.
+  for (const [i, c] of line.entries()) assert.deepEqual([Math.round(c.x), Math.round(c.y)], [0, slots[i]]);
+  assert.equal(first.y, 56);
 });
