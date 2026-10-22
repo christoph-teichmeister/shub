@@ -64,12 +64,16 @@
   // Settings pages render here instead of the project, so the sidebar stays.
   let { children }: { children?: Snippet } = $props();
 
+  /** Sidebar order, where a pane that needs you counts for its session; the sessions themselves stay as they are. */
+  const placeRolled = (list: Session[]) =>
+    placeSessions(list.map(rolledUp)).map((r) => list.find((s) => s.id === r.id)!);
+
   // ---------- derived view state ----------
   const route = $derived(router.route);
   const project = $derived<ProjectView | null>(
     route.name === 'project' ? (app.projects.find((p) => p.id === route.projectId) ?? null) : null,
   );
-  const sessions = $derived(project ? placeSessions(sessionsOf(project.id)) : []);
+  const sessions = $derived(project ? placeRolled(sessionsOf(project.id)) : []);
   // The session open in the control center; the route may name one of its panes (second Claude, terminal).
   const root = $derived<Session | null>(
     (route.name === 'project' &&
@@ -925,7 +929,7 @@
           entries={activeProjects.length ? undefined : []}
         >
           {#each activeProjects as p (p.id)}
-            {@const list = placeSessions(sessionsOf(p.id))}
+            {@const list = placeRolled(sessionsOf(p.id))}
             {@const g = grace(p.id)}
             <div style:opacity={g?.opacity}>
               <ProjectRow
@@ -951,7 +955,7 @@
             ondrop={() => dropProject(group.name, null)}
           >
             {#each group.projects as p (p.id)}
-              {@const list = placeSessions(sessionsOf(p.id))}
+              {@const list = placeRolled(sessionsOf(p.id))}
               <ProjectRow
                 project={p}
                 sessions={list}

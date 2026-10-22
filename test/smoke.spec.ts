@@ -916,6 +916,27 @@ test('sessions: sidebar sorts by status, a dragged row is pinned on top', async 
   expect(errors).toEqual([]);
 });
 
+test('a pane that needs you moves its session up the sidebar and shows on the phone', async ({ page }) => {
+  const quiet: Session = { ...session, id: 's1', name: 'Quiet one', status: 'your-turn' };
+  const other: Session = { ...session, id: 's2', name: 'Other one', status: 'working' };
+  const pane: Session = { ...session, id: 's3', name: 'Second Claude', status: 'needs-you', parentId: 's2' };
+  const { errors } = await mockApi(page, {
+    '/api/sessions': [quiet, other, pane],
+    '/api/sessions/s2/services': [],
+    '/api/sessions/s3/services': [],
+  });
+  await page.goto('/#/p/ai-portal/s2');
+  const rows = page.getByRole('region', { name: 'Work', exact: true }).getByRole('link', { name: /one/ });
+  await expect(rows).toHaveText([/Other one/, /Quiet one/]);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/#/p/ai-portal/s3');
+  const panes = page.getByRole('navigation', { name: 'Panes' });
+  await expect(panes.getByRole('link')).toHaveText(['Other one', 'Second Claude']);
+  await expect(panes.getByRole('link', { name: 'Second Claude' })).toHaveAttribute('aria-current', 'page');
+  expect(errors).toEqual([]);
+});
+
 test('a phone app adds a second machine by address and typed code', async ({ page }) => {
   const { calls, errors } = await mockApi(page, {
     'POST /api/auth/pairing/redeem': { device: { id: 'phone-1', state: 'pending', level: 'prompts' } },
