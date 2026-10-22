@@ -507,17 +507,21 @@
         label: `${b.label}${b.ask !== 'nothing' ? '…' : ''}`,
         separator: i === 0,
       }));
+    // Groups, divided by separators: organise the row, steer the session, plugin actions, buttons, close.
     return [
       { id: 'rename', label: 'Rename' },
       { id: 'link', label: 'Add link…', hint: s.links[0]?.label },
+      ...(!s.projectId
+        ? []
+        : [s.position == null ? { id: 'pin', label: 'Pin to top' } : { id: 'unpin', label: 'Unpin' }]),
       ...(s.kind === 'shell'
         ? s.parentId
           ? []
-          : [{ id: 'claude-here', label: 'Start Claude here' }]
+          : [{ id: 'claude-here', label: 'Start Claude here', separator: true }]
         : [
             s.waitingFor
-              ? { id: 'ready', label: 'Stop waiting', description: s.waitingFor }
-              : { id: 'wait', label: 'Wait for…' },
+              ? { id: 'ready', label: 'Stop waiting', description: s.waitingFor, separator: true }
+              : { id: 'wait', label: 'Wait for…', separator: true },
           ]),
       ...(fill?.compact
         ? [
@@ -530,11 +534,8 @@
             },
           ]
         : []),
-      ...(!s.projectId
-        ? []
-        : [s.position == null ? { id: 'pin', label: 'Pin to top' } : { id: 'unpin', label: 'Unpin' }]),
       { id: 'pause', label: s.status === 'paused' ? 'Resume session' : 'Pause session' },
-      ...plugin,
+      ...plugin.map((a, i) => ({ ...a, separator: i === 0 })),
       ...buttons,
       { id: 'close', label: 'Close session', separator: true, danger: true },
     ];
