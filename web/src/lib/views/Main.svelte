@@ -34,7 +34,7 @@
   import SplitView from '../components/SplitView/SplitView.svelte';
   import StatusBadge from '../components/StatusBadge/StatusBadge.svelte';
   import StatusDot from '../components/StatusDot/StatusDot.svelte';
-  import { contextFill, dropPositions, placeSessions, placeTabs, projectBadge } from '../status.ts';
+  import { contextFill, dropPositions, placeSessions, projectBadge } from '../status.ts';
   import { childStart, placeChildren, sessionsIn } from '../children.ts';
   import WorktreeRow from '../components/WorktreeRow/WorktreeRow.svelte';
   import AgentRow from '../components/AgentRow/AgentRow.svelte';
@@ -52,7 +52,8 @@
     needsYouCount,
     sessionHref,
     sessionsOf,
-    shellsOf,
+    childrenOf,
+    rolledUp,
     startClaudeHere,
     startSession,
     ui,
@@ -68,10 +69,18 @@
   const project = $derived<ProjectView | null>(
     route.name === 'project' ? (app.projects.find((p) => p.id === route.projectId) ?? null) : null,
   );
-  const sessions = $derived(project ? placeTabs(sessionsOf(project.id)) : []);
-  const tabs = $derived(sessions.filter((s) => !hiddenTabs.includes(s.id)));
+  const sessions = $derived(project ? placeSessions(sessionsOf(project.id)) : []);
+  // The session open in the control center; the route may name one of its panes (second Claude, terminal).
+  const root = $derived<Session | null>(
+    (route.name === 'project' &&
+      sessions.find((s) => s.id === route.sessionId || childrenOf(s.id).some((c) => c.id === route.sessionId))) ||
+      sessions[0] ||
+      null,
+  );
+  const panes = $derived(root ? [root, ...childrenOf(root.id)] : []);
+  // The focused pane.
   const active = $derived<Session | null>(
-    (route.name === 'project' && sessions.find((s) => s.id === route.sessionId)) || tabs[0] || null,
+    (route.name === 'project' && panes.find((s) => s.id === route.sessionId)) || root,
   );
   const globalSession = $derived(app.sessions.find((s) => s.kind === 'global') ?? null);
   const needsYou = $derived(needsYouCount() > 0);
@@ -88,51 +97,6 @@
           .sort((a, b) => a.order - b.order),
       }))
       .filter((g) => g.projects.length);
-  });
-
-  // ---------- Hidden tabs: the tab's ✕ takes a session out of the tab bar, the sidebar keeps it ----------
-  // Kept per browser; storage can be missing or throw (private window).
-  // ponytail: ids of closed sessions are never pruned; a few bytes each, prune once sessions load reliably first.
-  let hiddenTabs = $state<string[]>(
-    (() => {
-      try {
-        return JSON.parse(localStorage.getItem('shub.tabs.hidden') ?? '[]') as string[];
-      } catch {
-        return [];
-      }
-    })(),
-  );
-  $effect(() => {
-    try {
-      localStorage.setItem('shub.tabs.hidden', JSON.stringify(hiddenTabs));
-    } catch {
-      // not remembered, the tab is back after a reload
-    }
-  });
-  function showTab(id: string) {
-    if (hiddenTabs.includes(id)) hiddenTabs = hiddenTabs.filter((x) => x !== id);
-  }
-  function hideTab(s: Session) {
-    if (s.id === active?.id) {
-      const i = tabs.findIndex((t) => t.id === s.id);
-      const next = tabs[i + 1] ?? tabs[i - 1];
-      location.hash = next ? sessionHref(next) : href('p', s.projectId);
-    }
-    hiddenTabs = [...hiddenTabs, s.id];
-  }
-  // Opening a session (sidebar, a link, a shortcut) brings its tab back.
-  $effect(() => {
-    const id = route.name === 'project' ? route.sessionId : null;
-    if (id) untrack(() => showTab(id));
-  });
-  // So does starting to need you, so a hidden session never waits unseen (a status seen on load is no change).
-  let lastStatus: Record<string, Session['status']> = {};
-  $effect(() => {
-    for (const s of app.sessions) {
-      const was = lastStatus[s.id];
-      if (s.status === 'needs-you' && was && was !== 'needs-you') untrack(() => showTab(s.id));
-      lastStatus[s.id] = s.status;
-    }
   });
 
   // ---------- Active group: projects with a session, kept ACTIVE_GRACE after the last one closes ----------
@@ -194,7 +158,7 @@
   }
 
   /** What a folded group still shows: who needs you, else what is working. */
-  const groupBadge = (projects: ProjectView[]) => projectBadge(projects.flatMap((p) => sessionsOf(p.id)));
+  const groupBadge = (projects: ProjectView[]) => projectBadge(projects.flatMap((p) => sessionsOf(p.id).map(rolledUp)));
   const needsYouTotal = $derived(needsYouCount());
   // Crabs in the village queue: everyone who needs you or whose turn it is.
   const villageQueue = $derived(
@@ -343,7 +307,6 @@
   // ---------- local UI state ----------
   let split = $state(false);
   let panelOpen = $state(false);
-  let panelTab = $state('services');
   let renamingId = $state<string | null>(null);
   let menu = $state<{ session: Session; x: number; y: number } | null>(null);
   let newMenu = $state<{ x: number; y: number } | null>(null);
@@ -365,28 +328,8 @@
   let services = $state<ServiceContainer[]>([]);
   let dragId: string | null = null;
 
-  const shells = $derived(active ? shellsOf(active.id) : []);
-  const panelTabs = $derived([
-    { id: 'services', label: 'Services' },
-    ...shells.map((s, i) => ({ id: s.id, label: `Terminal ${i + 1}`, closable: true })),
-  ]);
-
-  // When the shown terminal goes away (closed or exited), show another terminal or hide the panel, never Services.
-  let seen: { active?: string; ids: string[] } = { ids: [] };
   $effect(() => {
-    const ids = shells.map((s) => s.id);
-    if (active?.id === seen.active && seen.ids.includes(panelTab) && !ids.includes(panelTab)) {
-      if (ids.length) panelTab = ids.at(-1)!;
-      else {
-        panelOpen = false;
-        panelTab = 'services';
-      }
-    }
-    seen = { active: active?.id, ids };
-  });
-
-  $effect(() => {
-    const id = active?.kind === 'claude' ? active.id : null;
+    const id = root?.kind === 'claude' ? root.id : null;
     void (id && app.servicesVersion[id]);
     if (!id) {
       services = [];
@@ -446,15 +389,14 @@
     if (s) location.hash = sessionHref(s);
   }
 
-  async function newShell(cwd?: string) {
-    if (!active) return;
-    const s = await startSession({ projectId: active.projectId, kind: 'shell', parentId: active.id, cwd });
-    if (s) {
-      panelOpen = true;
-      panelTab = s.id;
-    }
+  /** A pane in the open session's control center: a terminal or a second Claude, focused. */
+  async function newPane(kind: 'shell' | 'claude', cwd?: string) {
+    if (!root) return;
+    const s = await startSession({ projectId: root.projectId, kind, parentId: root.id, cwd });
+    if (s) location.hash = sessionHref(s);
     return s?.id;
   }
+  const newShell = (cwd?: string) => newPane('shell', cwd);
 
   /** The prompt a button will run, as shown before starting it. */
   const preview = (b: ButtonDef, input = '') =>
@@ -512,6 +454,12 @@
     return [
       { id: 'claude', label: 'New Claude session', hint: 'Alt N' },
       { id: 'terminal', label: 'New terminal', hint: 'Alt T' },
+      ...(root
+        ? [
+            { id: 'pane-claude', label: 'Claude in this session', separator: true },
+            { id: 'pane-shell', label: 'Terminal in this session', hint: 'Alt Shift T' },
+          ]
+        : []),
       ...p.buttons.map((b, i) => ({
         id: `button:${b.id}`,
         label: `${b.label}${b.ask !== 'nothing' ? '…' : ''}`,
@@ -523,6 +471,8 @@
   function onNewMenu(p: ProjectView, id: string) {
     if (id === 'claude') void newSession(p);
     else if (id === 'terminal') void newTerminal(p);
+    else if (id === 'pane-claude') void newPane('claude');
+    else if (id === 'pane-shell') void newPane('shell');
     else {
       const b = p.buttons.find((x) => `button:${x.id}` === id);
       if (b) void runButton(b);
@@ -568,7 +518,6 @@
       ...(!s.projectId
         ? []
         : [s.position == null ? { id: 'pin', label: 'Pin to top' } : { id: 'unpin', label: 'Unpin' }]),
-      ...(hiddenTabs.includes(s.id) ? [] : [{ id: 'hide', label: 'Hide tab' }]),
       { id: 'pause', label: s.status === 'paused' ? 'Resume session' : 'Pause session' },
       ...plugin,
       ...buttons,
@@ -591,7 +540,6 @@
     else if (id === 'close') close(s);
     else if (id === 'compact') compact(s);
     else if (id === 'claude-here') void claudeHere(s);
-    else if (id === 'hide') hideTab(s);
     else if (id === 'pin') pinSession(s);
     else if (id === 'unpin') unpinSession(s);
     else if (id.startsWith('button:')) {
@@ -703,17 +651,17 @@
   let dragSession: string | null = null;
   /**
    * Drop the dragged session next to `target` in `list` (the project's sessions in tab or sidebar order).
-   * Tabs only change the tab order; in the sidebar a dragged session is pinned on top.
+   * A dragged session is pinned on top.
    */
-  function dropSession(list: Session[], target: Session, after: boolean, tabs = false) {
+  function dropSession(list: Session[], target: Session, after: boolean) {
     const id = dragSession;
     dragSession = null;
     if (!id || !list.some((s) => s.id === id)) return; // another project's session
     const i = list.indexOf(target) + (after ? 1 : 0);
-    const positions = dropPositions(list, id, list[i]?.id ?? null, tabs);
+    const positions = dropPositions(list, id, list[i]?.id ?? null);
     if (!Object.keys(positions).length) return;
-    for (const s of list) if (s.id in positions) s[tabs ? 'tabPosition' : 'position'] = positions[s.id];
-    void api('sessionsReorder', { body: { positions, tabs } }).catch(toastError);
+    for (const s of list) if (s.id in positions) s.position = positions[s.id];
+    void api('sessionsReorder', { body: { positions } }).catch(toastError);
   }
   /** Pins a session below the project's pinned ones. */
   function pinSession(s: Session) {
@@ -741,7 +689,7 @@
   }
 
   function selectTab(i: number) {
-    const s = tabs[(i + tabs.length) % tabs.length];
+    const s = sessions[(i + sessions.length) % sessions.length];
     if (s) location.hash = sessionHref(s);
   }
 
@@ -764,7 +712,7 @@
 
   function onKeydown(e: KeyboardEvent) {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
-    const index = tabs.findIndex((s) => s.id === active?.id);
+    const index = sessions.findIndex((s) => s.id === root?.id);
     const digit = /^Digit([1-9])$/.exec(e.code);
     if (digit) selectTab(Number(digit[1]) - 1);
     else if (e.key === '?' || e.code === 'Slash') ui.shortcuts = !ui.shortcuts;
@@ -828,9 +776,9 @@
     <!-- The fold chevron sits in the gutter left of the row, so a folded session takes one line. -->
     <div class="folder">
       <SessionRow
-        session={s}
+        session={rolledUp(s)}
         href={sessionHref(s)}
-        selected={s.id === active?.id}
+        selected={s.id === root?.id}
         closing={app.closing[s.id]}
         onmenu={(at) => (menu = { session: s, ...at })}
         ondragstart={dragSessionStart(s)}
@@ -1081,7 +1029,7 @@
           <hr class="rail-group" title={group.name} />
           {#each group.projects as p (p.id)}
             {@const list = sessionsOf(p.id)}
-            {@const badge = projectBadge(list)}
+            {@const badge = projectBadge(list.map(rolledUp))}
             <a
               class="rail-item"
               class:selected={p.id === project?.id}
@@ -1139,7 +1087,7 @@
       body="Or open the global Claude with Alt G."
     />
   {:else}
-    <TabBar label="Sessions">
+    <TabBar label="Panes">
       {#snippet leading()}
         <span class="project" title={[project.path, project.resolvedIcon.host].filter(Boolean).join(' · ')}>
           <ProjectIcon icon={project.resolvedIcon} name={project.name} size="sm" />
@@ -1147,7 +1095,7 @@
         </span>
       {/snippet}
       {#if !split}
-        {#each tabs as s (s.id)}
+        {#each panes as s (s.id)}
           <SessionTab
             session={s}
             selected={s.id === active?.id}
@@ -1155,12 +1103,9 @@
             bind:renaming={() => renamingId === s.id, (v) => (renamingId = v ? s.id : null)}
             onselect={() => (location.hash = sessionHref(s))}
             onrename={(name) => rename(s, name)}
-            onhide={() => hideTab(s)}
             onclose={() => close(s)}
             oncompact={() => compact(s)}
             onmenu={(at) => (menu = { session: s, ...at })}
-            ondragstart={dragSessionStart(s)}
-            ondrop={(after) => dropSession(sessions, s, after, true)}
           />
         {/each}
       {/if}
@@ -1196,7 +1141,7 @@
             variant="ghost"
             icon="services"
             pressed={panelOpen}
-            title="Services and terminals (Alt D)"
+            title="Services (Alt D)"
             onclick={() => (panelOpen = !panelOpen)}
             ><span class="label">Services</span>{#if services.length}<span class="count">{services.length}</span
               >{/if}</Button
@@ -1213,8 +1158,8 @@
       {/snippet}
     </TabBar>
 
-    {#if split && sessions.length}
-      <SplitView {sessions} selectedId={active?.id} onselect={(id) => go('p', project.id, id)}>
+    {#if split && panes.length}
+      <SplitView sessions={panes} selectedId={active?.id} onselect={(id) => go('p', project.id, id)}>
         {#snippet pane(s)}
           <TerminalView sessionId={s.id} accent={project.accent} label={s.name} compact />
         {/snippet}
@@ -1226,7 +1171,7 @@
       <CommandChip session={active} onterminal={newShell} />
     {:else}
       <EmptyState
-        title={sessions.length ? 'All tabs hidden' : 'No session yet'}
+        title="No session yet"
         body={sessions.length
           ? 'Open a session from the sidebar or start one with Alt N.'
           : 'Start one here or with Alt N.'}
@@ -1235,31 +1180,20 @@
       </EmptyState>
     {/if}
 
-    {#if panelOpen && active}
+    {#if panelOpen && root}
       <BottomPanel
-        tabs={panelTabs}
-        active={panelTabs.some((t) => t.id === panelTab) ? panelTab : 'services'}
-        onselect={(id) => (panelTab = id)}
-        onnew={() => newShell()}
-        onclose={(id) => {
-          const s = shells.find((x) => x.id === id);
-          if (s) close(s);
-        }}
+        tabs={[{ id: 'services', label: 'Services' }]}
+        active="services"
+        onselect={() => {}}
         onhide={() => (panelOpen = false)}
         context={services[0]?.project}
       >
-        {#if panelTab !== 'services' && shells.some((s) => s.id === panelTab)}
-          {#key panelTab}
-            <TerminalView sessionId={panelTab} accent={project.accent} label="Plain terminal" compact focused />
-          {/key}
-        {:else}
-          <ServicesTree
-            containers={services}
-            onaction={(a, c) => serviceAction(a, c, active)}
-            loadLogs={serviceLogs}
-            loadInspect={serviceInspect}
-          />
-        {/if}
+        <ServicesTree
+          containers={services}
+          onaction={(a, c) => serviceAction(a, c, root)}
+          loadLogs={serviceLogs}
+          loadInspect={serviceInspect}
+        />
       </BottomPanel>
     {/if}
   {/if}

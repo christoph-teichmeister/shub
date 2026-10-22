@@ -208,7 +208,7 @@ export interface Session {
   permissionMode: LaunchPermissionMode;
   /** "chris" or "session:<id>" or "plugin:<name>". */
   startedBy: string;
-  /** Parent shell/claude session for plain terminals. */
+  /** The session this one is a pane of in the control center (a second Claude or a terminal). */
   parentId: string | null;
   links: SessionLink[];
   createdAt: string;
@@ -288,7 +288,7 @@ export interface StartSessionRequest {
   buttonId?: string;
   input?: string;
   prompt?: string;
-  parentId?: string; // kind "shell": its panel; a shell without one is a tab of its own (cwd defaults to the project folder)
+  parentId?: string; // a pane of that session (Claude or shell, cwd defaults to its folder); a shell without one is a session of its own (cwd defaults to the project folder)
   /** Defaults to the parent's cwd, else the project folder. Without a parent it must be one of the project's worktrees. */
   cwd?: string;
   /** kind "claude" only: reopen this old Claude conversation (from oldSessions) with `--resume`. */
