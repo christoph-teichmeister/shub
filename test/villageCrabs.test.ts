@@ -162,3 +162,19 @@ test('a crab jumping the line walks down past the waiting ones without touching 
   for (const [i, c] of line.entries()) assert.deepEqual([Math.round(c.x), Math.round(c.y)], [0, slots[i]]);
   assert.equal(first.y, 56);
 });
+
+test('every working crab sits at a desk of its own, and the district makes room for them', () => {
+  const projects = [{ id: 'a', name: 'a', group: 'work', color: '#66d9ef' }];
+  const mk = (crabs: number) =>
+    buildWorld({ groups: ['work'], projects, active: new Set(['a']), activeOnly: false, crabs: { a: crabs } });
+  const w = mk(4);
+  const house = w.houses.a;
+  assert.equal(house.desks.length, 4);
+  assert.ok(w.districts[0].h > mk(1).districts[0].h, 'a second desk row needs a taller district');
+  const spots = crabSpots(w, [crab('working'), crab('working'), crab('working'), crab('working')], [], 0);
+  const at = spots.map((s) => `${s.x},${s.y}`);
+  assert.equal(new Set(at).size, 4, 'no two crabs share a desk');
+  for (const d of house.desks) assert.ok(inRect(d.x, d.y, house.district, -8));
+  assert.equal(mk(1).houses.a.desks.length, 1);
+  assert.equal(mk(99).houses.a.desks.length, 6);
+});

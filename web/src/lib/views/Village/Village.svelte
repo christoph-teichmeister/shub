@@ -71,18 +71,28 @@
       .map((p) => ({ id: p.id, name: p.name, group: p.group, color: p.accent })),
   );
   const active = $derived(new Set(sessions.flatMap((s) => (s.projectId ? [s.projectId] : []))));
-  // The map only changes with the projects shown and which of them have a session, not on every status change.
+  // Crabs per project: every one gets a desk, so the district grows with them.
+  const crabCount = $derived(
+    sessions.reduce<Record<string, number>>(
+      (n, s) => (s.projectId ? { ...n, [s.projectId]: (n[s.projectId] ?? 0) + 1 } : n),
+      {},
+    ),
+  );
+  // The map only changes with the projects shown, which of them have a session and how many, not on every status change.
   const worldKey = $derived(
     JSON.stringify([
       app.config?.groups,
       projects,
       activeOnly,
       projects.filter((p) => active.has(p.id)).map((p) => p.id),
+      crabCount,
     ]),
   );
   const world = $derived.by(() => {
     void worldKey;
-    return untrack(() => buildWorld({ groups: app.config?.groups ?? [], projects, active, activeOnly }));
+    return untrack(() =>
+      buildWorld({ groups: app.config?.groups ?? [], projects, active, activeOnly, crabs: crabCount }),
+    );
   });
 
   // Join order of the queue survives between updates; queueOrder hands back the new one.
@@ -326,7 +336,12 @@
 
   // ---------- what each crab shows ----------
   const projectById = $derived(new Map(app.projects.map((p) => [p.id, p])));
-  const workingIn = $derived(new Set(sessions.filter((s) => s.status === 'working').map((s) => s.projectId)));
+  const workingIn = $derived(
+    sessions.reduce<Record<string, number>>(
+      (n, s) => (s.status === 'working' && s.projectId ? { ...n, [s.projectId]: (n[s.projectId] ?? 0) + 1 } : n),
+      {},
+    ),
+  );
   /** After dark: a glow on every lit window and on your desk lamp. */
   const lights = $derived<Point[]>(
     dark
@@ -855,10 +870,12 @@
           />
         {/each}
         {#each Object.values(world.houses) as h (h.project.id)}
-          {@const working = workingIn.has(h.project.id)}
+          {@const busy = workingIn[h.project.id] ?? 0}
+          {@const working = busy > 0}
           <House
             house={h}
             {working}
+            {busy}
             lit={working || (dark && h.active)}
             {t}
             dim={dim(h.district.id)}

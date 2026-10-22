@@ -32,6 +32,8 @@ export interface District {
   hatName: string;
   projects: VillageProject[];
   cols: number;
+  /** Height of a row of houses. */
+  rowH: number;
   x: number;
   y: number;
   w: number;
@@ -49,7 +51,14 @@ export interface House {
   /** Has a session; without one the house is boarded up. */
   active: boolean;
   /** Bottom centre of its workbench, below the name plate. */
-  desk: { x: number; y: number };
+  desk: Point2;
+  /** One workbench per crab of the house (at least one), `desk` first. */
+  desks: Point2[];
+}
+
+interface Point2 {
+  x: number;
+  y: number;
 }
 
 export interface Decor {
@@ -106,6 +115,8 @@ export interface WorldInput {
   active: ReadonlySet<string>;
   /** Leave out projects without a session. */
   activeOnly: boolean;
+  /** Crabs per project: each gets a desk of its own, and the district makes room for them. */
+  crabs?: Readonly<Record<string, number>>;
 }
 
 /** Hat per group: by name when it matches, else in turn. */
@@ -148,6 +159,15 @@ export const machineSpot = (h: House, i: number) => ({ x: h.x - 72, y: h.y - 8 -
 
 const CW = 184; // house cell: the house, machines on its left, tents on its right
 const CH = 176;
+/** Workbenches of a house: three to a row, rows this far apart; more crabs than MAX_DESKS share them. */
+const DESKS_PER_ROW = 3;
+const DESK_ROW = 64;
+export const MAX_DESKS = 6;
+/** Bottom centre of the i-th workbench: the first as ever, the next to its left and right, then a row further down. */
+export const deskSpot = (h: Point2, i: number): Point2 => ({
+  x: h.x + 26 + [0, -56, 56][i % DESKS_PER_ROW],
+  y: h.y + 86 + Math.floor(i / DESKS_PER_ROW) * DESK_ROW,
+});
 // Every layout length below is a whole number of tiles, so district fences, gates and roads share the grid.
 const M = 18 * TILE; // the outskirts: map margin on every side
 const GAP = 12 * TILE; // between districts
@@ -161,6 +181,8 @@ const QUEUE_STEP = 56;
 const QUEUE_FIRST = 184;
 /** Up to the next grid line. */
 const snap = (v: number) => Math.ceil(v / TILE) * TILE;
+
+const deskCount = (n = 0) => Math.min(Math.max(n, 1), MAX_DESKS);
 
 /** FNV-1a, for per-id jitter. */
 export function hash(s: string): number {
@@ -207,7 +229,7 @@ const DECOR: [number, string, number, number][] = [
   [0.66, 'stump', 32, 22],
 ];
 
-export function buildWorld({ groups, projects, active, activeOnly }: WorldInput): World {
+export function buildWorld({ groups, projects, active, activeOnly, crabs = {} }: WorldInput): World {
   const names = [...groups];
   for (const p of projects) if (!names.includes(p.group)) names.push(p.group);
   const shown = projects.filter((p) => !activeOnly || active.has(p.id));
@@ -219,6 +241,8 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
       const cells = ps.length + 1; // + the free lot
       const cols = Math.max(2, Math.ceil(Math.sqrt(cells * 1.4)));
       const rows = Math.ceil(cells / cols);
+      // Extra desk rows push the house rows apart.
+      const rowH = CH + (Math.max(...ps.map((p) => deskCount(crabs[p.id])), 1) > DESKS_PER_ROW ? DESK_ROW : 0);
       const outfit = outfitOf(id, i);
       return {
         id,
@@ -229,7 +253,8 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
         x: 0,
         y: 0,
         w: snap(80 + cols * CW),
-        h: snap(160 + rows * CH),
+        h: snap(160 + rows * rowH),
+        rowH,
         gate: [0, 0] as Point,
       };
     })
@@ -295,12 +320,13 @@ export function buildWorld({ groups, projects, active, activeOnly }: WorldInput)
       const r = Math.floor(i / d.cols);
       return {
         x: d.x + 30 + c * CW + CW / 2 + (id === null ? 0 : (h % 25) - 12),
-        y: d.y + 100 + r * CH + 110 + (c % 2) * 20 + (id === null ? 0 : ((h >> 5) % 13) - 6),
+        y: d.y + 100 + r * d.rowH + 110 + (c % 2) * 20 + (id === null ? 0 : ((h >> 5) % 13) - 6),
       };
     };
     d.projects.forEach((p, i) => {
       const at = cell(i, p.id);
-      houses[p.id] = { ...at, project: p, district: d, active: active.has(p.id), desk: { x: at.x + 26, y: at.y + 86 } };
+      const desks = Array.from({ length: deskCount(crabs[p.id]) }, (_, k) => deskSpot(at, k));
+      houses[p.id] = { ...at, project: p, district: d, active: active.has(p.id), desk: desks[0], desks };
     });
     // No jitter, and a little to the right: the house before it may lean its way with tents on its right.
     const n = d.projects.length;
