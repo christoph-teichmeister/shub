@@ -1413,7 +1413,73 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await page.keyboard.press('Alt+KeyV');
   await expect(page.getByRole('heading', { name: 'Crab Village' })).toBeVisible();
   await showAll();
-  await map.getByRole('button', { name: /^MR 311 review/ }).dblclick();
+
+  // Chat in the map: opening a crab opens its terminal in a floating window and the village stays; keys go to it.
+  const mr = map.getByRole('button', { name: /^MR 311 review/ });
+  await mr.dblclick();
+  const chat = page.getByRole('region', { name: 'Chat', exact: true });
+  const tabs = chat.getByRole('tab');
+  await expect(chat.getByRole('region', { name: 'MR 311 review' })).toBeVisible();
+  await expect(tabs).toHaveText(['MR 311 review, waiting']);
+  await expect(page).toHaveURL(/#\/village$/);
+  await expect(mr).toHaveClass(/ring/);
+  await expect(chat.locator('textarea')).toBeFocused();
+  await page.keyboard.press('d'); // typed into the terminal: you stay at your desk
+  await expect(map.locator('.obj.me')).toHaveCount(0);
+  // A click on the bare map takes the keys back; the queue keys open a second crab in a second tab.
+  await page.mouse.click((await map.boundingBox())!.x + 6, (await map.boundingBox())!.y + 6);
+  await expect(map).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(tabs).toHaveText(['MR 311 review, waiting', 'Export CSV fix, needs you']);
+  await expect(chat.getByRole('tab', { name: /^Export CSV fix/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(chat.locator('textarea')).toBeFocused();
+  await expect(page).toHaveURL(/#\/village$/);
+  // The title bar drags the window, the corner grip resizes it; both stay in localStorage.
+  const at = async () => (await chat.boundingBox())!;
+  const b0 = await at();
+  const handle = async (l: Locator, dx: number, dy: number) => {
+    const h = (await l.boundingBox())!;
+    await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(h.x + h.width / 2 + dx, h.y + h.height / 2 + dy, { steps: 4 });
+    await page.mouse.up();
+  };
+  await handle(chat.locator('.grow'), -200, -150);
+  const b1 = await at();
+  expect([Math.round(b1.x - b0.x), Math.round(b1.y - b0.y), b1.width, b1.height]).toEqual([
+    -200,
+    -150,
+    b0.width,
+    b0.height,
+  ]);
+  await handle(chat.locator('.grip'), 60, 40);
+  const b2 = await at();
+  expect([b2.x, b2.y, Math.round(b2.width - b1.width), Math.round(b2.height - b1.height)]).toEqual([
+    b1.x,
+    b1.y,
+    60,
+    40,
+  ]);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('shub-village-chat')!))).toEqual({
+    x: b2.x,
+    y: b2.y,
+    w: b2.width,
+    h: b2.height,
+  });
+  await page.mouse.move(0, 0);
+  await page.screenshot({ path: shot('chat.png') });
+  // A tab's x closes it; Alt W closes the window and gives the keys back to the map.
+  await chat.getByRole('button', { name: 'Close Export CSV fix' }).click();
+  await expect(tabs).toHaveText(['MR 311 review, waiting']);
+  await chat.locator('textarea').focus();
+  await page.keyboard.press('Alt+KeyW');
+  await expect(chat).toHaveCount(0);
+  await expect(map).toBeFocused();
+  // Opened again, it comes back where it was; "Open full view" leaves for the session.
+  await mr.dblclick();
+  expect(await at()).toEqual(b2);
+  await chat.getByRole('link', { name: 'Open full view' }).click();
   await expect(page).toHaveURL(/#\/p\/vynce\/s3$/);
   expect(errors).toEqual([]);
 });
