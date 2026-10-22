@@ -6,13 +6,15 @@
   interface Props {
     house: House;
     working: boolean;
+    /** Crabs working here: each sits at a desk of its own. */
+    busy: number;
     lit: boolean;
     /** The view's step counter, for the chimney smoke. */
     t: number;
     dim: number;
     onplus: () => void;
   }
-  let { house, working, lit, t, dim, onplus }: Props = $props();
+  let { house, working, busy, lit, t, dim, onplus }: Props = $props();
   const url = (name: string) => `/village/${name}.svg`;
 </script>
 
@@ -54,15 +56,17 @@
   >
 </div>
 {#if house.active}
-  <img
-    class="desk"
-    src={url(working ? 'desk-on' : 'desk-off')}
-    alt=""
-    style:left="{house.desk.x}px"
-    style:top="{house.desk.y}px"
-    style:z-index={house.desk.y}
-    style:opacity={dim}
-  />
+  {#each house.desks as desk, i (i)}
+    <img
+      class="desk"
+      src={url(i < busy ? 'desk-on' : 'desk-off')}
+      alt=""
+      style:left="{desk.x}px"
+      style:top="{desk.y}px"
+      style:z-index={desk.y}
+      style:opacity={dim}
+    />
+  {/each}
 {/if}
 
 <style>

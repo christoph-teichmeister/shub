@@ -25,7 +25,7 @@ export function blockers(w: World): Rect[] {
     h: bh + 2 * m,
   });
   return [
-    ...Object.values(w.houses).flatMap((h) => [box(h.x, h.y, 96, 92), box(h.desk.x, h.desk.y, 52, 36)]),
+    ...Object.values(w.houses).flatMap((h) => [box(h.x, h.y, 96, 92), ...h.desks.map((d) => box(d.x, d.y, 52, 36))]),
     box(w.hall.x, w.hall.y, 132, 124),
     box(w.you.x, w.you.y, 112, 92, TILE / 2),
   ];

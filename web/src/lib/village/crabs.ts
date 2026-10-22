@@ -158,7 +158,8 @@ export function crabSpots<S extends CrabSession>(
       [x, y] = [house.x - 56 - k * 74, house.y + 46];
       pose = 'sleep';
     } else if (s.status === 'working') {
-      [x, y] = [house.desk.x + k * 56, house.desk.y - 14];
+      const desk = house.desks[k % house.desks.length];
+      [x, y] = [desk.x, desk.y - 14];
       pose = 'work';
     } else {
       // new, starting: strolls around its district.
