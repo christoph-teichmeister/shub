@@ -431,12 +431,11 @@
     fitted = false;
   }
   const nudge = (d: number) => zoomTo(Math.round((zoom + d) * 10) / 10);
-  /** A zoom button's click: after a mouse click the keys go back to the map, so WASD walks on; from the keyboard
-   * (Enter, Space: no click count) the focus stays on the button. */
-  const zoomClick = (f: () => void) => (e: MouseEvent) => {
-    f();
-    if (e.detail) viewport?.focus({ preventScroll: true });
-  };
+  /** Any header button's click (bubbled up after its own handler): after a mouse click the keys go back to the map,
+   * so WASD walks on; from the keyboard (Enter, Space: no click count) the focus stays on the button. */
+  function headerClick(e: MouseEvent) {
+    if (e.detail && (e.target as Element).closest('button')) viewport?.focus({ preventScroll: true });
+  }
   // Fitted follows the window and the map; a free camera only keeps the map covering the window.
   $effect(() => {
     if (!vw || !vh) return;
@@ -751,7 +750,8 @@
 <svelte:window onkeydowncapture={onKeydown} />
 
 <div class="village">
-  <header>
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <header onclick={headerClick}>
     <a class="btn" href={villageBack()} title="Back to shub (Alt V)">← shub</a>
     <h1>Crab Village</h1>
     <div class="chips">
@@ -797,9 +797,9 @@
       onclick={toggleChime}>Chime</button
     >
     <div class="row seg" role="group" aria-label="Zoom">
-      <button type="button" class="btn small" aria-pressed={fitted} onclick={zoomClick(fit)}>Fit</button>
-      <button type="button" class="btn small" aria-label="Zoom out" onclick={zoomClick(() => nudge(-0.1))}>−</button>
-      <button type="button" class="btn small" aria-label="Zoom in" onclick={zoomClick(() => nudge(0.1))}>+</button>
+      <button type="button" class="btn small" aria-pressed={fitted} onclick={fit}>Fit</button>
+      <button type="button" class="btn small" aria-label="Zoom out" onclick={() => nudge(-0.1)}>−</button>
+      <button type="button" class="btn small" aria-label="Zoom in" onclick={() => nudge(0.1)}>+</button>
     </div>
     <span class="muted">{Math.round(zoom * 100)} %</span>
   </header>
