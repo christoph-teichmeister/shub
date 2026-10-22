@@ -767,6 +767,7 @@
       onpointermove={onMove}
       onpointerup={onUp}
       onpointercancel={onUp}
+      ondragstart={(e) => e.preventDefault()}
       onscroll={() => viewport?.scrollTo(0, 0)}
     >
       <div
@@ -1228,6 +1229,10 @@
     background: var(--village-grass) url('/village/tile-grass.svg');
     background-size: calc(var(--village-px) * 32);
     image-rendering: pixelated;
+  }
+
+  .world img {
+    -webkit-user-drag: none;
   }
 
   /* Half the map's size in pixels: one canvas pixel per sprite pixel. */
