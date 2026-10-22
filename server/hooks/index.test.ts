@@ -67,6 +67,30 @@ test('the status line sets the window Claude Code reports', async () => {
   assert.deepEqual(set, [{ tokens: 170_000, window: 1_000_000 }]);
 });
 
+test('the status line reports the 5h/7d limits once per change, and GET /api/usage returns the last', async () => {
+  const events: unknown[] = [];
+  const services = { sessions: { get: () => ({ id: 's1' }) } } as unknown as Services;
+  const handlers: Array<(req: Request) => Promise<unknown>> = [];
+  const router = {
+    add: (_spec: string, h: (req: Request) => Promise<unknown>) => handlers.push(h),
+  } as unknown as Router;
+  create({ bus: { emit: (e: unknown) => events.push(e) } } as unknown as Context, services).module.routes!(router);
+  const usage = handlers[0]!;
+  const hook = handlers.at(-1)!;
+  const line = (payload: object) =>
+    hook({
+      caller: { id: 'session:s1' },
+      params: { event: 'StatusLine' },
+      json: async () => payload,
+    } as unknown as Request);
+  const limits = { five_hour: { used_percentage: 42, resets_at: 100 }, seven_day: { used_percentage: 7 } };
+  await line({ rate_limits: limits });
+  await line({ rate_limits: limits });
+  await line({});
+  assert.equal(events.length, 1);
+  assert.deepEqual(await usage({} as Request), { fiveHour: { used: 42, resetsAt: 100 }, sevenDay: { used: 7 } });
+});
+
 test('hooks of an installed app go through current, so pruning an old version does not break sessions', () => {
   const home = mkdtempSync(join(tmpdir(), 'shub-home-'));
   const appDir = join(home, 'versions', '1.0.0');

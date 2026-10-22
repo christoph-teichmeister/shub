@@ -2,7 +2,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import { ROUTES } from '../../shared/api.ts';
+import { ROUTES, type Usage, type UsageLimit } from '../../shared/api.ts';
 import { HttpError } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
@@ -106,11 +106,20 @@ export function hookSettings(appDir: string, stateDir: string, statusLine?: Reco
   };
 }
 
+function limit(raw: unknown): UsageLimit | undefined {
+  const { used_percentage: used, resets_at: resetsAt } = (raw ?? {}) as Record<string, unknown>;
+  if (typeof used !== 'number') return undefined;
+  return { used, ...(typeof resetsAt === 'number' && { resetsAt }) };
+}
+
 export function create(ctx: Context, services: Services): { module: ShubModule } {
+  // The limits belong to the account, not a session: keep the newest report of any session.
+  let usage: Usage = {};
   return {
     module: {
       name: 'hooks',
       routes(router) {
+        router.add(ROUTES.usage, () => usage);
         router.add(ROUTES.guard, async (req) => {
           const sessionId = /^session:(.+)$/.exec(req.caller.id)?.[1];
           const session = sessionId ? services.sessions.get(sessionId) : undefined;
@@ -134,8 +143,20 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
           const session = sessionId ? services.sessions.get(sessionId) : undefined;
           if (!session) throw new HttpError(403, 'hooks only come from shub sessions');
           if (req.params.event === 'StatusLine') {
-            const window = (await req.json<{ context_window?: { context_window_size?: unknown } }>()).context_window
-              ?.context_window_size;
+            const input = await req.json<{
+              context_window?: { context_window_size?: unknown };
+              rate_limits?: { five_hour?: unknown; seven_day?: unknown };
+            }>();
+            const window = input.context_window?.context_window_size;
+            const fiveHour = limit(input.rate_limits?.five_hour);
+            const sevenDay = limit(input.rate_limits?.seven_day);
+            if (
+              (fiveHour || sevenDay) &&
+              JSON.stringify([fiveHour, sevenDay]) !== JSON.stringify([usage.fiveHour, usage.sevenDay])
+            ) {
+              usage = { fiveHour, sevenDay };
+              ctx.bus.emit({ type: 'usage.updated', usage });
+            }
             if (session.context && typeof window === 'number' && window > 0)
               services.sessions.setContext(session.id, { ...session.context, window });
             return { ok: true };
