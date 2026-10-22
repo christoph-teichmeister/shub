@@ -1232,6 +1232,53 @@ test('the crab village draws every session as a crab, queues the ones that need 
   expect(Math.abs(wa.y + under.y * wa.height - (c0.y + 250))).toBeLessThan(2);
   await expect(page.getByRole('button', { name: 'Fit' })).toHaveAttribute('aria-pressed', 'false');
   expect(await covers()).toBe(true);
+
+  // Touch: one finger pans, two fingers pinch (here in) around their centre, lifting them does not jump the camera; a tap opens.
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', points: { x: number; y: number }[]) =>
+    cdp.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints: points.map((p, id) => ({ x: p.x, y: p.y, id })),
+    });
+  const cx = c0.x + 300;
+  const cy = c0.y + 250;
+  const t0 = await origin();
+  await touch('touchStart', [{ x: cx, y: cy }]);
+  for (const k of [0.5, 1]) await touch('touchMove', [{ x: cx + 30 * k, y: cy + 20 * k }]);
+  await touch('touchEnd', []);
+  await expect.poll(async () => Math.round((await origin()).x - t0.x)).toBe(30); // one finger pans
+  expect(Math.round((await origin()).y - t0.y)).toBe(20);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const pb = await origin();
+  const pu = { x: (cx - pb.x) / pb.width, y: (cy - pb.y) / pb.height };
+  await touch('touchStart', [{ x: cx - 80, y: cy }]);
+  await touch('touchStart', [
+    { x: cx - 80, y: cy },
+    { x: cx + 80, y: cy },
+  ]);
+  for (const d of [70, 60])
+    await touch('touchMove', [
+      { x: cx - d, y: cy },
+      { x: cx + d, y: cy },
+    ]);
+  await expect.poll(async () => (await origin()).width / pb.width).toBeCloseTo(60 / 80, 2);
+  const pa = await origin();
+  expect(Math.abs(pa.x + pu.x * pa.width - cx)).toBeLessThan(2);
+  expect(Math.abs(pa.y + pu.y * pa.height - cy)).toBeLessThan(2);
+  // The fingers lift one after the other (CDP sends one pointerup each): the camera stays where the pinch left it.
+  // CDP cannot lift one finger and move the other on, so the remaining finger's drag is not driven here.
+  await touch('touchEnd', []);
+  await page.waitForTimeout(100);
+  expect(await origin()).toEqual(pa);
+  await expect(page.getByRole('dialog')).toHaveCount(0); // a pinch is no click
+  expect(await covers()).toBe(true);
+  await page.getByRole('button', { name: 'Fit' }).click();
+  const tapAt = (await crab2.boundingBox())!;
+  await touch('touchStart', [{ x: tapAt.x + tapAt.width / 2, y: tapAt.y + tapAt.height / 2 }]);
+  await touch('touchEnd', []);
+  await expect(page.getByRole('dialog', { name: 'Export CSV fix' })).toBeVisible();
+  await page.keyboard.press('Escape');
+
   await page.getByRole('button', { name: 'Fit' }).click();
   await crab2.click();
   await expect(page.getByRole('dialog', { name: 'Export CSV fix' })).toBeVisible();

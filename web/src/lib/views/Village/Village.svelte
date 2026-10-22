@@ -23,7 +23,16 @@
     type Mood,
   } from '../../village/crabs.ts';
   import { CHEER_STEPS, cheerFrame, isDark, timeOfDay, TIMES, type TimeOfDay } from '../../village/ambience.ts';
-  import { clampPan, clampZoom, fitWorld, minZoom, zoomAt, type Pan } from '../../village/camera.ts';
+  import {
+    clampPan,
+    clampZoom,
+    fitWorld,
+    minZoom,
+    pinchZoom,
+    zoomAt,
+    type Pan,
+    type PinchStart,
+  } from '../../village/camera.ts';
   import { closeTab, keepTabs, NO_CHATS, openTab, type Chats, type Rect } from '../../village/chats.ts';
   import { findPath, goalKey } from '../../village/path.ts';
   import { autotiles, LAYERS, TILE } from '../../village/tiles.ts';
@@ -472,11 +481,43 @@
 
   let drag: { id: number; x: number; y: number; px: number; py: number; on: boolean } | null = null;
   let dragged = false;
+  /** Fingers (or pens) down on the map, in client px; two of them pinch. */
+  const touches = new Map<number, Pan>();
+  let pinch: PinchStart | null = null;
+  /** Midpoint (in viewport px) and distance of the first two fingers. */
+  function pair() {
+    const [a, b] = [...touches.values()];
+    const r = viewport!.getBoundingClientRect();
+    const mid = {
+      x: (a.x + b.x) / 2 - r.left - viewport!.clientLeft,
+      y: (a.y + b.y) / 2 - r.top - viewport!.clientTop,
+    };
+    return { mid, dist: Math.hypot(a.x - b.x, a.y - b.y) };
+  }
   function onDown(e: PointerEvent) {
     if (e.button !== 0 || (e.target as Element).closest('input, textarea, select, [data-keep]')) return;
+    if (e.pointerType !== 'mouse') touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 2) {
+      // A second finger: the pan-drag stops, a pinch starts from the camera as it is now.
+      drag = null;
+      for (const id of touches.keys()) viewport?.setPointerCapture(id);
+      pinch = { pan, zoom, ...pair() };
+      return;
+    }
+    if (touches.size > 2) return;
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY, px: pan.x, py: pan.y, on: false };
   }
   function onMove(e: PointerEvent) {
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && touches.size >= 2) {
+      const { mid, dist } = pair();
+      const r = pinchZoom(pinch, mid, dist, minZ);
+      zoom = r.zoom;
+      pan = clampPan(r.pan, zoom, world, vw, vh);
+      fitted = false;
+      following = false;
+      return;
+    }
     if (!drag || e.pointerId !== drag.id) return;
     const dx = e.clientX - drag.x;
     const dy = e.clientY - drag.y;
@@ -490,12 +531,22 @@
     fitted = false;
     following = false;
   }
-  function onUp() {
+  function onUp(e: PointerEvent) {
+    touches.delete(e.pointerId);
+    // A finger of a pinch lifted: the pinch (two left) or a drag by the last finger goes on from the camera as it
+    // is now, so the camera does not jump.
+    if (pinch && touches.size >= 2) pinch = { pan, zoom, ...pair() };
+    else if (pinch) {
+      pinch = null;
+      const [[id, p] = []] = [...touches];
+      if (id !== undefined && p) drag = { id, x: p.x, y: p.y, px: pan.x, py: pan.y, on: true };
+    }
+    // The finger left over from a pinch drags (on), so the click when it lifts is swallowed too.
     if (drag?.on) {
       dragged = true;
       setTimeout(() => (dragged = false), 0);
     }
-    drag = null;
+    if (!drag || drag.id === e.pointerId) drag = null;
   }
   /** The click that ends a drag is no click. */
   function onClickCapture(e: MouseEvent) {
