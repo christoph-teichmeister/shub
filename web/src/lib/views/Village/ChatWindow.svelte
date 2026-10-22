@@ -1,12 +1,13 @@
 <script lang="ts">
   // The live terminal of the crabs you opened, in a window floating over the map: a tab per crab, dragged by its
-  // title bar, resized at its corner, kept inside the browser window; where it sits stays in localStorage.
+  // title bar, resized at its corner, kept inside the browser window. It opens beside the crab you opened (`near`)
+  // until you first drag or resize it; from then on that rect stays in localStorage and wins.
   import type { Session } from '../../../../../shared/api.ts';
   import TerminalView from '../../components/TerminalView/TerminalView.svelte';
   import { app, sessionHref } from '../../stores/state.svelte.ts';
   import { STATUS_LABEL } from '../../status.ts';
   import { tabKeys } from '../../tabKeys.ts';
-  import { clampRect, type Rect } from '../../village/chats.ts';
+  import { beside, clampRect, type Rect } from '../../village/chats.ts';
 
   interface Props {
     tabs: Session[];
@@ -15,8 +16,10 @@
     onclosetab: (id: string) => void;
     /** The x and Alt W: closes every tab. */
     onclose: () => void;
+    /** The opened crab's box in browser-window px: the window opens beside it (read once, when it opens). */
+    near?: Rect;
   }
-  let { tabs, active, onselect, onclosetab, onclose }: Props = $props();
+  let { tabs, active, onselect, onclosetab, onclose, near }: Props = $props();
 
   const KEY = 'shub-village-chat';
   let iw = $state(innerWidth);
@@ -31,9 +34,10 @@
       const r = JSON.parse(localStorage.getItem(KEY) ?? '');
       if ([r.x, r.y, r.w, r.h].every(Number.isFinite)) return r;
     } catch {}
-    // First time: bottom right, out of the way of the desk in the middle.
     const w = Math.min(720, innerWidth - 48);
     const h = Math.min(460, innerHeight - 48);
+    if (near) return beside(near, w, h, innerWidth, innerHeight);
+    // No crab to sit beside: bottom right, out of the way of the desk in the middle.
     return { x: innerWidth - w - 24, y: innerHeight - h - 24, w, h };
   }
 
@@ -44,7 +48,7 @@
   }
 
   /** A pointer on the title bar moves the window, on the corner grip resizes it. */
-  let grab: { id: number; x: number; y: number; r: Rect; resize: boolean } | null = null;
+  let grab: { id: number; x: number; y: number; r: Rect; resize: boolean; moved?: boolean } | null = null;
   function down(e: PointerEvent, resize: boolean) {
     if (e.button !== 0 || (!resize && (e.target as Element).closest('button, a'))) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
@@ -55,6 +59,7 @@
     const { r } = grab;
     const dx = e.clientX - grab.x;
     const dy = e.clientY - grab.y;
+    grab.moved = true;
     rect = clampRect(
       grab.resize
         ? { ...r, w: Math.min(r.w + dx, iw - r.x), h: Math.min(r.h + dy, ih - r.y) }
@@ -65,7 +70,10 @@
   }
   function up() {
     if (!grab) return;
+    // A plain click on the title bar keeps the placement beside the crab; only a drag or resize is saved.
+    const { moved } = grab;
     grab = null;
+    if (!moved) return;
     try {
       localStorage.setItem(KEY, JSON.stringify(rect));
     } catch {}

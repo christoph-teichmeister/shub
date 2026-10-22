@@ -24,7 +24,7 @@
   } from '../../village/crabs.ts';
   import { CHEER_STEPS, cheerFrame, isDark, timeOfDay, TIMES, type TimeOfDay } from '../../village/ambience.ts';
   import { clampPan, clampZoom, fitWorld, minZoom, zoomAt, type Pan } from '../../village/camera.ts';
-  import { closeTab, keepTabs, NO_CHATS, openTab, type Chats } from '../../village/chats.ts';
+  import { closeTab, keepTabs, NO_CHATS, openTab, type Chats, type Rect } from '../../village/chats.ts';
   import { findPath, goalKey } from '../../village/path.ts';
   import { autotiles, LAYERS, TILE } from '../../village/tiles.ts';
   import { advance, blocked, direction, inReach, SPEED, standSpot } from '../../village/walk.ts';
@@ -548,8 +548,21 @@
   let chat = $state<ChatWindow>();
   /** The tabs whose session is still there: a vanished one closes itself. */
   const live = $derived(keepTabs(chats, new Set(sessions.map((s) => s.id))));
+  /** The opened crab's box in browser-window px, where a closed chat window opens beside it. */
+  let near = $state<Rect>();
   function open(s: Session) {
     if (ui.phone) return void (location.hash = sessionHref(s));
+    const c = spots.find((x) => x.session.id === s.id);
+    const v = viewport?.getBoundingClientRect();
+    if (!live.active && c && v) {
+      const p = at(c);
+      near = {
+        x: v.left + pan.x + (p.x - 30) * zoom,
+        y: v.top + pan.y + (p.y - 60) * zoom,
+        w: 60 * zoom,
+        h: 60 * zoom,
+      };
+    }
     chats = openTab(live, s.id);
     void tick().then(() => chat?.focus());
   }
@@ -1057,6 +1070,7 @@
   {#if live.active && !ui.phone}
     <ChatWindow
       bind:this={chat}
+      {near}
       tabs={live.ids.flatMap((id) => sessions.find((s) => s.id === id) ?? [])}
       active={live.active}
       onselect={(id) => (chats = { ...live, active: id })}
