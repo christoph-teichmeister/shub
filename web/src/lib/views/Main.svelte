@@ -1771,7 +1771,7 @@
   .meter-bar {
     flex: 1 1 auto;
     height: var(--space-1);
-    border-radius: var(--radius-round);
+    border-radius: var(--radius-pill);
     background: var(--raised);
     overflow: hidden;
   }
