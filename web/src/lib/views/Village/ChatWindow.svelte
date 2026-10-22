@@ -25,6 +25,8 @@
   let iw = $state(innerWidth);
   let ih = $state(innerHeight);
   let rect = $state<Rect>(load());
+  /** Folded to the title bar; the terminal stays mounted so the session keeps its scrollback. */
+  let folded = $state(false);
   const box = $derived(clampRect(rect, iw, ih));
   const shown = $derived(tabs.find((s) => s.id === active) ?? tabs[0]);
   const accent = (s: Session) => app.projects.find((p) => p.id === s.projectId)?.accent;
@@ -89,7 +91,7 @@
   style:left="{box.x}px"
   style:top="{box.y}px"
   style:width="{box.w}px"
-  style:height="{box.h}px"
+  style:height={folded ? 'auto' : `${box.h}px`}
 >
   <div
     class="bar"
@@ -128,15 +130,24 @@
     <a class="btn small" href={sessionHref(shown)} title="Leave the village for the session's full view"
       >Open full view</a
     >
+    <button
+      type="button"
+      class="btn small"
+      aria-label={folded ? 'Expand chat' : 'Minimize chat'}
+      aria-expanded={!folded}
+      title={folded ? 'Expand' : 'Minimize'}
+      onclick={() => (folded = !folded)}>{folded ? '▢' : '–'}</button
+    >
     <button type="button" class="btn small" aria-label="Close chat" title="Close (Alt W)" onclick={onclose}>×</button>
   </div>
-  <div class="body" role="tabpanel" aria-label={shown.name}>
+  <div class="body" role="tabpanel" aria-label={shown.name} hidden={folded}>
     {#key shown.id}
       <TerminalView sessionId={shown.id} accent={accent(shown)} label={shown.name} focused compact />
     {/key}
   </div>
   <span
     class="grip"
+    hidden={folded}
     role="presentation"
     title="Resize"
     onpointerdown={(e) => down(e, true)}
@@ -259,6 +270,11 @@
 
   .grow {
     flex: 1 1 var(--space-8);
+  }
+
+  .body[hidden],
+  .grip[hidden] {
+    display: none;
   }
 
   .body {
