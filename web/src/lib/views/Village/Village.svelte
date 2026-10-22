@@ -7,7 +7,7 @@
   import { commandTarget } from '../../../../../shared/commands.ts';
   import { api } from '../../stores/api.ts';
   import { villageBack } from '../../stores/router.svelte.ts';
-  import { app, compact, sendKeys, sessionHref } from '../../stores/state.svelte.ts';
+  import { app, compact, sendKeys, sessionHref, ui } from '../../stores/state.svelte.ts';
   import { toastError } from '../../stores/toasts.svelte.ts';
   import { contextFill, STATUS_LABEL } from '../../status.ts';
   import {
@@ -23,11 +23,13 @@
   } from '../../village/crabs.ts';
   import { CHEER_STEPS, cheerFrame, isDark, timeOfDay, TIMES, type TimeOfDay } from '../../village/ambience.ts';
   import { clampPan, clampZoom, fitWorld, minZoom, zoomAt, type Pan } from '../../village/camera.ts';
+  import { closeTab, keepTabs, NO_CHATS, openTab, type Chats } from '../../village/chats.ts';
   import { findPath, goalKey } from '../../village/path.ts';
   import { autotiles, LAYERS, TILE } from '../../village/tiles.ts';
   import { advance, blocked, direction, inReach, SPEED, standSpot } from '../../village/walk.ts';
   import { buildWorld, type Point, type VillageProject } from '../../village/world.ts';
   import Ambience from './Ambience.svelte';
+  import ChatWindow from './ChatWindow.svelte';
   import Crab, { type Bubble } from './Crab.svelte';
   import CrabCard, { type CardAction } from './CrabCard.svelte';
   import House from './House.svelte';
@@ -502,7 +504,20 @@
   });
 
   // ---------- acting on a crab ----------
-  const open = (s: Session) => (location.hash = sessionHref(s));
+  // Opening a crab opens its tab in the chat window over the map; the phone keeps the full view.
+  let chats = $state<Chats>(NO_CHATS);
+  let chat = $state<ChatWindow>();
+  /** The tabs whose session is still there: a vanished one closes itself. */
+  const live = $derived(keepTabs(chats, new Set(sessions.map((s) => s.id))));
+  function open(s: Session) {
+    if (ui.phone) return void (location.hash = sessionHref(s));
+    chats = openTab(live, s.id);
+    void tick().then(() => chat?.focus());
+  }
+  function closeChats() {
+    chats = NO_CHATS;
+    viewport?.focus();
+  }
   const call = (p: Promise<unknown>) => void p.catch(toastError);
   /** Handed-over commands the session itself can run (CommandChip's Run); the rest need its terminal. */
   const runnable = (s: Session) =>
@@ -683,10 +698,13 @@
   const crabsIn = (id: string) => spots.filter((c) => c.district?.id === id).length;
 
   function onKeydown(e: KeyboardEvent) {
-    if (!e.altKey || e.ctrlKey || e.metaKey || e.code !== 'KeyV') return;
+    if (!e.altKey || e.ctrlKey || e.metaKey) return;
+    // Alt W closes the chat window: Esc in its terminal belongs to Claude.
+    if (e.code === 'KeyW' && live.active) closeChats();
+    else if (e.code === 'KeyV') location.hash = villageBack();
+    else return;
     e.preventDefault();
     e.stopPropagation();
-    location.hash = villageBack();
   }
 </script>
 
@@ -934,7 +952,7 @@
               label={label(c)}
               describedby={hovered === c.session.id ? 'village-card' : undefined}
               dim={dim(c.district?.id)}
-              ring={pinned === c.session.id}
+              ring={pinned === c.session.id || live.active === c.session.id}
               onclick={() => void pin(pinned === c.session.id ? null : c.session.id)}
               ondblclick={() => open(c.session)}
               onenter={() => (hovered = c.session.id)}
@@ -988,11 +1006,24 @@
       >
       walk · <kbd>E</kbd> talk to a crab, sit at your desk · at your desk: <kbd>↑</kbd><kbd>↓</kbd> queue ·
       <kbd>Enter</kbd> open · <kbd>Y</kbd><kbd>N</kbd> allow, deny · <kbd>R</kbd> run · <kbd>Esc</kbd> close ·
-      <kbd>Alt V</kbd> back</span
+      <kbd>Alt W</kbd> close the chat · <kbd>Alt V</kbd> back</span
     >
   </footer>
   {#if building}
     <NewProject group={building.group} onclose={() => (building = null)} />
+  {/if}
+  {#if live.active && !ui.phone}
+    <ChatWindow
+      bind:this={chat}
+      tabs={live.ids.flatMap((id) => sessions.find((s) => s.id === id) ?? [])}
+      active={live.active}
+      onselect={(id) => (chats = { ...live, active: id })}
+      onclosetab={(id) => {
+        chats = closeTab(live, id);
+        if (!chats.active) viewport?.focus();
+      }}
+      onclose={closeChats}
+    />
   {/if}
 </div>
 
