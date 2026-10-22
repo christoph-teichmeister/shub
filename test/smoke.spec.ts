@@ -649,12 +649,15 @@ test('worktrees of closed sessions fold under their own row in the project', asy
     ],
   });
   await page.goto('/#/p/ai-portal/s1');
-  const row = page.getByRole('button', { name: 'Closed sessions 1 worktree' });
+  const row = page.getByRole('button', { name: 'Orphaned worktrees 1 worktree' });
   await expect(row).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByRole('button', { name: /review-3600/ })).toBeHidden();
   await row.click();
   await expect(row).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('button', { name: /review-3600/ })).toBeVisible();
+  await page.getByRole('button', { name: /review-3600/ }).hover();
+  await page.getByRole('button', { name: 'Menu for review-3600' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Delete worktree' })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
