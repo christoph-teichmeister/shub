@@ -1546,3 +1546,42 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect(page).toHaveURL(/#\/p\/vynce\/s3$/);
   expect(errors).toEqual([]);
 });
+
+test('the notes panel (Alt M) saves what you type and offers theirs when Claude changed the file', async ({ page }) => {
+  const draft = { path: '/state/notes/s1.md', text: '# Draft\n', rev: 'r1' };
+  const { errors, calls } = await mockApi(page, {
+    '/api/sessions/s1/notes': draft,
+    'PUT /api/sessions/s1/notes': { rev: 'r2' },
+  });
+  await page.goto('/#/p/ai-portal/s1');
+  await page.getByRole('button', { name: 'Notes' }).click();
+  const editor = page.getByRole('textbox', { name: 'Markdown draft' });
+  await expect(editor).toHaveValue('# Draft\n');
+  await editor.fill('# Draft\nmore');
+  await expect.poll(() => calls.find((c) => c.method === 'PUT')?.body).toEqual({ text: '# Draft\nmore', rev: 'r1' });
+  await expect(page.getByText('saved', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Preview' }).click();
+  await expect(page.getByRole('heading', { name: 'Draft' })).toBeVisible();
+  await page.getByRole('button', { name: 'Write', exact: true }).click();
+  await expect(editor).toHaveValue('# Draft\nmore');
+  await page.getByRole('button', { name: 'Hide notes (Alt M)' }).click();
+  await expect(editor).toHaveCount(0);
+  await page.keyboard.press('Alt+m');
+  await expect(editor).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('notes: a save that lost against Claude shows the bar; Take theirs loads the file', async ({ page }) => {
+  const { calls } = await mockApi(page, {
+    '/api/sessions/s1/notes': { path: '/state/notes/s1.md', text: 'claude wrote this', rev: 'r9' },
+    'PUT /api/sessions/s1/notes': { status: 409, json: { error: 'the notes changed meanwhile' } },
+  });
+  await page.goto('/#/p/ai-portal/s1');
+  await page.keyboard.press('Alt+m');
+  const editor = page.getByRole('textbox', { name: 'Markdown draft' });
+  await editor.fill('mine');
+  await expect(page.getByRole('alert')).toContainText('changed the file while you typed');
+  await page.getByRole('button', { name: 'Take theirs' }).click();
+  await expect(editor).toHaveValue('claude wrote this');
+  expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1);
+});
