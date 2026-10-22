@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { clampPan, clampZoom, fitWorld, minZoom, zoomAt } from '../web/src/lib/village/camera.ts';
+import { clampPan, clampZoom, fitWorld, minZoom, pinchZoom, zoomAt } from '../web/src/lib/village/camera.ts';
 
 const world = { W: 1000, H: 800 };
 
@@ -50,4 +50,24 @@ test('fit covers the window: the whole world when the shapes match, else the lar
   const tall = fitWorld(world, 500, 800);
   assert.equal(tall.zoom, 1);
   assert.deepEqual(tall.pan, { x: -250, y: 0 });
+});
+
+test('a pinch zooms with the finger distance around its centre, clamped, and follows the moving centre', () => {
+  const start = { pan: { x: -100, y: 50 }, zoom: 1, mid: { x: 300, y: 200 }, dist: 100 };
+  const under = (p: { x: number; y: number }, z: number, m: { x: number; y: number }) => ({
+    x: (m.x - p.x) / z,
+    y: (m.y - p.y) / z,
+  });
+  const out = pinchZoom(start, start.mid, 150, 0.5);
+  assert.equal(out.zoom, 1.5);
+  assert.deepEqual(under(out.pan, out.zoom, start.mid), under(start.pan, 1, start.mid));
+  // Both fingers moved: the same world point is now under the new centre.
+  const moved = pinchZoom(start, { x: 340, y: 170 }, 120, 0.5);
+  assert.deepEqual(under(moved.pan, moved.zoom, { x: 340, y: 170 }), under(start.pan, 1, start.mid));
+  assert.equal(pinchZoom(start, start.mid, 10000, 0.5).zoom, 1.6);
+  assert.equal(pinchZoom(start, start.mid, 1, 0.5).zoom, 0.5);
+  // Unchanged fingers: the camera stays put (no jump when a pinch starts).
+  assert.deepEqual(pinchZoom(start, start.mid, 100, 0.5), { zoom: 1, pan: start.pan });
+  // Fingers starting on one spot do not divide by zero.
+  assert.equal(pinchZoom({ ...start, dist: 0 }, start.mid, 1, 0.5).zoom, 1);
 });

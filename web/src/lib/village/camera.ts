@@ -34,3 +34,18 @@ export function fitWorld(world: { W: number; H: number }, vw: number, vh: number
   const zoom = minZoom(world, vw, vh);
   return { zoom, pan: clampPan({ x: (vw - world.W * zoom) / 2, y: (vh - world.H * zoom) / 2 }, zoom, world, vw, vh) };
 }
+
+/** Where a pinch began: the camera then and the two fingers' midpoint and distance, in viewport px. */
+export interface PinchStart {
+  pan: Pan;
+  zoom: number;
+  mid: Pan;
+  dist: number;
+}
+
+/** A two-finger pinch: the zoom scales with the finger distance (clamped), the world point that sat under the
+ * starting midpoint stays under the current one (so moving both fingers pans too). Always from the start, no drift. */
+export function pinchZoom(start: PinchStart, mid: Pan, dist: number, min: number) {
+  const r = zoomAt(start.pan, start.zoom, (start.zoom * dist) / Math.max(1, start.dist), start.mid.x, start.mid.y, min);
+  return { zoom: r.zoom, pan: { x: r.pan.x + mid.x - start.mid.x, y: r.pan.y + mid.y - start.mid.y } };
+}
