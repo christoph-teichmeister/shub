@@ -23,7 +23,16 @@
   import { childLabel, childStart, sessionsIn } from '../children.ts';
   import { api } from '../stores/api.ts';
   import { href, router } from '../stores/router.svelte.ts';
-  import { app, needsYouCount, sendKeys, sessionHref, sessionsOf, startSession, ui } from '../stores/state.svelte.ts';
+  import {
+    app,
+    childrenOf,
+    needsYouCount,
+    sendKeys,
+    sessionHref,
+    sessionsOf,
+    startSession,
+    ui,
+  } from '../stores/state.svelte.ts';
   import { serviceAction, serviceInspect, serviceLogs } from '../stores/services.ts';
 
   const route = $derived(router.route);
@@ -35,6 +44,11 @@
           null)
         : null,
   );
+  // The open session's panes (a second Claude, terminals): the open one may be a pane itself.
+  const panes = $derived.by(() => {
+    const root = open?.parentId ? (app.sessions.find((s) => s.id === open.parentId) ?? open) : open;
+    return root ? [root, ...childrenOf(root.id)] : [];
+  });
   const projectOf = (s: Session) => app.projects.find((p) => p.id === s.projectId) ?? null;
   const visible = $derived(app.sessions.filter((s) => s.kind !== 'shell'));
   const SECTIONS: { status: SessionStatus; title: string }[] = [
@@ -121,6 +135,18 @@
       {/if}
     </header>
 
+    {#if panes.length > 1}
+      <nav class="panes" aria-label="Panes">
+        {#each panes as s (s.id)}
+          <a
+            href={sessionHref(s)}
+            aria-current={s.id === open.id ? 'page' : undefined}
+            class:needs={s.status === 'needs-you'}>{s.name}</a
+          >
+        {/each}
+      </nav>
+    {/if}
+
     {#if showServices}
       <div class="services">
         <ServicesTree
@@ -140,7 +166,12 @@
       session={open}
       phone
       onterminal={async (cwd) => {
-        const shell = await startSession({ projectId: open.projectId, kind: 'shell', parentId: open.id, cwd });
+        const shell = await startSession({
+          projectId: open.projectId,
+          kind: 'shell',
+          parentId: panes[0]?.id ?? open.id,
+          cwd,
+        });
         if (shell) location.hash = sessionHref(shell);
         return shell?.id;
       }}
@@ -277,6 +308,32 @@
 </Dialog>
 
 <style>
+  .panes {
+    display: flex;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    overflow-x: auto;
+  }
+
+  .panes a {
+    flex: none;
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    color: var(--muted);
+    text-decoration: none;
+  }
+
+  .panes a[aria-current='page'] {
+    color: var(--fg);
+    border-color: var(--primary);
+  }
+
+  .panes a.needs {
+    color: var(--status-needs-you-fg);
+    border-color: var(--status-needs-you);
+  }
+
   .overview,
   .term-page {
     min-height: 100%;

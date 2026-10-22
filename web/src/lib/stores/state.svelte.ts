@@ -144,12 +144,21 @@ export const needsYouCount = (sessions: Session[] = app.sessions): number =>
   sessions.filter((s) => s.status === 'needs-you').length;
 
 export function sessionsOf(projectId: string | null): Session[] {
-  // A shell without a parent (started for a worktree) is a tab of its own.
-  return app.sessions.filter((s) => s.projectId === projectId && (s.kind !== 'shell' || !s.parentId));
+  // Only top-level sessions: panes (a second Claude, a terminal) live in their parent's control center.
+  return app.sessions.filter((s) => s.projectId === projectId && !s.parentId);
 }
 
-export function shellsOf(sessionId: string): Session[] {
-  return app.sessions.filter((s) => s.kind === 'shell' && s.parentId === sessionId);
+export function childrenOf(sessionId: string): Session[] {
+  return app.sessions.filter((s) => s.parentId === sessionId);
+}
+
+/** The session with its panes' attention folded in: a pane that needs you makes the sidebar row need you. */
+export function rolledUp(s: Session): Session {
+  const kids = childrenOf(s.id);
+  const hot =
+    kids.find((k) => k.status === 'needs-you') ??
+    (s.status !== 'needs-you' && s.status !== 'working' ? kids.find((k) => k.status === 'working') : undefined);
+  return hot ? { ...s, status: hot.status } : s;
 }
 
 function guard<T>(p: Promise<T>): Promise<T | undefined> {

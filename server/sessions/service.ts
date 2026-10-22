@@ -268,7 +268,7 @@ export class SessionsService implements Sessions {
       }
       this.#db.prepare('DELETE FROM sessions WHERE id = ?').run(GLOBAL_ID);
     }
-    const parent = request.kind === 'shell' && request.parentId ? this.require(request.parentId) : undefined;
+    const parent = request.kind !== 'global' && request.parentId ? this.require(request.parentId) : undefined;
     const projectId = request.kind === 'global' ? null : (parent?.projectId ?? request.projectId);
     const project = projectId ? this.#services.config.project(projectId) : undefined;
     if (request.kind === 'claude' && !project) throw new HttpError(404, 'no such project');

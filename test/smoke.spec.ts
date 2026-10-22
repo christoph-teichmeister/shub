@@ -579,24 +579,34 @@ test('a selection Claude copies with OSC 52 lands in the clipboard', async ({ pa
   expect(errors).toEqual([]);
 });
 
-test('closing the last terminal hides the bottom panel instead of showing Services', async ({ page }) => {
+test("a session's terminal and second Claude are panes in its control center, not sidebar rows", async ({ page }) => {
   const shell: Session = { ...session, id: 'sh1', kind: 'shell', name: 'shell', status: 'your-turn', parentId: 's1' };
-  // Session has its own `status`, so wrap it to keep mockApi from reading it as the HTTP status.
-  const { errors } = await mockApi(page, { 'POST /api/sessions': { status: 200, json: shell } });
-  let events: { send(m: string): void } | undefined;
-  await page.routeWebSocket('**/api/events', (ws) => {
-    events = ws;
-    ws.send(JSON.stringify({ type: 'hello', apiVersion: 1 }));
+  const second: Session = { ...session, id: 's2', name: 'Second Claude', status: 'working', parentId: 's1' };
+  const { errors, calls } = await mockApi(page, {
+    '/api/sessions': [{ ...session, status: 'your-turn' }, second],
+    'POST /api/sessions': { status: 200, json: shell },
   });
   await page.goto('/#/p/ai-portal/s1');
-  await page.getByRole('button', { name: /^Services/ }).click();
-  const panel = page.getByRole('region', { name: 'Bottom panel' });
-  await panel.getByRole('button', { name: /New plain terminal/ }).click();
-  await expect(panel.getByRole('tab', { name: 'Terminal 1' })).toHaveAttribute('aria-selected', 'true');
+  const nav = page.getByRole('navigation');
+  await expect(page.getByRole('tab', { name: 'MR 2136 review' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Second Claude' })).toBeVisible();
+  await expect(nav.getByRole('link', { name: /Second Claude/ })).toHaveCount(0);
+  // The pane that works shows on the session's row.
+  await expect(nav.getByRole('link', { name: /MR 2136 review/ })).toContainText('working');
 
-  await panel.getByRole('button', { name: 'Close Terminal 1' }).click();
-  events!.send(JSON.stringify({ type: 'session.closed', sessionId: 'sh1' }));
-  await expect(panel).toHaveCount(0);
+  // Closing the session asks first, because its panes end with it; closing a pane does not.
+  await page.getByRole('button', { name: 'Close MR 2136 review' }).click();
+  const ask = page.getByRole('dialog');
+  await expect(ask).toContainText('Close MR 2136 review and its pane?');
+  await expect(ask).toContainText('Second Claude (working)');
+  await ask.getByRole('button', { name: 'Cancel' }).click();
+  expect(calls.filter((c) => c.method === 'DELETE')).toEqual([]);
+
+  await page.getByRole('button', { name: /^New/ }).click();
+  await page.getByRole('menuitem', { name: 'Terminal in this session' }).click();
+  await expect(page.getByRole('tab', { name: 'shell' })).toHaveAttribute('aria-selected', 'true');
+  const start = calls.find((c) => c.method === 'POST' && c.path === '/api/sessions');
+  expect(start?.body).toEqual({ projectId: 'ai-portal', kind: 'shell', parentId: 's1' });
   expect(errors).toEqual([]);
 });
 
@@ -737,7 +747,10 @@ test('a terminal tab opens with Alt T and starts Claude where it was cd-ed to, t
   events!.send(JSON.stringify({ type: 'session.started', session: typed, from: 'sh1' }));
   await expect(page.getByRole('tab', { name: 'Session 8' })).toHaveAttribute('aria-selected', 'true');
 
-  await page.getByRole('tab', { name: 'Terminal 1' }).click();
+  await page
+    .getByRole('navigation')
+    .getByRole('link', { name: /Terminal 1/ })
+    .click();
   await page.getByRole('button', { name: 'Start Claude here' }).click();
   await expect(page.getByRole('tab', { name: 'Session 9' })).toHaveAttribute('aria-selected', 'true');
   expect(errors).toEqual([]);
@@ -779,45 +792,6 @@ test('active group keeps a project for 10 minutes after its last session closes'
   expect(errors).toEqual([]);
 });
 
-test('the tab – hides a session from the tab bar but not the sidebar', async ({ page }) => {
-  const other: Session = { ...session, id: 's2', name: 'Docs pass', status: 'your-turn' };
-  const { errors, calls } = await mockApi(page, {
-    '/api/sessions': [session, other],
-    '/api/sessions/s2/services': [],
-  });
-  let events: { send(m: string): void } | undefined;
-  await page.routeWebSocket('**/api/events', (ws) => {
-    events = ws;
-    ws.send(JSON.stringify({ type: 'hello', apiVersion: 1 }));
-  });
-  await page.goto('/#/p/ai-portal/s2');
-  const tab = (name: string) => page.getByRole('tab', { name });
-  const row = (name: string) => page.getByRole('link', { name: new RegExp(name) });
-
-  await tab('MR 2136 review').click(); // only the open tab has its buttons
-  await page.getByRole('button', { name: 'Hide MR 2136 review tab (stays in the sidebar)' }).click();
-  await expect(tab('MR 2136 review')).toHaveCount(0);
-  await expect(row('MR 2136 review')).toBeVisible();
-  await page.reload();
-  await expect(tab('Docs pass')).toBeVisible();
-  await expect(tab('MR 2136 review')).toHaveCount(0);
-
-  // Needing you again brings the tab back.
-  events!.send(JSON.stringify({ type: 'session.status', sessionId: 's1', status: 'working' }));
-  events!.send(JSON.stringify({ type: 'session.status', sessionId: 's1', status: 'needs-you' }));
-  await expect(tab('MR 2136 review')).toBeVisible();
-
-  // Hiding the open tab moves to its neighbour; opening the session from the sidebar shows its tab again.
-  await page.getByRole('button', { name: 'Hide Docs pass tab (stays in the sidebar)' }).click();
-  await expect(tab('MR 2136 review')).toHaveAttribute('aria-selected', 'true');
-  await expect(tab('Docs pass')).toHaveCount(0);
-  await row('Docs pass').click();
-  await expect(tab('Docs pass')).toHaveAttribute('aria-selected', 'true');
-
-  expect(calls.filter((c) => c.method === 'DELETE')).toEqual([]);
-  expect(errors).toEqual([]);
-});
-
 test('the tab bar + menu starts a session, a terminal or a project button; the tab ✕ closes', async ({ page }) => {
   const other: Session = { ...session, id: 's2', name: 'Docs pass', status: 'your-turn' };
   const { errors, calls } = await mockApi(page, {
@@ -832,7 +806,13 @@ test('the tab bar + menu starts a session, a terminal or a project button; the t
 
   await page.getByRole('button', { name: 'New', exact: true }).click();
   const menu = page.getByRole('menu', { name: 'New in ai-portal' });
-  await expect(menu.getByRole('menuitem')).toHaveText([/New Claude session/, /New terminal/, /Worktree start…/]);
+  await expect(menu.getByRole('menuitem')).toHaveText([
+    /New Claude session/,
+    /New terminal/,
+    /Claude in this session/,
+    /Terminal in this session/,
+    /Worktree start…/,
+  ]);
   await menu.getByRole('menuitem', { name: /New terminal/ }).click();
   await expect(menu).toHaveCount(0);
   const start = calls.find((c) => c.method === 'POST' && c.path === '/api/sessions');
@@ -928,28 +908,40 @@ test('a tab menu parks the session with a background check', async ({ page }) =>
   expect(errors).toEqual([]);
 });
 
-test('sessions: sidebar sorts by status, a dragged tab moves only in the tab bar, a dragged row is pinned on top', async ({
-  page,
-}) => {
+test('sessions: sidebar sorts by status, a dragged row is pinned on top', async ({ page }) => {
   const paused: Session = { ...session, id: 's2', name: 'Paused one', status: 'paused' };
   const working: Session = { ...session, id: 's3', name: 'Working one', status: 'working' };
   const { errors, calls } = await mockApi(page, { '/api/sessions': [session, paused, working] });
   await page.goto('/#/p/ai-portal/s1');
-  const tabs = page.getByRole('tab');
   const rows = page.getByRole('region', { name: 'Work', exact: true }).getByRole('link', { name: /one|review/ });
-  await expect(tabs).toHaveText(['MR 2136 review', 'Paused one', 'Working one']);
+  await expect(page.getByRole('tab')).toHaveText(['MR 2136 review']);
   await expect(rows).toHaveText([/MR 2136 review/, /Working one/, /Paused one/]);
-
-  await tabs.nth(2).dragTo(tabs.nth(0), { targetPosition: { x: 4, y: 8 } });
-  await expect(tabs).toHaveText(['Working one', 'MR 2136 review', 'Paused one']);
-  await expect(rows).toHaveText([/MR 2136 review/, /Working one/, /Paused one/]);
-  const reorders = () => calls.filter((c) => c.path === '/api/sessions/reorder').map((c) => c.body);
-  expect(reorders()).toEqual([{ positions: { s3: 0, s1: 1, s2: 2 }, tabs: true }]);
 
   await rows.nth(2).dragTo(rows.nth(0), { targetPosition: { x: 4, y: 2 } });
   await expect(rows).toHaveText([/Paused one/, /MR 2136 review/, /Working one/]);
-  await expect(tabs).toHaveText(['Working one', 'MR 2136 review', 'Paused one']);
-  expect(reorders()[1]).toEqual({ positions: { s2: 0 }, tabs: false });
+  const reorders = calls.filter((c) => c.path === '/api/sessions/reorder').map((c) => c.body);
+  expect(reorders).toEqual([{ positions: { s2: 0 } }]);
+  expect(errors).toEqual([]);
+});
+
+test('a pane that needs you moves its session up the sidebar and shows on the phone', async ({ page }) => {
+  const quiet: Session = { ...session, id: 's1', name: 'Quiet one', status: 'your-turn' };
+  const other: Session = { ...session, id: 's2', name: 'Other one', status: 'working' };
+  const pane: Session = { ...session, id: 's3', name: 'Second Claude', status: 'needs-you', parentId: 's2' };
+  const { errors } = await mockApi(page, {
+    '/api/sessions': [quiet, other, pane],
+    '/api/sessions/s2/services': [],
+    '/api/sessions/s3/services': [],
+  });
+  await page.goto('/#/p/ai-portal/s2');
+  const rows = page.getByRole('region', { name: 'Work', exact: true }).getByRole('link', { name: /one/ });
+  await expect(rows).toHaveText([/Other one/, /Quiet one/]);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/#/p/ai-portal/s3');
+  const panes = page.getByRole('navigation', { name: 'Panes' });
+  await expect(panes.getByRole('link')).toHaveText(['Other one', 'Second Claude']);
+  await expect(panes.getByRole('link', { name: 'Second Claude' })).toHaveAttribute('aria-current', 'page');
   expect(errors).toEqual([]);
 });
 
@@ -1052,6 +1044,7 @@ test('the crab village draws every session as a crab, queues the ones that need 
     '/api/sessions': sessions,
     'POST /api/sessions': { status: 200, json: born },
     '/api/worktrees/children': children,
+    '/api/sessions/s2/services': [],
     '/api/sessions/s1/services': [
       ['web', 'running', 'Up 41 minutes (healthy)'],
       ['postgres', 'running', 'Up 41 minutes'],
