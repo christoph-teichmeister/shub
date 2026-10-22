@@ -4,6 +4,7 @@
   import { toast, toastError } from '../../stores/toasts.svelte.ts';
   import Button from '../Button/Button.svelte';
   import IconButton from '../IconButton/IconButton.svelte';
+  import Preview from './Preview.svelte';
 
   interface Props {
     /** The session (or one of its panes) whose draft this is. */
@@ -24,6 +25,7 @@
   let dirty = $state(false);
   /** The file changed under unsaved typing: what it holds now. */
   let theirs = $state<{ text: string; rev: string } | null>(null);
+  let preview = $state(false);
   let saving = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -107,6 +109,10 @@
   <div class="bar">
     <h2>Notes</h2>
     <span class="state">{theirs ? 'changed outside' : dirty ? 'saving…' : 'saved'}</span>
+    <span class="modes">
+      <Button size="sm" variant="ghost" pressed={!preview} onclick={() => (preview = false)}>Write</Button>
+      <Button size="sm" variant="ghost" pressed={preview} onclick={() => (preview = true)}>Preview</Button>
+    </span>
     <span class="spacer"></span>
     {#if claudeId}<Button
         size="sm"
@@ -124,12 +130,16 @@
       <Button size="sm" variant="ghost" onclick={keepMine}>Keep mine</Button>
     </div>
   {/if}
-  <textarea
-    bind:value={text}
-    oninput={typed}
-    spellcheck="true"
-    aria-label="Markdown draft"
-    placeholder="Write Markdown here. Claude edits the same file."></textarea>
+  {#if preview}
+    <Preview md={text} />
+  {:else}
+    <textarea
+      bind:value={text}
+      oninput={typed}
+      spellcheck="true"
+      aria-label="Markdown draft"
+      placeholder="Write Markdown here. Claude edits the same file."></textarea>
+  {/if}
   {#if path}<div class="path" title={path}>{path}</div>{/if}
 </section>
 
@@ -165,6 +175,11 @@
   .path {
     font-size: var(--text-xs);
     color: var(--muted);
+  }
+
+  .modes {
+    display: flex;
+    gap: var(--space-0-5);
   }
 
   .spacer {

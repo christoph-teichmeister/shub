@@ -1560,6 +1560,10 @@ test('the notes panel (Alt M) saves what you type and offers theirs when Claude 
   await editor.fill('# Draft\nmore');
   await expect.poll(() => calls.find((c) => c.method === 'PUT')?.body).toEqual({ text: '# Draft\nmore', rev: 'r1' });
   await expect(page.getByText('saved', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Preview' }).click();
+  await expect(page.getByRole('heading', { name: 'Draft' })).toBeVisible();
+  await page.getByRole('button', { name: 'Write', exact: true }).click();
+  await expect(editor).toHaveValue('# Draft\nmore');
   await page.getByRole('button', { name: 'Hide notes (Alt M)' }).click();
   await expect(editor).toHaveCount(0);
   await page.keyboard.press('Alt+m');
