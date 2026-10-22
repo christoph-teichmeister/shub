@@ -1113,7 +1113,7 @@
               <span class="user-name">{app.me?.name ?? 'You'}</span>
               <span class="user-sub">{app.connected ? 'Connected' : 'Offline, reconnecting'}</span>
             </span>
-            <Icon name="gear" />
+            <span class="gear"><Icon name="gear" /></span>
             <span class="visually-hidden">Settings</span>
           </a>
           <button type="button" class="rail-item" title="Shortcuts (Alt ?)" onclick={() => (ui.shortcuts = true)}
@@ -1869,11 +1869,21 @@
     text-decoration: none;
   }
 
+  .gear {
+    display: inline-flex;
+    padding: var(--space-1-5);
+    border-radius: var(--radius-md);
+  }
+
   .user:hover,
   .user:focus-visible {
+    color: var(--fg);
+  }
+
+  .user:hover .gear,
+  .user:focus-visible .gear {
     outline: var(--hairline) solid var(--line);
     background: var(--raised);
-    color: var(--fg);
   }
 
   .avatar {
