@@ -31,3 +31,16 @@ export function clampRect(r: Rect, vw: number, vh: number): Rect {
   const h = Math.max(Math.min(r.h, vh), Math.min(MIN_H, vh));
   return { x: Math.max(0, Math.min(r.x, vw - w)), y: Math.max(0, Math.min(r.y, vh - h)), w, h };
 }
+
+/**
+ * Where the window first opens: beside the crab's box `a` (all in browser-window px), vertically centred on it. Right
+ * of it, or left when only the left has room; when neither has, the roomier side, then kept inside the window (so on
+ * a small window it may still overlap the crab).
+ */
+export function beside(a: Rect, w: number, h: number, vw: number, vh: number, gap = 16): Rect {
+  const roomR = vw - (a.x + a.w + gap);
+  const roomL = a.x - gap;
+  const x = roomR >= w || (roomL < w && roomR >= roomL) ? a.x + a.w + gap : a.x - gap - w;
+  // Whole px, like a dragged window.
+  return clampRect({ x: Math.round(x), y: Math.round(a.y + a.h / 2 - h / 2), w, h }, vw, vh);
+}

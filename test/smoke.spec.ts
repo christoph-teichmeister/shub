@@ -1431,6 +1431,10 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await expect(page).toHaveURL(/#\/village$/);
   await expect(mr).toHaveClass(/ring/);
   await expect(chat.locator('textarea')).toBeFocused();
+  // It opens beside the crab, not over it.
+  const [cb, mb] = [(await chat.boundingBox())!, (await mr.boundingBox())!];
+  expect(cb.x >= mb.x + mb.width || cb.x + cb.width <= mb.x).toBe(true);
+  expect(cb.y < mb.y + mb.height && cb.y + cb.height > mb.y).toBe(true);
   await page.keyboard.press('d'); // typed into the terminal: you stay at your desk
   await expect(map.locator('.obj.me')).toHaveCount(0);
   // A click on the bare map takes the keys back; the queue keys open a second crab in a second tab.

@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { clampRect, closeTab, keepTabs, MIN_H, MIN_W, NO_CHATS, openTab } from '../web/src/lib/village/chats.ts';
+import {
+  beside,
+  clampRect,
+  closeTab,
+  keepTabs,
+  MIN_H,
+  MIN_W,
+  NO_CHATS,
+  openTab,
+} from '../web/src/lib/village/chats.ts';
 
 test('opening adds a tab once and shows it', () => {
   let c = openTab(NO_CHATS, 'a');
@@ -33,4 +42,20 @@ test('the window stays inside the browser window, between its minimum and the wh
   assert.deepEqual(clampRect({ x: 0, y: 0, w: 10, h: 10 }, 1440, 900), { x: 0, y: 0, w: MIN_W, h: MIN_H });
   assert.deepEqual(clampRect({ x: 0, y: 0, w: 5000, h: 5000 }, 1440, 900), { x: 0, y: 0, w: 1440, h: 900 });
   assert.deepEqual(clampRect({ x: 30, y: 30, w: 600, h: 400 }, 300, 200), { x: 0, y: 0, w: 300, h: 200 });
+});
+
+test('the window opens beside the crab: right of it, left near the right edge, kept inside small windows', () => {
+  const crab = { x: 300, y: 400, w: 60, h: 60 };
+  // Room on the right: right of the crab, centred on it.
+  assert.deepEqual(beside(crab, 600, 400, 1440, 900), { x: 376, y: 230, w: 600, h: 400 });
+  // Near the right edge: flips to the left.
+  assert.deepEqual(beside({ ...crab, x: 1200 }, 600, 400, 1440, 900), { x: 584, y: 230, w: 600, h: 400 });
+  // Near the top and bottom edges: slides to stay inside, still beside the crab.
+  assert.deepEqual(beside({ ...crab, y: 0 }, 600, 400, 1440, 900), { x: 376, y: 0, w: 600, h: 400 });
+  assert.deepEqual(beside({ ...crab, y: 880 }, 600, 400, 1440, 900), { x: 376, y: 500, w: 600, h: 400 });
+  // Neither side has room: the roomier side, clamped into the window.
+  assert.deepEqual(beside({ ...crab, x: 500 }, 600, 400, 1000, 900), { x: 0, y: 230, w: 600, h: 400 });
+  assert.deepEqual(beside({ ...crab, x: 440 }, 600, 400, 1000, 900), { x: 400, y: 230, w: 600, h: 400 });
+  // A browser window smaller than the window: it fills it.
+  assert.deepEqual(beside(crab, 600, 400, 300, 200), { x: 0, y: 0, w: 300, h: 200 });
 });
