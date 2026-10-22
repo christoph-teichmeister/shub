@@ -48,6 +48,7 @@
     app,
     closeSession,
     compact,
+    loadChildren,
     loadProjects,
     needsYouCount,
     sessionHref,
@@ -298,7 +299,7 @@
       danger: !button,
       run: () =>
         void closeWorktree(w, true)
-          .then(() => loadWorktrees())
+          .then(() => Promise.all([loadWorktrees(), loadChildren(true)]))
           .catch(toastError),
     };
   }
@@ -313,6 +314,7 @@
   let panelOpen = $state(false);
   let renamingId = $state<string | null>(null);
   let menu = $state<{ session: Session; x: number; y: number } | null>(null);
+  let worktreeMenu = $state<{ worktree: ChildWorktree; x: number; y: number } | null>(null);
   let newMenu = $state<{ x: number; y: number } | null>(null);
   let projectMenu = $state<{ project: ProjectView; x: number; y: number } | null>(null);
   let confirm = $state<{ title: string; body: string; action: string; danger?: boolean; run: () => void } | null>(null);
@@ -825,20 +827,20 @@
 {#snippet childGroup(key: string, list: ChildWorktree[])}
   {#if list.length}
     {@const open = childrenOpen(key, list)}
-    <!-- Worktrees whose session closed: a row of its own, folded from the same gutter as a session. -->
+    <!-- Worktrees whose creating session closed: a row of its own, folded from the same gutter as a session. -->
     <div class="folder orphans">
       <button
         type="button"
         class="orphan-row"
         aria-expanded={open}
-        title="{open ? 'Hide' : 'Show'} worktrees of closed sessions"
+        title="{open ? 'Hide' : 'Show'} orphaned worktrees"
         onclick={() => (openChildren[key] = !open)}
       >
         <span class="fold" aria-hidden="true">
           <Icon name={open ? 'chevron-down' : 'chevron-right'} size="xs" weight={2} />
         </span>
         <Icon name="folder" size="xs" />
-        <span class="grow">Closed sessions</span>
+        <span class="grow">Orphaned worktrees</span>
         <span class="orphan-count">{worktreeCount(list)}</span>
       </button>
     </div>
@@ -857,7 +859,11 @@
         onmenu={(at) => (menu = { session: c, ...at })}
       />
     {:else}
-      <WorktreeRow worktree={w} onopen={childStart(w) ? () => openChild(w) : undefined} />
+      <WorktreeRow
+        worktree={w}
+        onopen={childStart(w) ? () => openChild(w) : undefined}
+        onmenu={(at) => (worktreeMenu = { worktree: w, ...at })}
+      />
     {/each}
   </div>
 {/snippet}
@@ -1399,6 +1405,18 @@
     >
   {/snippet}
 </Dialog>
+
+{#if worktreeMenu}
+  {@const w = worktreeMenu.worktree}
+  <Menu
+    label="Menu for {w.name}"
+    items={[{ id: 'delete', label: 'Delete worktree', danger: true }]}
+    x={worktreeMenu.x}
+    y={worktreeMenu.y}
+    onselect={() => askClose(w)}
+    onclose={() => (worktreeMenu = null)}
+  />
+{/if}
 
 {#if projectMenu}
   {@const p = projectMenu.project}
