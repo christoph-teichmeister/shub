@@ -152,6 +152,16 @@ export class AuthService implements Auth {
       client_id: string;
     }[];
     for (const r of rows) this.#clients.set(r.token_hash, { kind: r.kind, id: r.client_id });
+    this.pruneStaleDesktops();
+  }
+
+  /** A desktop cookie unused for 30 days no longer signs in (see `deviceOf`); its row would only pile up. */
+  pruneStaleDesktops(): void {
+    const cutoff = new Date(Date.now() - SESSION_MAX_AGE_S * 1000).toISOString();
+    const rows = this.#db.prepare("SELECT id FROM devices WHERE kind = 'desktop' AND last_seen_at < ?").all(cutoff) as {
+      id: string;
+    }[];
+    for (const { id } of rows) this.deleteDevice(id);
   }
 
   get #db() {
@@ -297,9 +307,18 @@ export class AuthService implements Auth {
     return { device: toDevice(row), session };
   }
 
-  login(token: unknown, name: string): { device: Device; session: string } {
+  /** A browser that still holds a valid desktop cookie gets a fresh secret on its own device, not a second row. */
+  login(token: unknown, name: string, current?: DeviceRow): { device: Device; session: string } {
     if (!this.#isAccessToken(token)) throw new HttpError(401, 'wrong token');
-    return this.createDevice(name, 'desktop');
+    this.pruneStaleDesktops();
+    if (current?.kind !== 'desktop') return this.createDevice(name, 'desktop');
+    const session = newSecret();
+    const now = new Date().toISOString();
+    this.#db
+      .prepare('UPDATE devices SET session_hash = ?, last_seen_at = ? WHERE id = ?')
+      .run(sha256(session), now, current.id);
+    const row = this.#db.prepare('SELECT * FROM devices WHERE id = ?').get(current.id) as unknown as DeviceRow;
+    return { device: toDevice(row), session };
   }
 
   async startPairing(): Promise<{ code: string; url: string; qrSvg: string; expiresAt: string }> {
@@ -474,7 +493,7 @@ function routes(auth: AuthService, router: Router): void {
     ROUTES.login,
     async (req, res) => {
       const body = await req.json<{ token?: unknown; deviceName?: unknown; remember?: unknown }>();
-      const { device, session } = auth.login(body.token, deviceName(body, req.raw));
+      const { device, session } = auth.login(body.token, deviceName(body, req.raw), auth.deviceOf(req.raw));
       setSessionCookie(req.raw, res, auth.cookie, session, body.remember === false ? null : SESSION_MAX_AGE_S);
       return { device };
     },
