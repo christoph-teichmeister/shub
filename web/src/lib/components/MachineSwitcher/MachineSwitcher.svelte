@@ -192,6 +192,11 @@
     font: inherit;
   }
 
+  /* The shown machine is not a target; every other chip and the + switch or add one. */
+  .chip:not(.shown) {
+    cursor: pointer;
+  }
+
   .chip.shown {
     border-color: var(--ring);
     background: var(--selection);
