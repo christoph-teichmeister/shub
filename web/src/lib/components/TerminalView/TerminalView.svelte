@@ -9,6 +9,7 @@
   import type { TerminalControl } from '../../../../../shared/api.ts';
   import { api, wsTarget } from '../../stores/api.ts';
   import { app, terminalSettings } from '../../stores/state.svelte.ts';
+  import { noteFile } from '../../stores/noteFile.svelte.ts';
   import { toastError } from '../../stores/toasts.svelte.ts';
   import { readToken } from '../../tokens/tokens.ts';
 
@@ -134,16 +135,13 @@
         done(links.length ? links : undefined);
       },
     });
-    // Markdown notes of the knowledge base open in its app; the server says which paths are notes.
-    const notes = new Map<string, Promise<string | null>>();
-    const noteUrl = (path: string) => {
+    // Markdown notes of the knowledge base open in the notes panel; the server says which paths are notes.
+    const notes = new Map<string, Promise<{ file: string; url: string | null } | null>>();
+    const lookup = (path: string) => {
       if (!notes.has(path)) {
         notes.set(
           path,
-          api<{ url: string }>('markdownLink', { query: { path } }).then(
-            (r) => r.url,
-            () => null,
-          ),
+          api<{ file: string; url: string | null }>('markdownLink', { query: { path } }).catch(() => null),
         );
       }
       return notes.get(path)!;
@@ -151,10 +149,10 @@
     t.registerLinkProvider({
       async provideLinks(y, done) {
         const found = imagePathsAt(t.buffer.active, y - 1, NOTE_PATH);
-        const urls = await Promise.all(found.map((p) => noteUrl(p.path)));
+        const targets = await Promise.all(found.map((p) => lookup(p.path)));
         const links = found.flatMap((p, i) =>
-          urls[i]
-            ? [{ text: p.path, range: { start: p.start, end: p.end }, activate: () => open(urls[i]!, '_blank') }]
+          targets[i]
+            ? [{ text: p.path, range: { start: p.start, end: p.end }, activate: () => (noteFile.target = targets[i]) }]
             : [],
         );
         done(links.length ? links : undefined);

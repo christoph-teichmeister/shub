@@ -13,6 +13,7 @@
     WorktreeInfo,
   } from '../../../../shared/api.ts';
   import AppShell from '../components/AppShell/AppShell.svelte';
+  import { noteFile } from '../stores/noteFile.svelte.ts';
   import NotesPanel from '../components/NotesPanel/NotesPanel.svelte';
   import BottomPanel from '../components/BottomPanel/BottomPanel.svelte';
   import Button from '../components/Button/Button.svelte';
@@ -315,6 +316,10 @@
   let split = $state(false);
   let panelOpen = $state(false);
   let notesOpen = $state(false);
+  // A note the terminal linked opens the panel on that file.
+  $effect(() => {
+    if (noteFile.target) notesOpen = true;
+  });
   let renamingId = $state<string | null>(null);
   let menu = $state<{ session: Session; x: number; y: number } | null>(null);
   let worktreeMenu = $state<{ worktree: ChildWorktree; x: number; y: number } | null>(null);
@@ -1244,10 +1249,12 @@
         {/if}
       </div>
       {#if notesOpen && root}
-        {#key root.id}
+        {#key root.id + (noteFile.target?.file ?? '')}
           <NotesPanel
             sessionId={root.id}
             claudeId={root.kind === 'claude' ? root.id : undefined}
+            note={noteFile.target}
+            onback={() => (noteFile.target = null)}
             onhide={() => (notesOpen = false)}
           />
         {/key}

@@ -12,8 +12,12 @@
     /** Claude session that gets "Tell Claude"; omitted when the session is a plain terminal. */
     claudeId?: string;
     onhide: () => void;
+    /** A knowledge base note to show instead of the draft. */
+    note?: { file: string; url: string | null } | null;
+    /** Back to the draft. */
+    onback?: () => void;
   }
-  let { sessionId, claudeId, onhide }: Props = $props();
+  let { sessionId, claudeId, onhide, note = null, onback }: Props = $props();
 
   const POLL_MS = 2000;
   const SAVE_MS = 700;
@@ -30,6 +34,10 @@
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   async function fetchNotes() {
+    if (note) {
+      const n = await api<{ text: string; rev: string }>('noteFile', { query: { path: note.file } });
+      return { path: note.file, ...n };
+    }
     return api<{ path: string; text: string; rev: string }>('notes', { params: { id: sessionId } });
   }
 
@@ -51,7 +59,11 @@
     saving = true;
     const sent = text;
     try {
-      rev = (await api<{ rev: string }>('notesSave', { params: { id: sessionId }, body: { text: sent, rev } })).rev;
+      const body = { text: sent, rev };
+      const saved = note
+        ? await api<{ rev: string }>('noteFileSave', { query: { path: note.file }, body })
+        : await api<{ rev: string }>('notesSave', { params: { id: sessionId }, body });
+      rev = saved.rev;
       if (text === sent) dirty = false;
       else timer = setTimeout(save, SAVE_MS);
     } catch (e) {
@@ -107,14 +119,18 @@
 
 <section class="notes" aria-label="Notes">
   <div class="bar">
-    <h2>Notes</h2>
+    {#if note}
+      <IconButton label="Back to the draft" icon="chevron-left" size="xs" tone="muted" onclick={onback} />
+      <h2 title={path}>{path.split('/').pop()}</h2>
+    {:else}<h2>Notes</h2>{/if}
     <span class="state">{theirs ? 'changed outside' : dirty ? 'saving…' : 'saved'}</span>
     <span class="modes">
       <Button size="sm" variant="ghost" pressed={!preview} onclick={() => (preview = false)}>Write</Button>
       <Button size="sm" variant="ghost" pressed={preview} onclick={() => (preview = true)}>Preview</Button>
     </span>
     <span class="spacer"></span>
-    {#if claudeId}<Button
+    {#if note?.url}<Button size="sm" variant="ghost" onclick={() => open(note.url!, '_blank')}>KB app</Button>{/if}
+    {#if claudeId && !note}<Button
         size="sm"
         variant="ghost"
         icon="sparkle"

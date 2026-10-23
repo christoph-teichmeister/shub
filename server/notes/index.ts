@@ -7,6 +7,7 @@ import { HttpError, requireUser } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
+import { noteFile } from '../sessions/markdown.ts';
 
 const MAX_BYTES = 1024 * 1024;
 
@@ -41,6 +42,27 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
     module: {
       name: 'notes',
       routes(router) {
+        // A knowledge base note the terminal linked: the same editor, another file.
+        const noteOf = (path: string | null): string => {
+          const note = noteFile(path ?? '');
+          if (!note) throw new HttpError(404, 'no note in the knowledge base');
+          return note.file;
+        };
+        router.add(ROUTES.noteFile, (req) => {
+          requireUser(req.caller);
+          const file = noteOf(req.query.get('path'));
+          return readNotes(file);
+        });
+        router.add(ROUTES.noteFileSave, async (req) => {
+          requireUser(req.caller);
+          const file = noteOf(req.query.get('path'));
+          const { text, rev } = await req.json<{ text?: unknown; rev?: unknown }>();
+          if (typeof text !== 'string' || typeof rev !== 'string') throw new HttpError(400, 'text, rev: string');
+          if (Buffer.byteLength(text) > MAX_BYTES) throw new HttpError(413, 'note too large');
+          const saved = saveNotes(file, text, rev);
+          if (!saved) throw new HttpError(409, 'the note changed meanwhile');
+          return saved;
+        });
         router.add(ROUTES.notes, (req) => {
           requireUser(req.caller);
           const file = fileFor(req.params.id);

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { noteUrl } from './markdown.ts';
+import { noteFile, noteUrl } from './markdown.ts';
 
 test('noteUrl links existing notes inside the knowledge base only', () => {
   const kb = mkdtempSync(join(tmpdir(), 'kb-test-'));
@@ -22,6 +22,11 @@ test('noteUrl links existing notes inside the knowledge base only', () => {
       noteUrl(join(kb, 'Decisions', '2026-10-23 Shub Device Group.md'), env)?.startsWith('https://ha/kb/notes/'),
       true,
     );
+    assert.equal(
+      noteFile('Decisions/2026-10-23 Shub Device Group.md', env)?.name,
+      'Decisions/2026-10-23 Shub Device Group',
+    );
+    assert.equal(noteFile(join(outside, 'x.md'), env), null);
     assert.equal(noteUrl('Decisions/Missing.md', env), null);
     assert.equal(noteUrl(join(outside, 'x.md'), env), null);
     assert.equal(noteUrl('../' + outside.split('/').pop() + '/x.md', env), null);
