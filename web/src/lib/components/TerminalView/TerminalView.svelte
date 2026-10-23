@@ -102,15 +102,24 @@
     };
   });
 
+  // OSC 8 links (xterm's linkHandler) and WebLinksAddon can both fire for one click: open a URL once.
+  let lastOpen = { uri: '', at: 0 };
+  const openLink = (_e: MouseEvent, uri: string) => {
+    const now = Date.now();
+    if (uri === lastOpen.uri && now - lastOpen.at < 1000) return;
+    lastOpen = { uri, at: now };
+    window.open(uri, '_blank', 'noopener');
+  };
+
   const paste = (body: Blob | string) => {
     if (body instanceof Blob || body) void api('sessionPaste', { params: { id: sessionId }, body }).catch(toastError);
   };
 
   onMount(() => {
-    const t = new Terminal({ ...look(), theme: theme() });
+    const t = new Terminal({ ...look(), theme: theme(), linkHandler: { activate: openLink } });
     fit = new FitAddon();
     t.loadAddon(fit);
-    t.loadAddon(new WebLinksAddon());
+    t.loadAddon(new WebLinksAddon(openLink));
     t.registerLinkProvider({
       provideLinks(y, done) {
         const links = imagePathsAt(t.buffer.active, y - 1).map((p) => ({
