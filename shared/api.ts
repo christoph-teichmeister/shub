@@ -550,6 +550,9 @@ export const ROUTE_LEVELS: Partial<Record<keyof typeof ROUTES, DeviceLevel>> = {
   approvalDecide: 'prompts',
   sessionCommand: 'prompts', // by index only: runs a command Claude handed over, never text from the phone
   sessionKeys: 'prompts', // prompts: named keys and single digits only, see sessions
+  // A browser just approved here joins at Prompts; the real gate is the join mark set by that approval (server/group).
+  groupJoinOffer: 'prompts',
+  groupJoin: 'prompts',
 };
 
 // ---------- plugins ----------
