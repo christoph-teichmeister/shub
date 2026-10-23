@@ -1,4 +1,4 @@
-import type { Session, SessionStatus } from '../../../shared/api.ts';
+import { COMPACT_AT, type Session, type SessionStatus } from '../../../shared/api.ts';
 
 export const STATUS_LABEL: Record<SessionStatus, string> = {
   new: 'not started',
@@ -93,8 +93,6 @@ export function dropPositions<S extends { id: string; position?: number | null }
 // Colour by tokens, not percent: a 1M window would stay quiet far past the point where a session gets slow and
 // expensive. These are 60 % and 80 % of a 200k window.
 export const WARN_AT = 120_000;
-/** From this many tokens on, the tab and the menu offer /compact. */
-export const COMPACT_AT = 160_000;
 
 const tokensLabel = (n: number) => (n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`);
 

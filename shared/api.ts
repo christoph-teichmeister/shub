@@ -3,6 +3,8 @@
 // Bump API_VERSION on any breaking change and note it in docs/API.md.
 
 export const API_VERSION = 1;
+/** From this many context tokens on, a session is offered /compact; idle ones (waiting, paused) get it automatically. */
+export const COMPACT_AT = 160_000;
 
 // ---------- projects and config ----------
 

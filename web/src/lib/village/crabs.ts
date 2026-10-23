@@ -1,7 +1,7 @@
 // Where each session's crab stands on the map and what it does there. Pure: the view walks the crabs
 // towards these targets on its own clock.
-import type { Session, SessionStatus } from '../../../../shared/api.ts';
-import { COMPACT_AT, WARN_AT } from '../status.ts';
+import { COMPACT_AT, type Session, type SessionStatus } from '../../../../shared/api.ts';
+import { WARN_AT } from '../status.ts';
 import type { District, House, World } from './world.ts';
 
 export type CrabSession = Pick<Session, 'id' | 'kind' | 'projectId' | 'status' | 'statusSince'>;
