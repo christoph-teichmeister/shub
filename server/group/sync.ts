@@ -135,6 +135,7 @@ export class HostSync {
     }
     if (h.id === this.hostId || this.revoked) throw new HttpError(409, 'cannot join this host to itself');
     const known = this.#group.get(`device:${h.id}`);
+    if (known?.deleted) throw new HttpError(409, 'host was revoked');
     const knownKey = (known?.body as HostBody | null)?.publicKey;
     if (knownKey && (knownKey.x !== key.x || knownKey.y !== key.y)) throw new HttpError(409, 'host key differs');
     this.#group.put(`device:${h.id}`, {

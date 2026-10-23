@@ -326,3 +326,10 @@ test('join refuses bad host info, itself, and a known host with another key', as
   a.sync.join(info);
   assert.throws(() => a.sync.join({ ...info, publicKey: c.sync.info().publicKey }), { status: 409 });
 });
+
+test('join refuses a revoked host', async () => {
+  const { a, b } = await pair();
+  a.group.remove(`device:${b.group.hostId}`);
+  assert.throws(() => a.sync.join(b.sync.info()), { status: 409 });
+  assert.ok(a.group.get(`device:${b.group.hostId}`)!.deleted);
+});
