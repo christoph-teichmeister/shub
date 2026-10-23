@@ -110,7 +110,9 @@
     const now = Date.now();
     if (now - lastOpen < 1000) return;
     lastOpen = now;
-    window.open(uri, '_blank', 'noopener');
+    // An anchor click, like the links in the app's own markup: window.open opened two tabs in the installed PWA.
+    const a = Object.assign(document.createElement('a'), { href: uri, target: '_blank', rel: 'noopener noreferrer' });
+    a.click();
   };
 
   const paste = (body: Blob | string) => {
