@@ -4,6 +4,7 @@ import type {
   ChildWorktree,
   Config,
   Device,
+  GroupConflict,
   DeviceLevel,
   PluginInfo,
   ProjectView,
@@ -40,6 +41,8 @@ export const app = $state({
   /** A session started from a terminal (`shub claude`): Main jumps there when that terminal is the open tab. */
   jump: null as { from: string; to: Session } | null,
   approvals: [] as Approval[],
+  /** GET /api/group/conflicts: items changed on two hosts while apart (header badge, Settings > Sync). */
+  conflicts: [] as GroupConflict[],
   plugins: [] as PluginInfo[],
   /** GET /api/usage: the 5h/7d subscription limits for the sidebar footer. */
   usage: {} as Usage,
@@ -198,6 +201,8 @@ export async function loadChildren(fetch = false): Promise<void> {
   app.children = list;
 }
 export const loadApprovals = async () => (app.approvals = (await guard(api<Approval[]>('approvals'))) ?? app.approvals);
+export const loadConflicts = async () =>
+  (app.conflicts = (await guard(api<GroupConflict[]>('groupConflicts'))) ?? app.conflicts);
 export const loadPlugins = async () => (app.plugins = (await guard(api<PluginInfo[]>('plugins'))) ?? app.plugins);
 /** The server version this page's code came with; another one means an update ran, so reload to get its frontend. */
 let loadedVersion: string | undefined;
@@ -229,6 +234,7 @@ export async function loadAll(): Promise<void> {
     loadChildren(),
     loadApprovals(),
     loadPlugins(),
+    loadConflicts(),
     loadUpdate(),
     guard(api<Usage>('usage')).then((u) => (app.usage = u ?? {})),
     guard(api<{ name?: string }>('me')).then((me) => (app.me = me ?? null)),
@@ -290,6 +296,9 @@ export function handleEvent(e: ServerEvent): void {
       return;
     case 'worktrees.changed':
       void loadChildren();
+      return;
+    case 'conflicts.changed':
+      void loadConflicts();
       return;
     case 'plugins.changed':
       void loadPlugins();

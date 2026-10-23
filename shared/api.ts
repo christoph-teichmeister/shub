@@ -143,6 +143,21 @@ export interface HostPeer {
   since?: string;
 }
 
+/** One side of an open sync conflict: the version this host holds, or the one another host sent. */
+export interface ConflictSide {
+  /** Names of the hosts that made changes the other side lacks. */
+  hosts: string[];
+  body: unknown;
+  /** The side removes the item. */
+  deleted: boolean;
+}
+/** An item changed on two hosts while apart; the item stays as `ours` until the user picks. */
+export interface GroupConflict {
+  key: string;
+  ours: ConflictSide;
+  theirs: ConflictSide;
+}
+
 export type TerminalCursorStyle = 'underline' | 'block' | 'bar';
 export interface TerminalSettings {
   /** CSS font-family list; fonts missing on a device fall back to the next one. */
@@ -649,6 +664,8 @@ export const ROUTES = {
   groupPull: 'POST /api/group/pull', // Bearer -> { items }
   groupPush: 'POST /api/group/push', // Bearer, { items } -> { changed, conflicts }
   groupPeers: 'GET /api/group/peers', // -> HostPeer[], user only
+  groupConflicts: 'GET /api/group/conflicts', // -> GroupConflict[]; open ones, any level sees them
+  groupResolve: 'POST /api/group/resolve', // { key, pick: 'ours' | 'theirs' } -> 204; control level
 
   config: 'GET /api/config',
   projects: 'GET /api/projects',
@@ -749,6 +766,7 @@ export type ServerEvent =
   | { type: 'plugins.changed' }
   | { type: 'updates.changed' }
   | { type: 'devices.changed' }
+  | { type: 'conflicts.changed' }
   /** A session created a worktree (GET /api/worktrees/children). */
   | { type: 'worktrees.changed' }
   | { type: 'usage.updated'; usage: Usage }

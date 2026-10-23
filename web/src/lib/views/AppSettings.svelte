@@ -15,6 +15,7 @@
   } from '../../../../shared/api.ts';
   import { terminalSettingsError, type SyncCategory } from '../../../../shared/api.ts';
   import Button from '../components/Button/Button.svelte';
+  import Conflicts from '../components/Conflicts/Conflicts.svelte';
   import Checkbox from '../components/Checkbox/Checkbox.svelte';
   import ChoiceButton from '../components/ChoiceButton/ChoiceButton.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
@@ -1150,6 +1151,11 @@
           </li>
         {/each}
       </ul>
+    </Section>
+  </div>
+  <div class="card">
+    <Section title="Conflicts" description="Changed on two hosts while apart. Each host keeps its own until you pick.">
+      <Conflicts list />
     </Section>
   </div>
   <div class="card">
