@@ -9,7 +9,7 @@ import type { Services } from '../services.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
 import { viewableImage } from './image.ts';
 import { buttonPrompt, isSimpleInput } from './launch.ts';
-import { noteUrl } from './markdown.ts';
+import { noteFile, noteUrl } from './markdown.ts';
 import { FILE_PASTE_MAX, NAMED_KEYS, SessionsService, type SessionsOptions } from './service.ts';
 import { attachTerminals } from './terminal.ts';
 
@@ -230,9 +230,10 @@ function routes(sessions: SessionsService, services: Services, router: Router, s
   });
   router.add(ROUTES.markdownLink, (req) => {
     requireRight(req.caller, 'read');
-    const url = noteUrl(req.query.get('path') ?? '');
-    if (!url) throw new HttpError(404, 'no note in the knowledge base');
-    return { url };
+    const path = req.query.get('path') ?? '';
+    const note = noteFile(path);
+    if (!note) throw new HttpError(404, 'no note in the knowledge base');
+    return { file: note.file, url: noteUrl(path) };
   });
   router.add(ROUTES.oldSessions, (req) => {
     requireRight(req.caller, 'read');
