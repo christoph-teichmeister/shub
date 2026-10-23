@@ -20,7 +20,7 @@
   import PausedPanel from '../components/PausedPanel/PausedPanel.svelte';
   import TerminalView from '../components/TerminalView/TerminalView.svelte';
   import Wordmark from '../components/Wordmark/Wordmark.svelte';
-  import { statusLabel } from '../status.ts';
+  import { idleWithAgents, statusLabel } from '../status.ts';
   import { childLabel, childStart, sessionsIn } from '../children.ts';
   import { api } from '../stores/api.ts';
   import { href, router } from '../stores/router.svelte.ts';
@@ -267,7 +267,7 @@
               </article>
             {:else}
               <a class="card row" href={sessionHref(s)}>
-                <StatusDot status={s.status} />
+                <StatusDot status={s.status} idle={idleWithAgents(s)} />
                 <span class="grow">{title(s)}</span>
                 <span class="sub">{sec.status === 'working' ? age(s.lastActivityAt) : statusLabel(s)}</span>
               </a>

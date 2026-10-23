@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Session } from '../../../../../shared/api.ts';
-  import { contextFill, STATUS_LABEL, waitTitle } from '../../status.ts';
+  import { contextFill, idleWithAgents, STATUS_LABEL, waitTitle } from '../../status.ts';
   import Icon from '../Icon/Icon.svelte';
   import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
@@ -92,7 +92,7 @@
   class:over-after={over === 'after'}
   oncontextmenu={onmenu ? (e) => (e.preventDefault(), onmenu({ x: e.clientX, y: e.clientY })) : undefined}
 >
-  <StatusDot status={session.status} />
+  <StatusDot status={session.status} idle={idleWithAgents(session)} />
   {#if renaming}
     <label class="visually-hidden" for="rename-{session.id}">Session name</label>
     <input

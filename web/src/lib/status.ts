@@ -11,15 +11,17 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
   exited: 'exited',
 };
 
+/** The turn is over and only background agents still run: working underneath, but nothing is typing. */
+export const idleWithAgents = (s: Session): boolean => s.status === 'working' && !!s.background && !!s.agents?.length;
+
 const commandCount = (n: number) => `${n} ${n === 1 ? 'command' : 'commands'}`;
 
 /** Status text of one session: a needs-you that waits for commands Claude handed over says so,
  *  a finished turn names the background shells still running. */
 export function statusLabel(s: Session): string {
   if (s.status === 'needs-you' && s.pendingCommands?.length) return `▶ ${commandCount(s.pendingCommands.length)}`;
-  if (s.status === 'working' && s.background && s.agents?.length) {
-    return `idle · ${s.agents.length} ${s.agents.length === 1 ? 'agent' : 'agents'}`;
-  }
+  const agents = s.agents?.length ?? 0;
+  if (idleWithAgents(s)) return `idle · ${agents} ${agents === 1 ? 'agent' : 'agents'}`;
   const shells = s.status !== 'working' && s.shells ? ` · ${s.shells} ${s.shells === 1 ? 'shell' : 'shells'}` : '';
   return STATUS_LABEL[s.status] + shells;
 }
@@ -33,7 +35,7 @@ export function projectBadge(sessions: Session[]): { text: string; tone: 'needs-
       : `${needs.length} ${needs.length === 1 ? 'needs' : 'need'} you`;
     return { text, tone: 'needs-you' };
   }
-  const working = sessions.filter((s) => s.status === 'working' && !(s.background && s.agents?.length)).length;
+  const working = sessions.filter((s) => s.status === 'working' && !idleWithAgents(s)).length;
   return working ? { text: `${working} working`, tone: 'working' } : null;
 }
 

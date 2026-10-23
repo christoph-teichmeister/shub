@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Session } from '../../../../../shared/api.ts';
-  import { contextFill, statusLabel, waitTitle } from '../../status.ts';
+  import { contextFill, idleWithAgents, statusLabel, waitTitle } from '../../status.ts';
   import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
 
@@ -52,7 +52,7 @@
       .filter(Boolean)
       .join('\n') || undefined}
   >
-    <StatusDot status={session.status} />
+    <StatusDot status={session.status} idle={idleWithAgents(session)} />
     <span class="name">{session.name}</span>
     <span class="status">{closing ? 'Closing' : statusLabel(session)}</span>
   </a>
