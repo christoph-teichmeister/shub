@@ -58,6 +58,11 @@ test('a phone pairs with its key, waits for approval and signs in with short-liv
   assert.equal(device.state, 'pending');
   assert.equal(device.level, 'prompts');
   assert.throws(() => auth.redeemPairing(code, 'again', publicKey.export({ format: 'jwk' })), /unknown or used/);
+  // A browser from the pairing flow joins at Prompts too; only the bootstrap desktop gets Control.
+  const { code: browserCode } = await auth.startPairing();
+  const browser = auth.redeemPairing(browserCode, 'Laptop', publicKey.export({ format: 'jwk' }), null, 'browser');
+  assert.equal(browser.kind, 'browser');
+  assert.equal(browser.level, 'prompts');
   assert.throws(() => auth.challenge(device.id), /waiting for approval/);
 
   auth.approve(device.id);

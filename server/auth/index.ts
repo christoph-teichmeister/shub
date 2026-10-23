@@ -249,7 +249,7 @@ export class AuthService implements Auth {
       public_key: key.publicKey,
       app_origin: key.appOrigin ?? null,
       via: key.via ?? null,
-      level: kind === 'phone' ? 'prompts' : 'control',
+      level: active ? 'control' : 'prompts',
       state: active ? 'active' : 'pending',
     };
     this.#insert(row);

@@ -807,7 +807,7 @@
         <summary>What do the levels mean?</summary>
         <p class="muted small">
           View reads sessions and gets push. Prompts also answers approvals, permission questions and Run chips. Control
-          also types in terminals and starts sessions. A new phone gets Prompts once approved, a browser Control;
+          also types in terminals and starts sessions. A new device (phone or browser) joins at Prompts once approved;
           approving and changing levels work on a trusted host (opened via localhost) and from a phone at level Control.
         </p>
       </details>
