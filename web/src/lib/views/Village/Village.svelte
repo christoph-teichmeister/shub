@@ -185,6 +185,7 @@
 
   function step() {
     if (document.hidden) return;
+    const t0 = performance.now();
     // Crabs there on the first step stand at their spot; later ones come out of their house's door.
     const fresh = t > 0;
     t++;
@@ -240,6 +241,23 @@
       [p.x, p.y] = [ws[i].x, ws[i].y];
       p.moving = Math.hypot(c.x - p.x, c.y - p.y) > 3;
     });
+    perf.step = Math.max(perf.step, performance.now() - t0);
+  }
+  // ---------- frame meter (P) ----------
+  // Frames per second, the slowest frame and the slowest crab step over the last second, to see where a hitch comes from.
+  let meter = $state(false);
+  let reading = $state({ fps: 0, worst: 0, step: 0 });
+  const perf = { n: 0, worst: 0, step: 0, since: 0 };
+  function tally(ts: number, delta: number) {
+    perf.n++;
+    perf.worst = Math.max(perf.worst, delta);
+    if (ts - perf.since < 1000) return;
+    reading = {
+      fps: Math.round((perf.n * 1000) / (ts - perf.since)),
+      worst: Math.round(perf.worst),
+      step: Math.round(perf.step),
+    };
+    Object.assign(perf, { n: 0, worst: 0, step: 0, since: ts });
   }
   onMount(() => {
     // Still: no walking, but the minutes in line and the time of day move on.
@@ -251,6 +269,7 @@
     const frame = (ts: number) => {
       raf = requestAnimationFrame(frame);
       const dt = last ? Math.min(ts - last, 250) : 0;
+      if (meter && last) tally(ts, ts - last);
       last = ts;
       const [vx, vy] = direction(held.has('left'), held.has('right'), held.has('up'), held.has('down'));
       if (vx || vy) go(vx, vy, (SPEED * dt) / 1000);
@@ -707,6 +726,10 @@
       interact();
       return;
     }
+    if (k === 'p') {
+      meter = !meter;
+      return;
+    }
     const step = WALK_KEYS[k];
     if (step && seated) {
       e.preventDefault();
@@ -1068,6 +1091,9 @@
         {/each}
         <Ambience {world} {tod} {t} {lights} {view} />
       </div>
+      {#if meter}
+        <output class="meter">{reading.fps} fps · worst frame {reading.worst} ms · worst step {reading.step} ms</output>
+      {/if}
       {#if card}
         {@const project = card.c.session.projectId ? projectById.get(card.c.session.projectId) : undefined}
         <CrabCard
@@ -1112,7 +1138,7 @@
       >
       walk · <kbd>E</kbd> talk to a crab, sit at your desk · at your desk: <kbd>↑</kbd><kbd>↓</kbd> queue ·
       <kbd>Enter</kbd> open · <kbd>Y</kbd><kbd>N</kbd> allow, deny · <kbd>R</kbd> run · <kbd>Esc</kbd> close ·
-      <kbd>Alt W</kbd> close the chat · <kbd>Alt V</kbd> back</span
+      <kbd>P</kbd> frame meter · <kbd>Alt W</kbd> close the chat · <kbd>Alt V</kbd> back</span
     >
   </footer>
   {#if building}
@@ -1527,6 +1553,19 @@
     color: var(--village-parchment);
     font: var(--weight-semibold) var(--text-md) / 1 var(--font-pixel);
     white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .meter {
+    position: absolute;
+    right: var(--space-2);
+    bottom: var(--space-2);
+    padding: var(--space-0-5) var(--space-1-5);
+    border: var(--ring) solid var(--village-gold);
+    border-radius: var(--radius-xs);
+    background: var(--village-ink);
+    color: var(--village-parchment);
+    font: var(--weight-semibold) var(--text-md) / 1 var(--font-pixel);
     pointer-events: none;
   }
 
