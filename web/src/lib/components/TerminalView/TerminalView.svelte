@@ -24,6 +24,7 @@
   }
   let { sessionId, accent, focused = false, label = 'Terminal', compact = false }: Props = $props();
 
+  const booting = $derived(app.sessions.find((x) => x.id === sessionId)?.booting);
   let host = $state<HTMLDivElement>();
   let term = $state<Terminal>();
   let fit: FitAddon | undefined;
@@ -282,6 +283,12 @@
 
 <section class="terminal" aria-label={label}>
   <div class="host" bind:this={host}></div>
+  {#if booting}
+    <div class="boot" role="status">
+      <span class="prompt">claude<span class="cursor">_</span></span>
+      <span class="text">Starting session…</span>
+    </div>
+  {/if}
 </section>
 <ImageViewer
   paths={images}
@@ -296,11 +303,62 @@
 
 <style>
   .terminal {
+    position: relative;
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
     padding: var(--space-3) var(--space-4);
     background: var(--term-bg);
+  }
+
+  .boot {
+    position: absolute;
+    inset: 0;
+    z-index: var(--z-raised);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    background: var(--term-bg);
+    font-family: var(--font-mono);
+  }
+
+  .prompt {
+    font-size: var(--text-xl);
+    font-weight: 700;
+    color: var(--fg);
+  }
+
+  .cursor {
+    color: var(--primary);
+  }
+
+  .text {
+    font-size: var(--text-sm);
+    color: var(--muted);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .cursor {
+      animation: boot-blink 1s steps(1) infinite;
+    }
+
+    .text {
+      animation: boot-pulse 1.6s var(--ease-standard) infinite;
+    }
+  }
+
+  @keyframes boot-blink {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes boot-pulse {
+    50% {
+      opacity: 0.4;
+    }
   }
 
   .host {

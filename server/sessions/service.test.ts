@@ -174,6 +174,9 @@ test('pause and resume', async () => {
   process.env.CLAUDE_CONFIG_DIR = join(root, 'claude-resume');
   try {
     svc.resume(s.id, 'chris');
+    assert.equal(svc.get(s.id)?.booting, true, 'booting until SessionStart');
+    svc.started(s.id);
+    assert.equal(svc.get(s.id)?.booting, false);
     assert.equal(launches.at(-1)?.resume, false, 'no transcript yet: starts fresh with the same id');
     assert.equal(launches.at(-1)?.claudeSessionId, s.claudeSessionId);
     const dir = join(root, 'claude-resume', 'projects', encodeCwd(s.cwd));

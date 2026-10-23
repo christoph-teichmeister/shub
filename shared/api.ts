@@ -236,6 +236,8 @@ export interface Session {
   agents?: SubagentRun[];
   /** How full Claude's context is, from the transcript after each turn and tool call; null before the first reply. */
   context?: ContextFill | null;
+  /** Resumed and Claude has not reported SessionStart yet: the terminal shows a boot-up animation. */
+  booting?: boolean;
 }
 
 /** Claude subscription limits from Claude Code's status line: percent used and when the window resets (epoch seconds). */

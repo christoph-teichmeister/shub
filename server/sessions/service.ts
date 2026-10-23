@@ -145,6 +145,7 @@ const toSession = (r: Row): Session => ({
 });
 
 export const tmuxName = (id: string): string => `shub-${id}`;
+const BOOT_CAP_MS = 30_000;
 const now = (): string => new Date().toISOString();
 const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
@@ -173,6 +174,8 @@ export class SessionsService implements Sessions {
   #binDir: string;
   #shellRc: string;
   #restorable = new Set<string>();
+  /** Resumed Claudes whose SessionStart hook has not fired yet. */
+  #booting = new Set<string>();
   #timer: NodeJS.Timeout | undefined;
   #restoreGapMs: number;
   #startedGapMs: number;
@@ -228,7 +231,7 @@ export class SessionsService implements Sessions {
   }
 
   list(): Session[] {
-    return this.#rows().map(toSession);
+    return this.#rows().map((r) => ({ ...toSession(r), booting: this.#booting.has(r.id) }));
   }
 
   /** Claude conversations of closed sessions: killed with the session, so their last write is no sign of work. */
@@ -241,7 +244,7 @@ export class SessionsService implements Sessions {
 
   get(id: string): Session | undefined {
     const row = this.#row(id);
-    return row && toSession(row);
+    return row && { ...toSession(row), booting: this.#booting.has(id) };
   }
 
   /** Must exist and not be exited. */
@@ -458,6 +461,7 @@ export class SessionsService implements Sessions {
       )
       .run(row.id);
     this.#restorable.delete(row.id);
+    this.#booting.delete(row.id);
     this.#ctx.bus.emit({ type: 'session.closed', sessionId: row.id });
   }
 
@@ -622,6 +626,11 @@ export class SessionsService implements Sessions {
     }
     this.#launch(this.#row(id)!, { resume: hasTranscript });
     this.#restorable.delete(id);
+    if (session.kind !== 'shell') {
+      this.#booting.add(id);
+      // ponytail: fixed cap so a hook that never arrives cannot leave the overlay up
+      setTimeout(() => this.#unboot(id), BOOT_CAP_MS).unref();
+    }
     this.setStatus(
       id,
       session.waitingFor ? 'waiting' : hasTranscript || session.kind === 'shell' ? 'your-turn' : 'new',
@@ -717,8 +726,13 @@ export class SessionsService implements Sessions {
     }
   }
 
+  #unboot(id: string): void {
+    if (this.#booting.delete(id)) this.#emitUpdated(id);
+  }
+
   /** Claude's SessionStart hook: it is up, so a command waiting for this session goes in now. */
   started(id: string): void {
+    this.#unboot(id);
     const type = this.#afterStart.get(id);
     if (!type) return;
     this.#afterStart.delete(id);
