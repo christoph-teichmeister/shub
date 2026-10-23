@@ -139,6 +139,7 @@ const toSession = (r: Row): Session => ({
       )
     : null,
   shells: r.shells,
+  background: r.background_until !== null,
   agents: r.agents ? JSON.parse(r.agents) : [],
   context: r.context ? JSON.parse(r.context) : null,
 });

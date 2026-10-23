@@ -46,3 +46,11 @@ test('a finished turn names the background shells still running', () => {
   assert.equal(label('working', 2), 'working');
   assert.equal(label('your-turn', 0), 'your turn');
 });
+
+test('a finished turn with agents still running reads idle, not working', () => {
+  const agent = { id: 'a', type: 'agent' };
+  const label = (s: object) => statusLabel({ status: 'working', ...s } as Session);
+  assert.equal(label({ background: true, agents: [agent] }), 'idle · 1 agent');
+  assert.equal(label({ background: true, agents: [agent, agent] }), 'idle · 2 agents');
+  assert.equal(label({ agents: [agent] }), 'working');
+});
