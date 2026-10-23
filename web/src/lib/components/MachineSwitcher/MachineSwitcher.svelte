@@ -197,6 +197,10 @@
     cursor: pointer;
   }
 
+  .chip:not(.shown):hover {
+    background: var(--raised);
+  }
+
   .chip.shown {
     border-color: var(--ring);
     background: var(--selection);
