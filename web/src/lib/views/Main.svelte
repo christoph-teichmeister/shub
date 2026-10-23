@@ -48,6 +48,7 @@
   import TextField from '../components/TextField/TextField.svelte';
   import Wordmark from '../components/Wordmark/Wordmark.svelte';
   import { api, ApiError } from '../stores/api.ts';
+  import { TIPS } from './shortcuts.ts';
   import { go, href, parseHash, router } from '../stores/router.svelte.ts';
   import {
     app,
@@ -1141,7 +1142,9 @@
     <EmptyState
       title={route.name === 'project' && app.ready ? 'Project not found' : 'Pick a project'}
       body="Or open the global Claude with Alt G."
-    />
+    >
+      <p class="tip">{TIPS[Math.floor(Math.random() * TIPS.length)]}</p>
+    </EmptyState>
   {:else}
     <TabBar label="Panes">
       {#snippet leading()}
@@ -1579,6 +1582,13 @@
 </Dialog>
 
 <style>
+  .tip {
+    margin: var(--space-4) 0 0;
+    max-width: 40ch;
+    color: var(--muted);
+    font-size: var(--text-sm);
+  }
+
   .work {
     flex: 1 1 auto;
     min-height: 0;
