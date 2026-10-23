@@ -222,7 +222,7 @@ test('the group hosts may call this host cross-origin; a revoked host may not', 
     publicKey: { kty: 'EC' },
     url: 'https://laptop.ts.net',
   });
-  assert.ok(h.auth.appOrigins().includes('https://laptop.ts.net'));
+  assert.deepEqual(h.auth.appOrigins(), ['https://laptop.ts.net']);
   h.group.remove('device:host-2');
   assert.deepEqual(h.auth.appOrigins(), []);
   h.close();
