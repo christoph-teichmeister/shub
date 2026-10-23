@@ -285,3 +285,44 @@ test('a revoke is never a conflict over a round either', async () => {
   assert.equal(b.group.conflicts().length, 0);
   assert.equal(a.group.get(`device:${id}`)!.deleted, true);
 });
+
+test("join: two strangers carry each other's info, end up in one group, identical items match and differing ones conflict", async () => {
+  const { a, b } = hosts('a', 'b');
+  for (const h of [a, b]) {
+    h.group.put('theme:same', { id: 'same' });
+  }
+  a.group.put('theme:t', { id: 't', v: 'a' });
+  b.group.put('theme:t', { id: 't', v: 'b' });
+  b.group.put('project:only-b', { id: 'only-b' });
+  assert.equal(a.sync.peers().length, 0);
+  a.sync.join(b.sync.info());
+  b.sync.join(a.sync.info());
+  await a.sync.round();
+  await b.sync.round();
+  assert.equal(a.sync.peers()[0].url, 'https://b');
+  assert.equal(b.sync.peers()[0].url, 'https://a');
+  assert.ok(a.group.get('project:only-b'));
+  assert.equal(
+    a.group
+      .conflicts()
+      .map((c) => c.ours.key)
+      .join(),
+    'theme:t',
+  );
+  assert.equal(b.group.conflicts().length, 1);
+  assert.equal(
+    a.group.conflicts().some((c) => c.ours.key === 'theme:same'),
+    false,
+  );
+});
+
+test('join refuses bad host info, itself, and a known host with another key', async () => {
+  const { a, b, c } = hosts('a', 'b', 'c');
+  const info = b.sync.info();
+  assert.throws(() => a.sync.join({ ...info, url: 'ftp://b' }), { status: 400 });
+  assert.throws(() => a.sync.join({ ...info, publicKey: { ...info.publicKey, crv: 'P-384' } }), { status: 400 });
+  assert.throws(() => a.sync.join({ ...info, publicKey: { ...info.publicKey, d: 'x' } }), { status: 400 });
+  assert.throws(() => a.sync.join(a.sync.info()), { status: 409 });
+  a.sync.join(info);
+  assert.throws(() => a.sync.join({ ...info, publicKey: c.sync.info().publicKey }), { status: 409 });
+});

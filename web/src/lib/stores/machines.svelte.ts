@@ -1,6 +1,6 @@
 // The machines a browser or phone app knows: which one is shown, how the others are doing, adding one by its
 // pairing code. Keys and tokens live in device.ts.
-import type { Session } from '../../../../shared/api.ts';
+import type { HostInfo, Session } from '../../../../shared/api.ts';
 import { api } from './api.ts';
 import {
   deviceToken,
@@ -114,6 +114,20 @@ export async function waitForApproval(origin: string, signal?: AbortSignal): Pro
   }
   if (await pushEnabled()) await sharePush(origin).catch(() => {});
   fleet.status[origin] = { state: 'online', needsYou: 0 };
+}
+
+/**
+ * After a browser was approved on another host: this browser is the courier that joins that host and the one the app
+ * came from into one group. Each host tells its key and URL; the other adds it (server/group/sync.ts, docs/SECURITY.md).
+ */
+export async function joinHosts(origin: string): Promise<void> {
+  if (origin === here) return;
+  const [theirs, ours] = await Promise.all([
+    api<HostInfo>('groupJoinOffer', { origin }),
+    api<HostInfo>('groupJoinOffer', { origin: here }),
+  ]);
+  await api('groupJoin', { origin: here, body: { host: theirs } });
+  await api('groupJoin', { origin, body: { host: ours } });
 }
 
 /** Forgets a machine on this phone and signs the phone out there (when reachable). */
