@@ -360,11 +360,18 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
               sync.handle(action, await req.json(), /^Bearer\s+(\S+)$/i.exec(req.raw.headers.authorization ?? '')?.[1]),
             { public: true },
           );
-        router.add(ROUTES.groupConflicts, () => conflictViews(group));
+        // The bodies may hold secrets and a pick rewrites config: only the user, never a session or plugin token.
+        router.add(ROUTES.groupConflicts, (req) => {
+          requireUser(req.caller);
+          return conflictViews(group);
+        });
         router.add(ROUTES.groupResolve, async (req) => {
+          requireUser(req.caller);
           const { key, pick } = (await req.json()) as { key?: unknown; pick?: unknown };
           if (typeof key !== 'string' || (pick !== 'ours' && pick !== 'theirs'))
             throw new HttpError(400, 'bad request');
+          // Host levels and names are settled on the machine itself, never from a phone (docs/SECURITY.md).
+          if (kindOf(key) === 'device' && req.caller.level) throw new HttpError(403, 'only on the machine itself');
           if (!group.resolve(key, pick)) throw new HttpError(404, 'no open conflict for that item');
           services.config.reload();
           ctx.bus.emit({ type: 'conflicts.changed' });
