@@ -75,6 +75,7 @@ const API: Record<string, unknown> = {
   '/api/worktrees/children': [],
   '/api/auth/me': { caller: { kind: 'user', id: 'user' }, device: null },
   '/api/devices': [],
+  '/api/group/conflicts': [],
   '/api/group/peers': [
     { id: 'h2', name: 'Laptop', url: 'https://laptop.tail.ts.net', state: 'in-sync' },
     { id: 'h3', name: 'Mini', state: 'offline', since: '2026-10-20T10:00:00Z' },
@@ -412,6 +413,31 @@ test('settings > Sync lists the other hosts of the group with their state', asyn
   await expect(hosts.getByText('Mini', { exact: true })).toBeVisible();
   await expect(hosts.getByText('no address published yet')).toBeVisible();
   await expect(hosts.getByText(/^Offline since/)).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('a sync conflict shows as a badge and Settings > Sync, and picking a version resolves it', async ({ page }) => {
+  const conflict = {
+    key: 'config:terminal',
+    ours: { hosts: [], deleted: false, body: { fontSize: 14 } },
+    theirs: { hosts: ['Laptop'], deleted: false, body: { fontSize: 16 } },
+  };
+  const { errors, calls } = await mockApi(page, {
+    '/api/group/conflicts': [conflict],
+    'POST /api/group/resolve': { status: 204 },
+  });
+  await page.goto('/#/settings/sync');
+  const section = page.getByRole('region', { name: 'Conflicts' });
+  await expect(section.getByText('config:terminal')).toBeVisible();
+  await section.getByRole('button', { name: 'Compare' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Two versions of config:terminal' });
+  await expect(dialog.getByText('Laptop')).toBeVisible();
+  await expect(dialog.getByText('14')).toBeVisible();
+  await expect(dialog.getByText('16')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Take the other' }).click();
+  await expect
+    .poll(() => calls.find((c) => c.path === '/api/group/resolve')?.body)
+    .toEqual({ key: 'config:terminal', pick: 'theirs' });
   expect(errors).toEqual([]);
 });
 

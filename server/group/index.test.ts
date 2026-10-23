@@ -1,7 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { compareItems, compareVersions, forSync, GroupStore, type GroupItem } from './index.ts';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { ROUTES } from '../../shared/api.ts';
+import { Router, type Caller } from '../api/router.ts';
+import type { Context } from '../context.ts';
+import { EventBus } from '../context.ts';
+import type { Services } from '../services.ts';
+import { openState } from '../state/index.ts';
+import { compareItems, compareVersions, create, forSync, GroupStore, type GroupItem } from './index.ts';
 
 function store(): GroupStore {
   const db = new DatabaseSync(':memory:');
@@ -109,4 +118,25 @@ test('sync switches: off categories are neither sent nor accepted; plugin env is
   assert.equal(forSync(item('setting:defaultPermissionMode', { a: 1 }), { permissionMode: false }), null);
   assert.ok(forSync(item('setting:notifications', { a: 1 }), { terminal: false }));
   assert.ok(forSync(item('device:d', { a: 1 }), { projects: false, plugins: false }));
+});
+
+test('conflict routes are for the user only; a phone may not settle a device item', async () => {
+  const state = openState(mkdtempSync(join(tmpdir(), 'shub-group-')));
+  const services = { state, config: { get: () => ({}), reload: () => {} } } as unknown as Services;
+  const router = new Router();
+  create({ bus: new EventBus() } as Context, services).module.routes!(router);
+  const call = async (spec: string, caller: Caller, body?: unknown) => {
+    const [method, path] = spec.split(' ');
+    return router.match(method, path)!.route.handler({ caller, json: async () => body ?? {} } as never, {} as never);
+  };
+  const who = (kind: Caller['kind'], level?: Caller['level']): Caller => ({ kind, id: kind, rights: [], level });
+  for (const kind of ['session', 'spawned-session', 'plugin', 'global-claude'] as const) {
+    await assert.rejects(call(ROUTES.groupConflicts, who(kind)), { status: 403 });
+    await assert.rejects(call(ROUTES.groupResolve, who(kind), { key: 'theme:t', pick: 'ours' }), { status: 403 });
+  }
+  assert.deepEqual(await call(ROUTES.groupConflicts, who('user')), []);
+  await assert.rejects(call(ROUTES.groupResolve, who('user', 'control'), { key: 'device:x', pick: 'ours' }), {
+    status: 403,
+  });
+  await assert.rejects(call(ROUTES.groupResolve, who('user'), { key: 'device:x', pick: 'ours' }), { status: 404 });
 });

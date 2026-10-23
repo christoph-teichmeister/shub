@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import type { SyncSettings } from '../../shared/api.ts';
-import { GroupStore } from './index.ts';
+import { compareVersions, conflictViews, GroupStore } from './index.ts';
 import { HostSync } from './sync.ts';
 
 interface Host {
@@ -191,4 +191,97 @@ test('plugin env does not travel unless switched on', async () => {
   a.group.put('plugin:x', { name: 'x', env: { K: 'secret' } });
   await a.sync.round();
   assert.deepEqual(b.group.get('plugin:x')?.body, { name: 'x' });
+});
+
+/** Two hosts that changed the same theme while apart, now meeting: a conflict open on both. */
+async function conflicted() {
+  const { a, b } = await pair();
+  await a.sync.round();
+  b.online = false;
+  a.group.put('theme:t', { id: 't', v: 'a' });
+  b.group.put('theme:t', { id: 't', v: 'b' });
+  await a.sync.flush();
+  b.online = true;
+  await a.sync.round();
+  return { a, b };
+}
+
+test('a conflict shows both versions with the hosts that made them', async () => {
+  const { a } = await conflicted();
+  const [c] = conflictViews(a.group);
+  assert.deepEqual([c.key, c.ours.hosts, c.theirs.hosts], ['theme:t', ['a'], ['b']]);
+  assert.deepEqual(
+    [c.ours.body, c.theirs.body],
+    [
+      { id: 't', v: 'a' },
+      { id: 't', v: 'b' },
+    ],
+  );
+});
+
+test('a pick on one host closes the conflict on the others', async () => {
+  const { a, b } = await conflicted();
+  const theirsBefore = a.group.get('theme:t')!.version;
+  assert.equal(b.group.resolve('theme:t', 'ours'), true); // b keeps its own version
+  await b.sync.flush();
+  for (const h of [a, b]) {
+    assert.deepEqual(h.group.get('theme:t')?.body, { id: 't', v: 'b' });
+    assert.equal(h.group.conflicts().length, 0);
+  }
+  assert.equal(compareVersions(b.group.get('theme:t')!.version, theirsBefore), 'newer'); // supersedes both
+  assert.deepEqual(a.group.get('theme:t'), b.group.get('theme:t'));
+  assert.equal(b.group.resolve('theme:t', 'ours'), false);
+});
+
+test('a pick reaches a host that was offline when it was made', async () => {
+  const { a, b } = await conflicted();
+  b.online = false;
+  a.group.resolve('theme:t', 'theirs'); // a takes b's version
+  await a.sync.flush();
+  assert.equal(b.group.conflicts().length, 1); // b has not heard yet
+  b.online = true;
+  await a.sync.round();
+  assert.deepEqual(b.group.get('theme:t')?.body, { id: 't', v: 'b' });
+  assert.equal(b.group.conflicts().length, 0);
+  assert.equal(a.group.conflicts().length, 0);
+});
+
+test('a revoke is never a conflict', async () => {
+  const { a, b } = await pair();
+  await a.sync.round();
+  b.online = false;
+  const id = b.group.hostId;
+  a.group.remove(`device:${id}`); // a revokes b
+  b.group.put(`device:${id}`, { ...(b.group.get(`device:${id}`)!.body as object), name: 'renamed' });
+  const mine = a.group.get(`device:${id}`)!;
+  assert.equal(a.group.merge(b.group.get(`device:${id}`)!), 'older');
+  assert.equal(a.group.conflicts().length, 0);
+  assert.equal(a.group.get(`device:${id}`)!.deleted, mine.deleted);
+});
+
+test('a revoke reaching the host that edited the device item deletes it without a conflict', async () => {
+  const { a, b } = await pair();
+  await a.sync.round();
+  const id = b.group.hostId;
+  b.online = false;
+  a.group.remove(`device:${id}`);
+  b.group.put(`device:${id}`, { ...(b.group.get(`device:${id}`)!.body as object), name: 'renamed' });
+  assert.equal(b.group.merge(a.group.get(`device:${id}`)!), 'newer');
+  assert.equal(b.group.get(`device:${id}`)!.deleted, true);
+  assert.equal(b.group.conflicts().length, 0);
+});
+
+test('a revoke is never a conflict over a round either', async () => {
+  const { a, b } = await pair();
+  await a.sync.round();
+  const id = b.group.hostId;
+  b.online = false;
+  a.group.remove(`device:${id}`);
+  b.group.put(`device:${id}`, { ...(b.group.get(`device:${id}`)!.body as object), name: 'renamed' });
+  b.online = true;
+  await a.sync.round();
+  await b.sync.round();
+  assert.equal(a.group.conflicts().length, 0);
+  assert.equal(b.group.conflicts().length, 0);
+  assert.equal(a.group.get(`device:${id}`)!.deleted, true);
 });

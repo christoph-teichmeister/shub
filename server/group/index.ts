@@ -3,8 +3,15 @@
 // Host-to-host sync, pairing and the conflict UI build on this; nothing here talks to the network.
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { ROUTES, type Config, type SyncCategory, type SyncSettings } from '../../shared/api.ts';
-import { requireUser } from '../api/router.ts';
+import {
+  ROUTES,
+  type Config,
+  type ConflictSide,
+  type GroupConflict,
+  type SyncCategory,
+  type SyncSettings,
+} from '../../shared/api.ts';
+import { HttpError, requireUser } from '../api/router.ts';
 import { publicUrl } from '../config/index.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
@@ -246,6 +253,24 @@ export class GroupStore {
     return rows.map((r) => ({ ours: this.get(r.key)!, theirs: JSON.parse(r.theirs) }));
   }
 
+  /**
+   * Settle an open conflict with one whole version. It is stored as a new version that has seen both, so it
+   * supersedes them everywhere; returns false when the item has no open conflict.
+   */
+  resolve(key: string, pick: 'ours' | 'theirs'): boolean {
+    const c = this.conflicts().find((x) => x.ours.key === key);
+    if (!c) return false;
+    const chosen = pick === 'ours' ? c.ours : c.theirs;
+    const version = { ...c.ours.version };
+    for (const [host, n] of Object.entries(c.theirs.version)) version[host] = Math.max(version[host] ?? 0, n);
+    version[this.hostId] = (version[this.hostId] ?? 0) + 1;
+    this.#db
+      .prepare('INSERT OR REPLACE INTO group_items (key, body, version, deleted, theirs) VALUES (?, ?, ?, ?, NULL)')
+      .run(key, chosen.deleted ? null : JSON.stringify(chosen.body), JSON.stringify(version), chosen.deleted ? 1 : 0);
+    this.#listeners.forEach((l) => l(key));
+    return true;
+  }
+
   /** The synced part of a config (paths as stored, with `~`), built from the live items. */
   config(): Partial<Config> {
     const live = this.list().filter((i) => !i.deleted);
@@ -290,12 +315,32 @@ export class GroupStore {
   }
 }
 
+/** The open conflicts as the UI shows them: each side with the hosts that made changes the other lacks. */
+export function conflictViews(group: GroupStore): GroupConflict[] {
+  const name = (id: string) => (group.get(`device:${id}`)?.body as { name?: string } | null)?.name ?? id;
+  const side = (a: GroupItem, b: GroupItem): ConflictSide => ({
+    hosts: Object.keys(a.version)
+      .filter((h) => a.version[h] > (b.version[h] ?? 0))
+      .map(name),
+    body: a.body,
+    deleted: a.deleted,
+  });
+  return group.conflicts().map(({ ours, theirs }) => ({
+    key: ours.key,
+    ours: side(ours, theirs),
+    theirs: side(theirs, ours),
+  }));
+}
+
 export function create(ctx: Context, services: Services): { module: ShubModule; service: GroupStore } {
   const group = new GroupStore(services.state.db, services.state.migrate);
   const sync = new HostSync(group, {
     sync: () => services.config.get().sync,
     url: () => publicUrl(services.config.get()),
-    onMerged: () => services.config.reload(),
+    onMerged: () => {
+      services.config.reload();
+      ctx.bus.emit({ type: 'conflicts.changed' });
+    },
   });
   const actions = [
     ['challenge', ROUTES.groupChallenge],
@@ -315,6 +360,23 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
               sync.handle(action, await req.json(), /^Bearer\s+(\S+)$/i.exec(req.raw.headers.authorization ?? '')?.[1]),
             { public: true },
           );
+        // The bodies may hold secrets and a pick rewrites config: only the user, never a session or plugin token.
+        router.add(ROUTES.groupConflicts, (req) => {
+          requireUser(req.caller);
+          return conflictViews(group);
+        });
+        router.add(ROUTES.groupResolve, async (req) => {
+          requireUser(req.caller);
+          const { key, pick } = (await req.json()) as { key?: unknown; pick?: unknown };
+          if (typeof key !== 'string' || (pick !== 'ours' && pick !== 'theirs'))
+            throw new HttpError(400, 'bad request');
+          // Host levels and names are settled on the machine itself, never from a phone (docs/SECURITY.md).
+          if (kindOf(key) === 'device' && req.caller.level) throw new HttpError(403, 'only on the machine itself');
+          if (!group.resolve(key, pick)) throw new HttpError(404, 'no open conflict for that item');
+          services.config.reload();
+          ctx.bus.emit({ type: 'conflicts.changed' });
+          return { ok: true };
+        });
         router.add(ROUTES.groupPeers, (req) => {
           requireUser(req.caller);
           return sync.peers();
