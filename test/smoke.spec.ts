@@ -1082,6 +1082,7 @@ test('a desktop browser pairs, adds a host, switches between hosts and starts ov
   page,
 }) => {
   const { calls, errors } = await mockApi(page, {
+    '/api/group/peers': [], // a group of one host until the second is paired
     'POST /api/auth/bootstrap': { device: { id: 'desk-1', state: 'active', level: 'control' } },
     'POST /api/auth/pairing/redeem': { device: { id: 'dev-1', state: 'pending', level: 'control' } },
     'POST /api/auth/challenge': { nonce: 'n1' },
