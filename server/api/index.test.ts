@@ -424,6 +424,25 @@ test('static files with SPA fallback; unknown api paths are JSON 404', async () 
   assert.equal((await call('GET', '/api/nope')).status, 404);
 });
 
+test('logging in again with a valid cookie reuses the device; unused desktops are pruned after 30 days', async () => {
+  const count = async () => (await (await asUser('GET', '/api/devices')).json()).length;
+  const svc = services.auth as unknown as auth.AuthService;
+  const before = await count();
+  const again = await call('POST', '/api/auth/login', { token: accessToken }, { cookie, origin: base });
+  const fresh = again.headers.get('set-cookie')!.split(';')[0];
+  assert.notEqual(fresh, cookie, 'the secret is rotated');
+  assert.equal((await call('GET', '/api/devices', undefined, { cookie: fresh, origin: base })).status, 200);
+  cookie = fresh;
+  assert.equal(await count(), before);
+
+  const { device } = svc.createDevice('old', 'desktop');
+  services.state.db
+    .prepare('UPDATE devices SET last_seen_at = ? WHERE id = ?')
+    .run(new Date(Date.now() - 31 * 24 * 3600 * 1000).toISOString(), device.id);
+  svc.pruneStaleDesktops();
+  assert.equal(await count(), before);
+});
+
 test('rotate signs out other devices but keeps the caller', async () => {
   const other = await call('POST', '/api/auth/login', { token: accessToken });
   const otherCookie = other.headers.get('set-cookie')!.split(';')[0];
