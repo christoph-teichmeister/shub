@@ -34,6 +34,7 @@
   import Sidebar from '../components/Sidebar/Sidebar.svelte';
   import SidebarSection from '../components/SidebarSection/SidebarSection.svelte';
   import SplitView from '../components/SplitView/SplitView.svelte';
+  import Conflicts from '../components/Conflicts/Conflicts.svelte';
   import StatusBadge from '../components/StatusBadge/StatusBadge.svelte';
   import StatusDot from '../components/StatusDot/StatusDot.svelte';
   import { contextFill, dropPositions, placeSessions, projectBadge } from '../status.ts';
@@ -938,6 +939,7 @@
             >
           {/if}
         </div>
+        <Conflicts />
         {#if pendingApprovals > 1}
           <span class="approvals"><StatusBadge text="{pendingApprovals} approvals waiting" tone="needs-you" /></span>
         {/if}

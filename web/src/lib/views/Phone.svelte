@@ -19,6 +19,7 @@
   import StatusDot from '../components/StatusDot/StatusDot.svelte';
   import PausedPanel from '../components/PausedPanel/PausedPanel.svelte';
   import TerminalView from '../components/TerminalView/TerminalView.svelte';
+  import Conflicts from '../components/Conflicts/Conflicts.svelte';
   import Wordmark from '../components/Wordmark/Wordmark.svelte';
   import { idleWithAgents, statusLabel } from '../status.ts';
   import { childLabel, childStart, sessionsIn } from '../children.ts';
@@ -216,6 +217,7 @@
   <div class="overview">
     <header class="bar">
       <span class="grow"><Wordmark needsYou={needsYouCount() > 0} /></span>
+      <Conflicts />
       <IconButton label="Search projects" icon="search" size="lg" onclick={() => (ui.search = true)} />
       <IconButton label="Settings" icon="gear" size="lg" href={href('settings')} />
     </header>

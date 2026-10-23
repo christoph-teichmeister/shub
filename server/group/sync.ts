@@ -178,7 +178,7 @@ export class HostSync {
       if (order === 'newer') changed++;
       if (order === 'conflict') conflicts++;
     }
-    if (changed) this.#deps.onMerged();
+    if (changed || conflicts) this.#deps.onMerged();
     return { changed, conflicts };
   }
 
