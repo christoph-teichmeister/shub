@@ -68,17 +68,16 @@ pairing QR code. `SHUB_PUBLIC_URL` still works and wins over `publicUrl`. A syst
 
 ## Configuration
 
-`~/.config/shub/config.json` holds projects, groups, buttons and themes and contains no secrets, so you can keep it in
-your dotfiles and share it between machines:
+Projects, groups, buttons, themes and settings live as versioned items in the group store (the `shub.db` file in
+`~/.local/state/shub/`), no secrets. An existing `~/.config/shub/config.json` is imported once on first start and then
+ignored.
 
 - Project paths under your home are stored as `~/...`. A project whose folder is missing on a machine shows dimmed
   there and is never removed.
-- shub reloads the file when it changes on disk (git pull, Syncthing, an editor). If it cannot be read (e.g. git
-  conflict markers), shub keeps running on the last good config (a copy in `~/.local/state/shub/`, also used at
-  startup), warns in the app and refuses changes until you fix the file, so the conflict is never overwritten.
-- `~/.config/shub/local.json` (keep it out of your dotfiles) holds what stays on one machine; its keys win over
-  `config.json`. The update channel always goes there; put any other key there (e.g. `"defaultPermissionMode"`) to make
-  it machine-only.
+- `~/.config/shub/local.json` (keep it out of your dotfiles) holds what stays on one machine; its keys win over the
+  store. The update channel and the Settings > Sync switches always go there; put any other key there (e.g.
+  `"defaultPermissionMode"`) to make it machine-only. If it cannot be read, shub keeps running on the last good config
+  (a copy in `~/.local/state/shub/`, also used at startup), warns in the app and refuses changes until you fix it.
 - The systemd unit written by `shub service install` is machine-specific (absolute paths); keep it out of your dotfiles.
 
 Secrets and runtime state live in `~/.local/state/shub/`.

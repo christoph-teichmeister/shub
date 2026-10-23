@@ -13,6 +13,7 @@ import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import * as state from '../state/index.ts';
 import * as config from '../config/index.ts';
+import * as group from '../group/index.ts';
 import * as auth from '../auth/index.ts';
 import * as projects from '../projects/index.ts';
 import * as skills from '../skills/index.ts';
@@ -74,6 +75,7 @@ before(async () => {
   const modules: ShubModule[] = [];
   for (const [key, mod] of [
     ['state', state],
+    ['group', group],
     ['config', config],
     ['auth', auth],
     ['skills', skills],
@@ -248,6 +250,11 @@ test('settings and themes', async () => {
   ).json();
   assert.equal(config.activeTheme, 'mine');
   assert.equal(config.notifications.pushYourTurn, true);
+  assert.equal((await asUser('PATCH', '/api/settings', { sync: { nope: true } })).status, 400);
+  assert.equal((await asUser('PATCH', '/api/settings', { sync: { pluginEnv: 'yes' } })).status, 400);
+  assert.deepEqual((await (await asUser('PATCH', '/api/settings', { sync: { themes: false } })).json()).sync, {
+    themes: false,
+  });
   assert.equal((await asUser('PATCH', '/api/settings', { activeGroup: 'yes' })).status, 400);
   assert.equal((await (await asUser('PATCH', '/api/settings', { activeGroup: true })).json()).activeGroup, true);
   assert.equal((await asUser('PATCH', '/api/settings', { terminal: { fontSize: 200 } })).status, 400);

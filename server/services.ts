@@ -21,6 +21,7 @@ import type {
   SubagentRun,
 } from '../shared/api.ts';
 import type { Caller } from './api/router.ts';
+import type { GroupStore } from './group/index.ts';
 
 /** server/state: one sqlite file in stateDir; each module creates its own tables via migrate(). */
 export interface StateDb {
@@ -143,6 +144,8 @@ export interface Skills {
 
 export interface Services {
   state: StateDb;
+  /** server/group: the device group's versioned items in shub.db; config settings live there. */
+  group: GroupStore;
   config: ConfigStore;
   auth: Auth;
   permissions: Permissions;

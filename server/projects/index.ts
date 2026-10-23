@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import {
   ROUTES,
+  SYNC_CATEGORIES,
   terminalSettingsError,
   type Approval,
   type ButtonDef,
@@ -409,7 +410,7 @@ function settingsRoutes(services: Services, router: Router): void {
         Partial<
           Pick<
             Config,
-            'activeTheme' | 'notifications' | 'groups' | 'defaultPermissionMode' | 'activeGroup' | 'terminal'
+            'activeTheme' | 'notifications' | 'groups' | 'defaultPermissionMode' | 'activeGroup' | 'terminal' | 'sync'
           >
         >
       >();
@@ -427,6 +428,11 @@ function settingsRoutes(services: Services, router: Router): void {
       const error = terminalSettingsError(body.terminal);
       if (error) bad(error);
     }
+    if (body.sync !== undefined) {
+      for (const [k, v] of Object.entries(body.sync)) {
+        if (!(SYNC_CATEGORIES as readonly string[]).includes(k) || typeof v !== 'boolean') bad(`sync.${k} is invalid`);
+      }
+    }
     if (body.notifications !== undefined) {
       const known = Object.keys(current.notifications);
       for (const [k, v] of Object.entries(body.notifications)) {
@@ -439,6 +445,7 @@ function settingsRoutes(services: Services, router: Router): void {
       if (body.notifications !== undefined) Object.assign(c.notifications, body.notifications);
       if (body.defaultPermissionMode !== undefined) c.defaultPermissionMode = body.defaultPermissionMode;
       if (body.activeGroup !== undefined) c.activeGroup = body.activeGroup;
+      if (body.sync !== undefined) c.sync = { ...c.sync, ...body.sync };
       if (body.terminal !== undefined) {
         // null resets a field to its default.
         const t: Record<string, unknown> = { ...c.terminal, ...body.terminal };

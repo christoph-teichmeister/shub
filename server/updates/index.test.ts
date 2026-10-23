@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import type { ServerEvent, UpdateStatus } from '../../shared/api.ts';
 import { HttpError, Router, type Caller } from '../api/router.ts';
 import { FileConfigStore } from '../config/index.ts';
+import { GroupStore } from '../group/index.ts';
 import { EventBus, type Context } from '../context.ts';
 import { rightsFor } from '../permissions/rules.ts';
 import type { Services } from '../services.ts';
@@ -45,9 +46,10 @@ function setup(withLauncher: boolean, extraEnv: NodeJS.ProcessEnv = {}) {
   const events: ServerEvent[] = [];
   bus.on((e) => events.push(e));
   const logged: string[] = [];
+  const state = openState(join(root, 'state'));
   const services = {
-    state: openState(join(root, 'state')),
-    config: new FileConfigStore(join(root, 'config'), bus),
+    state,
+    config: new FileConfigStore(join(root, 'config'), bus, new GroupStore(state.db, state.migrate)),
     permissions: { log: (e: { action: string; detail: string }) => logged.push(`${e.action} ${e.detail}`) },
   } as unknown as Services;
   const ctx = { paths: { appDir }, bus } as Context;

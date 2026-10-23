@@ -5,6 +5,7 @@ import { createContext } from './context.ts';
 import type { ShubModule } from './module.ts';
 import type { Services } from './services.ts';
 import * as state from './state/index.ts';
+import * as group from './group/index.ts';
 import * as config from './config/index.ts';
 import * as auth from './auth/index.ts';
 import * as permissions from './permissions/index.ts';
@@ -34,6 +35,7 @@ function use<K extends keyof Services>(key: K | null, created: { module: ShubMod
 }
 
 use('state', state.create(ctx, services));
+use('group', group.create(ctx, services));
 use('config', config.create(ctx, services));
 use('auth', auth.create(ctx, services));
 use('permissions', permissions.create(ctx, services));

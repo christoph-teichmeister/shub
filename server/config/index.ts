@@ -1,6 +1,6 @@
-// config.json in configDir: projects, groups, themes, settings. No secrets live here.
-// It is meant to be shared between machines (dotfiles, Syncthing): paths under home are stored as `~/...`,
-// and local.json next to it holds what stays on this machine; its keys win over config.json.
+// Projects, groups, themes and settings live as versioned items in the group store (server/group), no secrets.
+// Paths under home are stored as `~/...` so each host expands them to its own home. local.json in configDir holds
+// what stays on this machine; its keys win over the store. A config.json from before is imported once, on first start.
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, watch, writeFileSync, type FSWatcher } from 'node:fs';
 import { homedir } from 'node:os';
@@ -9,6 +9,7 @@ import type { Config, Project, ProjectView, ResolvedIcon, ThemeDef } from '../..
 import type { Context, EventBus } from '../context.ts';
 import { HttpError } from '../api/router.ts';
 import type { ShubModule } from '../module.ts';
+import type { GroupStore } from '../group/index.ts';
 import type { ConfigStore, Services } from '../services.ts';
 import { isLaunchPermissionMode } from '../sessions/launch.ts';
 
@@ -55,7 +56,7 @@ function normalize(raw: Partial<Config>): Config {
 }
 
 /** Keys that always go to local.json; any other key the user puts there stays local too. */
-export const LOCAL_KEYS: (keyof Config)[] = ['updateChannel', 'updateMode', 'publicUrl'];
+export const LOCAL_KEYS: (keyof Config)[] = ['updateChannel', 'updateMode', 'publicUrl', 'sync'];
 
 /** The address the phone reaches shub at: SHUB_PUBLIC_URL, else the one the phone setup stored. No trailing slash. */
 export function publicUrl(config: Config): string | undefined {
@@ -132,12 +133,13 @@ export class FileConfigStore implements ConfigStore {
   #dir: string;
   #file: string;
   #localFile: string;
+  #group: GroupStore;
   #home: string;
   #bus: EventBus;
-  /** config.json and local.json as on disk (paths with `~`), and what was last read or written, to spot outside edits. */
+  /** The group store's settings and local.json (paths with `~`); local.json's text as last read or written. */
   #shared: Partial<Config> = {};
   #local: Partial<Config> = {};
-  #lastText = { shared: '', local: '' };
+  #lastText = '';
   #config: Config;
   /** Set while a file is broken (e.g. git conflict markers); cleared by the next good reload. */
   #problem?: string;
@@ -148,7 +150,8 @@ export class FileConfigStore implements ConfigStore {
   // ponytail: remotes cached for the process lifetime; restart shub after changing a remote.
   #remotes = new Map<string, string | null>();
 
-  constructor(configDir: string, bus: EventBus, home = homedir(), lastGoodFile?: string) {
+  constructor(configDir: string, bus: EventBus, group: GroupStore, home = homedir(), lastGoodFile?: string) {
+    this.#group = group;
     this.#dir = configDir;
     this.#lastGoodFile = lastGoodFile;
     this.#file = join(configDir, 'config.json');
@@ -156,7 +159,6 @@ export class FileConfigStore implements ConfigStore {
     this.#home = home;
     this.#bus = bus;
     mkdirSync(configDir, { recursive: true });
-    if (!existsSync(this.#file)) this.#writeFile(this.#file, 'shared', defaultConfig());
     try {
       this.#config = this.#load();
       this.#saveLastGood();
@@ -168,7 +170,7 @@ export class FileConfigStore implements ConfigStore {
   }
 
   #describe(err: unknown): string {
-    return `config not readable (${(err as Error).message}); running on the last good config, changes are refused until config.json and local.json are fixed`;
+    return `config not readable (${(err as Error).message}); running on the last good config, changes are refused until the file is fixed`;
   }
 
   #lastGood(): Config {
@@ -191,23 +193,24 @@ export class FileConfigStore implements ConfigStore {
     }
   }
 
-  #read(file: string, which: 'shared' | 'local'): Partial<Config> {
+  #readLocal(): Partial<Config> {
     let text: string;
     try {
-      text = readFileSync(file, 'utf8');
+      text = readFileSync(this.#localFile, 'utf8');
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
       text = '';
     }
-    this.#lastText[which] = text;
+    this.#lastText = text;
     return text.trim() ? JSON.parse(text) : {};
   }
 
   #load(): Config {
-    const shared = this.#read(this.#file, 'shared');
-    const local = this.#read(this.#localFile, 'local');
-    this.#shared = shared;
-    this.#local = local;
+    // A broken config.json is not imported and not marked done, so fixing it and restarting still imports it.
+    if (!this.#group.imported())
+      this.#group.importConfig(existsSync(this.#file) ? JSON.parse(readFileSync(this.#file, 'utf8')) : {});
+    this.#local = this.#readLocal();
+    this.#shared = this.#group.config();
     return this.#merge();
   }
 
@@ -215,20 +218,20 @@ export class FileConfigStore implements ConfigStore {
     return normalize(mapPaths({ ...this.#shared, ...this.#local }, (p) => expandHome(p, this.#home)));
   }
 
-  #writeFile(file: string, which: 'shared' | 'local', data: Partial<Config>): void {
+  #writeLocal(data: Partial<Config>): void {
     const text = JSON.stringify(data, null, 2) + '\n';
-    if (text === this.#lastText[which]) return;
-    const tmp = `${file}.${process.pid}.tmp`;
+    if (text === this.#lastText) return;
+    const tmp = `${this.#localFile}.${process.pid}.tmp`;
     writeFileSync(tmp, text, { mode: 0o644 });
-    renameSync(tmp, file);
-    this.#lastText[which] = text;
+    renameSync(tmp, this.#localFile);
+    this.#lastText = text;
   }
 
-  /** Reload when config.json or local.json changes outside shub (git pull, Syncthing, an editor). */
+  /** Reload when local.json changes outside shub (an editor). */
   watch(): void {
     if (this.#watcher) return;
     this.#watcher = watch(this.#dir, (_event, name) => {
-      if (name !== 'config.json' && name !== 'local.json') return;
+      if (name !== 'local.json') return;
       clearTimeout(this.#reloadTimer);
       this.#reloadTimer = setTimeout(() => this.reload(), 200);
     });
@@ -241,7 +244,7 @@ export class FileConfigStore implements ConfigStore {
     this.#watcher = undefined;
   }
 
-  /** Re-read both files; emits events only when the result differs. A broken file keeps the last good config. */
+  /** Re-read the store and local.json; emits events only when the result differs. A broken file keeps the last good config. */
   reload(): void {
     const before = this.get();
     try {
@@ -284,9 +287,9 @@ export class FileConfigStore implements ConfigStore {
       else (shared as Record<string, unknown>)[key] = stored[key];
     }
     for (const key of localKeys) if (key in this.#shared) (shared as Record<string, unknown>)[key] = this.#shared[key];
-    this.#writeFile(this.#file, 'shared', shared);
-    if (Object.keys(local).length || existsSync(this.#localFile)) this.#writeFile(this.#localFile, 'local', local);
-    this.#shared = shared;
+    this.#group.setConfig(shared);
+    if (Object.keys(local).length || existsSync(this.#localFile)) this.#writeLocal(local);
+    this.#shared = this.#group.config();
     this.#local = local;
     const before = this.#config;
     this.#config = normalized;
@@ -348,10 +351,11 @@ export function accentFor(icon: ResolvedIcon): string {
   return color;
 }
 
-export function create(ctx: Context, _services: Services): { module: ShubModule; service: FileConfigStore } {
+export function create(ctx: Context, services: Services): { module: ShubModule; service: FileConfigStore } {
   const service = new FileConfigStore(
     ctx.paths.configDir,
     ctx.bus,
+    services.group,
     homedir(),
     join(ctx.paths.stateDir, 'config.last-good.json'),
   );

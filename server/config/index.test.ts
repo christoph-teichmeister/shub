@@ -6,19 +6,26 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ServerEvent } from '../../shared/api.ts';
 import { EventBus } from '../context.ts';
+import { GroupStore } from '../group/index.ts';
+import { openState } from '../state/index.ts';
 import { DEFAULT_ACCENT, FileConfigStore, hostOfRemote, iconForHost, webUrlOfRemote } from './index.ts';
 
 function tmp(): string {
   return mkdtempSync(join(tmpdir(), 'shub-config-'));
 }
 
+function group(): GroupStore {
+  const state = openState(tmp());
+  return new GroupStore(state.db, state.migrate);
+}
+
 function project(id: string, path: string, icon: any = { kind: 'auto' }) {
   return { id, name: id, path, group: '', visibility: 'pinned' as const, order: 0, icon, buttons: [] };
 }
 
-test('fresh install gets defaults and writes the file', () => {
+test('fresh install gets defaults', () => {
   const dir = tmp();
-  const store = new FileConfigStore(dir, new EventBus());
+  const store = new FileConfigStore(dir, new EventBus(), group());
   const config = store.get();
   assert.deepEqual(config.projects, []);
   assert.deepEqual(config.groups, []);
@@ -28,24 +35,24 @@ test('fresh install gets defaults and writes the file', () => {
     config.themes.map((t) => t.id),
     ['monokai', 'dracula', 'neutral-dark'],
   );
-  assert.equal(JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8')).activeTheme, 'monokai');
 });
 
-test('update writes atomically, persists and emits events', () => {
+test('update persists in the group store and emits events', () => {
   const dir = tmp();
   const bus = new EventBus();
   const events: ServerEvent['type'][] = [];
   bus.on((e) => events.push(e.type));
-  const store = new FileConfigStore(dir, bus);
+  const g = group();
+  const store = new FileConfigStore(dir, bus, g);
   store.update((c) => c.projects.push(project('a', dir)), 'test');
   store.update((c) => (c.activeTheme = 'dracula'), 'test');
   assert.deepEqual(events, ['config.changed', 'projects.changed', 'config.changed']);
-  assert.deepEqual(readdirSync(dir), ['config.json']);
-  const reopened = new FileConfigStore(dir, new EventBus());
+  assert.deepEqual(readdirSync(dir), []);
+  const reopened = new FileConfigStore(dir, new EventBus(), g);
   assert.equal(reopened.project('a')?.path, dir);
   assert.equal(reopened.get().activeTheme, 'dracula');
   store.update((c) => (c.defaultPermissionMode = 'inherit'), 'test');
-  assert.equal(new FileConfigStore(dir, new EventBus()).get().defaultPermissionMode, 'inherit');
+  assert.equal(new FileConfigStore(dir, new EventBus(), g).get().defaultPermissionMode, 'inherit');
   store.update((c) => (c.defaultPermissionMode = 'yolo' as never), 'test');
   assert.equal(store.get().defaultPermissionMode, 'default');
 });
@@ -73,7 +80,7 @@ test('projectView resolves auto icons from git and picks the accent', () => {
   mkdirSync(repo);
   execFileSync('git', ['init', '-q', repo]);
   execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', 'git@gitlab.example.com:x/y.git']);
-  const store = new FileConfigStore(join(dir, 'cfg'), new EventBus());
+  const store = new FileConfigStore(join(dir, 'cfg'), new EventBus(), group());
   store.update((c) => {
     c.projects.push(project('auto', repo));
     c.projects.push(project('sym', repo, { kind: 'symbol', symbol: 'K', color: '#a6e22e' }));
@@ -95,38 +102,38 @@ test('paths under home are stored as ~ and expanded on read; missing folders are
   const cfg = join(home, 'cfg');
   const repo = join(home, 'code', 'repo');
   mkdirSync(repo, { recursive: true });
-  const store = new FileConfigStore(cfg, new EventBus(), home);
+  const g = group();
+  const store = new FileConfigStore(cfg, new EventBus(), g, home);
   store.update((c) => {
     c.projects.push(project('here', repo));
     c.projects.push(project('elsewhere', join(home, 'not-cloned')));
     c.projects.push(project('outside', '/opt/x'));
   }, 'test');
-  const onDisk = JSON.parse(readFileSync(join(cfg, 'config.json'), 'utf8'));
   assert.deepEqual(
-    onDisk.projects.map((p: { path: string }) => p.path),
-    ['~/code/repo', '~/not-cloned', '/opt/x'],
+    g.config().projects!.map((p: { path: string }) => p.path),
+    ['~/not-cloned', '~/code/repo', '/opt/x'], // equal order: by id key
   );
-  // Another machine with another home reads the same file.
+  // Another machine with another home reads the same items.
   const otherHome = tmp();
-  writeFileSync(join(otherHome, 'config.json'), JSON.stringify(onDisk));
-  const other = new FileConfigStore(otherHome, new EventBus(), otherHome);
+  const other = new FileConfigStore(otherHome, new EventBus(), g, otherHome);
   assert.equal(other.project('here')?.path, join(otherHome, 'code', 'repo'));
   assert.equal(store.projectView('here')!.missing, undefined);
   assert.equal(store.projectView('elsewhere')!.missing, true);
 });
 
-test('local.json wins over config.json and keeps machine-only keys out of it', () => {
+test('local.json wins over the store and keeps machine-only keys out of it', () => {
   const dir = tmp();
+  const g = group();
   writeFileSync(join(dir, 'config.json'), JSON.stringify({ activeTheme: 'dracula', defaultPermissionMode: 'plan' }));
   writeFileSync(join(dir, 'local.json'), JSON.stringify({ defaultPermissionMode: 'acceptEdits' }));
-  const store = new FileConfigStore(dir, new EventBus());
+  const store = new FileConfigStore(dir, new EventBus(), g);
   assert.equal(store.get().defaultPermissionMode, 'acceptEdits');
   store.update((c) => {
     c.defaultPermissionMode = 'default';
     c.updateChannel = 'beta';
     c.activeTheme = 'monokai';
   }, 'test');
-  const shared = JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8'));
+  const shared = g.config() as Record<string, unknown>;
   const local = JSON.parse(readFileSync(join(dir, 'local.json'), 'utf8'));
   assert.equal(shared.activeTheme, 'monokai');
   assert.equal(shared.defaultPermissionMode, 'plan'); // untouched: this machine overrides it
@@ -139,22 +146,21 @@ test('reload picks up outside edits, emits once, and ignores broken files', () =
   const bus = new EventBus();
   const events: ServerEvent['type'][] = [];
   bus.on((e) => events.push(e.type));
-  const store = new FileConfigStore(dir, bus);
+  const store = new FileConfigStore(dir, bus, group());
   store.reload();
   assert.deepEqual(events, []);
-  const file = join(dir, 'config.json');
-  const onDisk = JSON.parse(readFileSync(file, 'utf8'));
-  writeFileSync(file, JSON.stringify({ ...onDisk, groups: ['Work'] }));
+  const file = join(dir, 'local.json');
+  writeFileSync(file, JSON.stringify({ groups: ['Work'] }));
   store.reload();
   assert.deepEqual(store.get().groups, ['Work']);
   assert.deepEqual(events, ['config.changed', 'projects.changed']);
-  writeFileSync(file, '{ half a git merge');
+  writeFileSync(file, '{ half a merge');
   store.reload();
   assert.deepEqual(store.get().groups, ['Work']);
   assert.match(store.get().problem!, /not readable/);
   assert.throws(() => store.update((c) => (c.activeTheme = 'dracula'), 'test'), /not readable/);
-  assert.equal(readFileSync(file, 'utf8'), '{ half a git merge'); // the conflict is left for the user
-  writeFileSync(file, JSON.stringify({ ...onDisk, groups: ['Fixed'] }));
+  assert.equal(readFileSync(file, 'utf8'), '{ half a merge'); // left for the user
+  writeFileSync(file, JSON.stringify({ groups: ['Fixed'] }));
   store.reload();
   assert.equal(store.get().problem, undefined);
   assert.deepEqual(store.get().groups, ['Fixed']);
@@ -162,14 +168,48 @@ test('reload picks up outside edits, emits once, and ignores broken files', () =
 
 test('a broken file at startup runs on the last good config instead of failing', () => {
   const dir = tmp();
+  const g = group();
   const lastGood = join(dir, 'state', 'config.last-good.json');
-  const store = new FileConfigStore(join(dir, 'cfg'), new EventBus(), dir, lastGood);
+  const store = new FileConfigStore(join(dir, 'cfg'), new EventBus(), g, dir, lastGood);
   store.update((c) => (c.groups = ['Work']), 'test');
-  writeFileSync(join(dir, 'cfg', 'config.json'), '<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> theirs\n');
-  const restarted = new FileConfigStore(join(dir, 'cfg'), new EventBus(), dir, lastGood);
+  writeFileSync(join(dir, 'cfg', 'local.json'), '<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> theirs\n');
+  const restarted = new FileConfigStore(join(dir, 'cfg'), new EventBus(), g, dir, lastGood);
   assert.deepEqual(restarted.get().groups, ['Work']);
   assert.match(restarted.get().problem!, /not readable/);
   // Without a last good copy it still starts, on defaults.
-  const fresh = new FileConfigStore(join(dir, 'cfg'), new EventBus(), dir);
+  const fresh = new FileConfigStore(join(dir, 'cfg'), new EventBus(), group(), dir);
   assert.deepEqual(fresh.get().groups, []);
+});
+
+test('first start imports config.json once; local.json stays machine-only', () => {
+  const dir = tmp();
+  const g = group();
+  const file = join(dir, 'config.json');
+  writeFileSync(file, '{ not json');
+  const broken = new FileConfigStore(dir, new EventBus(), g);
+  assert.match(broken.get().problem!, /not readable/);
+  assert.equal(g.imported(), false); // a broken file is retried on the next start
+  writeFileSync(
+    file,
+    JSON.stringify({
+      groups: ['Work', 'Home'],
+      projects: [project('a', '~/a')],
+      themes: [{ id: 'mine', name: 'Mine', builtIn: false, tokens: {} }],
+      terminal: { fontSize: 15 },
+      plugins: [{ name: 'p', enabled: true, grantedRights: [], env: { KEY: 'v' } }],
+      defaultPermissionMode: 'plan',
+    }),
+  );
+  writeFileSync(join(dir, 'local.json'), JSON.stringify({ updateMode: 'off' }));
+  const store = new FileConfigStore(dir, new EventBus(), g, '/home/u');
+  const config = store.get();
+  assert.deepEqual(config.groups, ['Work', 'Home']);
+  assert.equal(config.projects[0].path, '/home/u/a');
+  assert.equal(config.themes.at(-1)!.id, 'mine');
+  assert.equal(config.terminal?.fontSize, 15);
+  assert.equal(config.plugins[0].env?.KEY, 'v');
+  assert.equal(config.defaultPermissionMode, 'plan');
+  assert.equal(readFileSync(join(dir, 'local.json'), 'utf8'), JSON.stringify({ updateMode: 'off' }));
+  writeFileSync(file, JSON.stringify({ groups: ['Later'] }));
+  assert.deepEqual(new FileConfigStore(dir, new EventBus(), g, '/home/u').get().groups, ['Work', 'Home']);
 });
