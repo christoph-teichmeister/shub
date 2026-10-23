@@ -76,6 +76,7 @@ const API: Record<string, unknown> = {
   '/api/auth/me': { caller: { kind: 'user', id: 'user' }, device: null },
   '/api/devices': [],
   '/api/group/conflicts': [],
+  '/api/group/transcripts': { running: true, done: 1_048_576, total: 5_242_880, size: 3_145_728 },
   '/api/group/peers': [
     { id: 'h2', name: 'Laptop', url: 'https://laptop.tail.ts.net', state: 'in-sync' },
     { id: 'h3', name: 'Mini', state: 'offline', since: '2026-10-20T10:00:00Z' },
@@ -413,6 +414,7 @@ test('settings > Sync lists the other hosts of the group with their state', asyn
   await expect(hosts.getByText('Mini', { exact: true })).toBeVisible();
   await expect(hosts.getByText('no address published yet')).toBeVisible();
   await expect(hosts.getByText(/^Offline since/)).toBeVisible();
+  await expect(page.getByText('Copying: 1 MB of 5 MB. 3 MB of transcripts on this machine.')).toBeVisible();
   expect(errors).toEqual([]);
 });
 
