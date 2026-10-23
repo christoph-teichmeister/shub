@@ -258,3 +258,30 @@ test('a revoke is never a conflict', async () => {
   assert.equal(a.group.conflicts().length, 0);
   assert.equal(a.group.get(`device:${id}`)!.deleted, mine.deleted);
 });
+
+test('a revoke reaching the host that edited the device item deletes it without a conflict', async () => {
+  const { a, b } = await pair();
+  await a.sync.round();
+  const id = b.group.hostId;
+  b.online = false;
+  a.group.remove(`device:${id}`);
+  b.group.put(`device:${id}`, { ...(b.group.get(`device:${id}`)!.body as object), name: 'renamed' });
+  assert.equal(b.group.merge(a.group.get(`device:${id}`)!), 'newer');
+  assert.equal(b.group.get(`device:${id}`)!.deleted, true);
+  assert.equal(b.group.conflicts().length, 0);
+});
+
+test('a revoke is never a conflict over a round either', async () => {
+  const { a, b } = await pair();
+  await a.sync.round();
+  const id = b.group.hostId;
+  b.online = false;
+  a.group.remove(`device:${id}`);
+  b.group.put(`device:${id}`, { ...(b.group.get(`device:${id}`)!.body as object), name: 'renamed' });
+  b.online = true;
+  await a.sync.round();
+  await b.sync.round();
+  assert.equal(a.group.conflicts().length, 0);
+  assert.equal(b.group.conflicts().length, 0);
+  assert.equal(a.group.get(`device:${id}`)!.deleted, true);
+});

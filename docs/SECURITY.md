@@ -53,7 +53,7 @@ Every paired phone has a level. One gate in the server (`server/auth/levels.ts`,
 | Control | everything you can do in the browser, including typing in terminals and starting sessions                                                                                                                                |
 
 - A new phone gets **Prompts** once approved. Terminals open read-only below Control: keystrokes are dropped, resizes still apply.
-- Approving a phone and changing any level work only in shub on the machine itself: the browser signed in with the access token on `127.0.0.1`/`localhost`, or the `shub` CLI. A phone never approves or raises itself or another phone.
+- Approving a phone and changing any level work only in shub on the machine itself: the browser signed in with the access token on `127.0.0.1`/`localhost`, or the `shub` CLI. A phone never approves or raises itself or another phone. The same goes for sync conflicts on a host itself (`device:*` items): a phone may settle the other conflicts, not these. Listing and settling conflicts is for the user only, never a session, plugin or client token.
 - Removing a phone, or changing its level, closes its open WebSockets at once; removing it also ends its token.
 - Phones paired before this scheme (device cookie, no key) are signed out on start and pair again.
 
