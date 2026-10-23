@@ -201,7 +201,7 @@ function routes(notify: NotifyService, services: Services, router: Router): void
   });
   router.add(ROUTES.pushTest, async (req) => {
     requireUser(req.caller);
-    await notify.test(req.caller.deviceId);
+    await notify.test(req.query.get('device') ?? req.caller.deviceId);
     return { ok: true };
   });
 }

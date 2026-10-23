@@ -848,7 +848,11 @@
             {/if}
             {#if d.push}<Button
                 size="sm"
-                onclick={() => api('pushTest').then(() => toast('Test push sent'), toastError)}>Test push</Button
+                onclick={() =>
+                  api('pushTest', { query: { device: d.id } }).then(
+                    () => toast(`Test push sent to ${d.name}`),
+                    toastError,
+                  )}>Test push</Button
               >{/if}
             <Button size="sm" onclick={() => ((newName = d.name), (renaming = d))}>Rename</Button>
             {#if d.id !== myDevice?.id}<Button size="sm" variant="danger" onclick={() => (unpair = d)}
