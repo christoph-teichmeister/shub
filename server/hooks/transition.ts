@@ -182,7 +182,7 @@ export function handedOverCommands(message: unknown, home = homedir()): HandedCo
     .slice(0, COMMANDS_MAX);
 }
 
-const NEW_ID_SOURCES = new Set(['clear', 'compact', 'startup']);
+const NEW_ID_SOURCES = new Set(['clear', 'compact', 'startup', 'fork']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The Claude session id to remember after a SessionStart, or null when it stays the same. */

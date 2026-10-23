@@ -158,6 +158,23 @@ export interface GroupConflict {
   theirs: ConflictSide;
 }
 
+/** One transcript a host offers: the file `<id>.jsonl` in the folder Claude keeps for a synced project. */
+export interface TranscriptEntry {
+  project: string;
+  id: string;
+  size: number;
+}
+
+/** Settings > Sync: the background copy of the other hosts' transcripts. */
+export interface TranscriptProgress {
+  running: boolean;
+  /** Bytes copied and still to copy in this run. */
+  done: number;
+  total: number;
+  /** What the synced projects' transcripts take on this host. */
+  size: number;
+}
+
 export type TerminalCursorStyle = 'underline' | 'block' | 'bar';
 export interface TerminalSettings {
   /** CSS font-family list; fonts missing on a device fall back to the next one. */
@@ -350,6 +367,8 @@ export interface StartSessionRequest {
   cwd?: string;
   /** kind "claude" only: reopen this old Claude conversation (from oldSessions) with `--resume`. */
   resumeClaudeSessionId?: string;
+  /** With resumeClaudeSessionId: continue in a new conversation (`--fork-session`); the original stays untouched. */
+  fork?: boolean;
   /** The terminal it was started from ("Start Claude here", `shub claude`): a tab showing it jumps to the new one. */
   from?: string;
 }
@@ -406,6 +425,10 @@ export interface OldSession {
   firstPrompt: string;
   turns: number;
   lastAt: string;
+  /** Ran on this other host; resuming it forks. */
+  host?: string;
+  /** False while the transcript or the project folder is missing on this host: shown dimmed. */
+  resumable?: boolean;
 }
 
 // ---------- permissions, approvals, activity ----------
@@ -666,6 +689,9 @@ export const ROUTES = {
   groupPeers: 'GET /api/group/peers', // -> HostPeer[], user only
   groupConflicts: 'GET /api/group/conflicts', // -> GroupConflict[]; open ones, any level sees them
   groupResolve: 'POST /api/group/resolve', // { key, pick: 'ours' | 'theirs' } -> 204; control level
+  groupManifest: 'POST /api/group/manifest', // Bearer -> { entries: TranscriptEntry[] }; transcripts of the synced projects
+  groupChunk: 'POST /api/group/chunk', // Bearer, { project, id, offset } -> { data (zstd, base64), end }
+  groupTranscripts: 'GET /api/group/transcripts', // -> TranscriptProgress, user only
 
   config: 'GET /api/config',
   projects: 'GET /api/projects',

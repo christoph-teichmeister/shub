@@ -5,6 +5,7 @@
     Config,
     Device,
     HostPeer,
+    TranscriptProgress,
     LaunchPermissionMode,
     PhoneSetup,
     PluginInfo,
@@ -276,11 +277,18 @@
   }
 
   let hostPeers = $state<HostPeer[]>([]);
-  const loadPeers = () =>
-    api<HostPeer[]>('groupPeers').then(
+  let transcripts = $state<TranscriptProgress | null>(null);
+  const mb = (bytes: number) => `${Math.round(bytes / 1_048_576).toLocaleString()} MB`;
+  const loadPeers = () => {
+    void api<TranscriptProgress>('groupTranscripts').then(
+      (t) => (transcripts = t),
+      () => (transcripts = null),
+    );
+    return api<HostPeer[]>('groupPeers').then(
       (list) => (hostPeers = list),
       () => (hostPeers = []),
     );
+  };
   const PEER_STATES = { 'in-sync': 'In sync', 'catching-up': 'Catching up', conflict: 'Conflict waiting' } as const;
   const peerState = (p: HostPeer) =>
     p.state === 'offline' ? (p.since ? `Offline since ${when(p.since)}` : 'Offline') : PEER_STATES[p.state];
@@ -1170,6 +1178,13 @@
           checked={app.config?.sync?.[c.key] ?? c.key !== 'pluginEnv'}
           onchange={(e) => setSync(c.key, e.currentTarget.checked)}
         />
+        {#if c.key === 'transcripts' && transcripts}
+          <p class="muted small">
+            {transcripts.running ? `Copying: ${mb(transcripts.done)} of ${mb(transcripts.total)}. ` : ''}{mb(
+              transcripts.size,
+            )} of transcripts on this machine.
+          </p>
+        {/if}
       {/each}
     </Section>
   </div>

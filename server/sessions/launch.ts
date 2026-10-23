@@ -67,6 +67,8 @@ export interface LaunchSpec {
   prompt?: string;
   /** Resume an existing Claude conversation instead of starting one. */
   resume: boolean;
+  /** With resume: continue in a new conversation, the original stays as it is. */
+  fork?: boolean;
 }
 
 /** Fence info word that marks a command Claude hands over (```bash shub-run); hooks/transition.ts picks it up. */
@@ -110,7 +112,9 @@ export const defaultLauncher: Launcher = (spec) => {
 
 /** `claude ...` argv without the shell fallback. */
 export const claudeArgs = (spec: LaunchSpec): string[] => {
-  const id = spec.resume ? ['--resume', spec.claudeSessionId!] : ['--session-id', spec.claudeSessionId!];
+  const id = spec.resume
+    ? ['--resume', spec.claudeSessionId!, ...(spec.fork ? ['--fork-session'] : [])]
+    : ['--session-id', spec.claudeSessionId!];
   // Passed unless the setting says "inherit": the user's own default may be a prompt-skipping one.
   const mode = spec.permissionMode === 'inherit' ? [] : ['--permission-mode', spec.permissionMode];
   const args = ['claude', ...id, '--settings', spec.settingsFile, '--append-system-prompt', RUN_HINT, ...mode];

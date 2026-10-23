@@ -34,6 +34,7 @@ import {
 } from './launch.ts';
 import { claudeDir, encodeCwd, findTranscript, listOldSessions, summarizeTranscript } from './old.ts';
 import { Tmux } from './tmux.ts';
+import { remoteSessions } from '../group/transcripts.ts';
 
 const MIGRATIONS = [
   `CREATE TABLE sessions (
@@ -291,6 +292,10 @@ export class SessionsService implements Sessions {
     if (!statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) throw new HttpError(400, `no such folder: ${cwd}`);
     const resumeId = request.kind === 'claude' ? request.resumeClaudeSessionId : undefined;
     const resumed = resumeId ? this.#resumable(cwd, resumeId) : undefined;
+    // What another host ran forks: the original stays untouched there, whatever the client asked.
+    const fork =
+      !!resumeId &&
+      (!!request.fork || remoteSessions(this.#services.group).some((r) => r.claudeSessionId === resumeId));
     const slug = project ? slugify(project.id) : GLOBAL_ID;
     const prefix = request.kind === 'shell' ? `${slug}-sh` : `${slug}-`;
     const n = request.kind === 'global' ? 1 : this.#nextNumber(prefix);
@@ -338,7 +343,7 @@ export class SessionsService implements Sessions {
         null,
       );
     try {
-      this.#launch(this.#row(id)!, { prompt, resume: !!resumeId });
+      this.#launch(this.#row(id)!, { prompt, resume: !!resumeId, fork: fork });
     } catch (err) {
       const token = this.#row(id)?.token;
       if (token) this.#services.auth.revokeClientToken(token);
@@ -408,7 +413,7 @@ export class SessionsService implements Sessions {
     return row.started_by.startsWith('session:') ? 'spawned-session' : 'session';
   }
 
-  #launch(row: Row, opts: { prompt?: string; resume: boolean }): void {
+  #launch(row: Row, opts: { prompt?: string; resume: boolean; fork?: boolean }): void {
     const env: Record<string, string> = {
       SHUB_URL: `http://127.0.0.1:${this.#ctx.port}`,
       // Shells get it too (no token: the CLI there signs in as you), so `shub claude` knows its terminal.
@@ -446,6 +451,7 @@ export class SessionsService implements Sessions {
       permissionMode: row.permission_mode,
       prompt: opts.prompt,
       resume: opts.resume,
+      fork: opts.fork,
     });
     this.#tmux.newSession(tmuxName(row.id), row.cwd, env, argv);
   }
@@ -785,7 +791,30 @@ export class SessionsService implements Sessions {
     const project = this.#services.config.project(projectId);
     if (!project) return [];
     const live = new Set(this.list().flatMap((s) => (s.claudeSessionId ? [s.claudeSessionId] : [])));
-    return listOldSessions(projectId, project.path, live);
+    const old = listOldSessions(projectId, project.path, live);
+    // The sessions other hosts ran: marked with their host; one whose transcript has not arrived (or whose folder
+    // is missing here) shows dimmed.
+    const remote = remoteSessions(this.#services.group).filter(
+      (r) => r.projectId === projectId && !live.has(r.claudeSessionId),
+    );
+    const usable = !!statSync(project.path, { throwIfNoEntry: false })?.isDirectory();
+    const copied = new Set(old.map((o) => o.claudeSessionId));
+    for (const o of old) {
+      const r = remote.find((x) => x.claudeSessionId === o.claudeSessionId);
+      if (r) Object.assign(o, { host: r.host, resumable: usable });
+    }
+    for (const r of remote)
+      if (!copied.has(r.claudeSessionId))
+        old.push({
+          claudeSessionId: r.claudeSessionId,
+          projectId,
+          firstPrompt: r.name,
+          turns: 0,
+          lastAt: r.lastAt,
+          host: r.host,
+          resumable: false,
+        });
+    return old.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
   }
 
   /** At startup: sessions whose tmux died with the machine become restorable; the global Claude comes back on its own. */
