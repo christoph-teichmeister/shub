@@ -10,6 +10,7 @@ import {
   newKeys,
   PendingError,
   rememberDevice,
+  renameDevice,
   select,
   selectedOrigin,
 } from './device.ts';
@@ -135,5 +136,12 @@ export async function removeMachine(origin: string): Promise<void> {
   await api('logout', { origin }).catch(() => {});
   await forgetDevice(origin);
   if (origin === fleet.selected) select(here);
+  await loadMachines();
+}
+
+/** Renames a machine on this device only; an empty name is ignored. */
+export async function renameMachine(origin: string, name: string): Promise<void> {
+  if (!name.trim()) return;
+  await renameDevice(origin, name.trim());
   await loadMachines();
 }

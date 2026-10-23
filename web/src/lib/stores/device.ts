@@ -82,6 +82,12 @@ export async function rememberDevice(machine: Machine): Promise<void> {
   tokens.delete(machine.origin);
 }
 
+/** Gives a machine a name of the user's own; only kept in this browser or phone. */
+export async function renameDevice(origin: string, name: string): Promise<void> {
+  const machine = await find(origin);
+  if (machine) await rememberDevice({ ...machine, name });
+}
+
 export async function forgetDevice(origin = here): Promise<void> {
   await tx('readwrite', (s) => s.delete(origin)).catch(() => {});
   all = undefined;
