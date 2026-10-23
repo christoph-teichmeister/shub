@@ -1,6 +1,6 @@
 // The machines a browser or phone app knows: which one is shown, how the others are doing, adding one by its
 // pairing code. Keys and tokens live in device.ts.
-import type { HostInfo, Session } from '../../../../shared/api.ts';
+import type { HostInfo, HostPeer, Session } from '../../../../shared/api.ts';
 import { api } from './api.ts';
 import {
   deviceToken,
@@ -33,7 +33,24 @@ export const fleet = $state({
 const POLL_MS = 20_000;
 let polling: ReturnType<typeof setInterval> | undefined;
 
+/**
+ * The chips come from the group: every other host it lists gets this browser's own key and device id (the group
+ * carries the device to that host), so one pairing is enough. Hosts known already stay as they are; when this
+ * host cannot be asked the per-browser list is all there is.
+ */
+async function addGroupHosts(): Promise<void> {
+  const own = (await machines()).find((m) => m.origin === here);
+  if (!own) return;
+  const peers = await api<HostPeer[]>('groupPeers', { origin: here }).catch(() => []);
+  const known = new Set((await machines()).map((m) => m.origin));
+  for (const { url, name } of peers) {
+    if (!url || known.has(url)) continue;
+    await rememberDevice({ origin: url, deviceId: own.deviceId, keys: own.keys, name });
+  }
+}
+
 export async function loadMachines(): Promise<void> {
+  await addGroupHosts();
   fleet.list = (await machines())
     .map(({ origin, name }) => ({ origin, name }))
     .sort((a, b) => a.name.localeCompare(b.name));

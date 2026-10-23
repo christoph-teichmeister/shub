@@ -422,12 +422,19 @@ export class AuthService implements Auth {
     return { token, expiresAt: new Date(expires).toISOString() };
   }
 
-  /** App origins of paired phones (pending ones too, they poll for approval): allowed to call cross-origin. */
+  /**
+   * App origins of paired phones (pending ones too, they poll for approval) and of the group's hosts: a browser
+   * of the group opened from one host signs in on the others cross-origin.
+   */
   appOrigins(): string[] {
     const rows = this.#db.prepare('SELECT DISTINCT app_origin FROM devices WHERE app_origin IS NOT NULL').all() as {
       app_origin: string;
     }[];
-    return rows.map((r) => r.app_origin);
+    const hosts = this.#services.group
+      .list()
+      .map((i) => (i.deleted ? undefined : (i.body as { kind?: string; url?: string } | null)))
+      .flatMap((b) => (b?.kind === 'host' && b.url ? [b.url] : []));
+    return [...rows.map((r) => r.app_origin), ...hosts];
   }
 
   approve(id: string): Device | undefined {
@@ -447,10 +454,8 @@ export class AuthService implements Auth {
   }
 
   finishJoin(caller: Caller): void {
+    // Nothing is dropped: this host's browsers stay devices of the group and the sync carries them to the other hosts.
     this.#services.group.setMeta(`join:${caller.deviceId}`, '0');
-    // This host's own browsers pair again with the group; phones and the approved browser stay.
-    for (const d of this.devices())
-      if ((d.kind === 'desktop' || d.kind === 'browser') && d.id !== caller.deviceId) this.deleteDevice(d.id);
   }
 
   setLevel(id: string, level: DeviceLevel): Device | undefined {
