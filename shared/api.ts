@@ -486,8 +486,10 @@ export interface Device {
   lastSeenAt: string;
   push: boolean;
   level: DeviceLevel;
-  /** pending: paired but not yet approved on the machine; it cannot sign in. */
+  /** pending: paired but not yet approved by a trusted host or a Control phone; it cannot sign in. */
   state: 'pending' | 'active';
+  /** The host that made the pairing code this device redeemed. */
+  host?: string;
 }
 
 /**
@@ -496,6 +498,7 @@ export interface Device {
  */
 export const ROUTE_LEVELS: Partial<Record<keyof typeof ROUTES, DeviceLevel>> = {
   logout: 'view',
+  deviceDelete: 'view', // revoke works from any trusted device
   pushSubscribe: 'view',
   pushTest: 'view',
   approvalDecide: 'prompts',
@@ -635,8 +638,8 @@ export const ROUTES = {
   authChallenge: 'POST /api/auth/challenge', // { deviceId } -> { nonce }; 409 while the device is pending
   authSession: 'POST /api/auth/session', // { deviceId, nonce, signature } -> { token, expiresAt }
   devices: 'GET /api/devices',
-  deviceUpdate: 'PATCH /api/devices/:id', // { name } rename, { level } only from the machine itself -> Device
-  deviceApprove: 'POST /api/devices/:id/approve', // only from the machine itself -> Device
+  deviceUpdate: 'PATCH /api/devices/:id', // { name } rename, { level } from a trusted host or a Control phone, never on itself -> Device
+  deviceApprove: 'POST /api/devices/:id/approve', // { confirm: true } from a phone; trusted host or Control phone -> Device
   deviceDelete: 'DELETE /api/devices/:id',
   rotateToken: 'POST /api/auth/rotate',
 

@@ -28,7 +28,7 @@
   let error = $state('');
   let busy = $state(false);
   let paired = $state(false);
-  /** Paired, but nobody approved this phone on the machine yet. */
+  /** Paired, but nobody approved this phone yet. */
   let waiting = $state(false);
 
   /** Tries to sign in every 3 s until the machine approves this phone. */
@@ -108,7 +108,7 @@
 
     {#if waiting}
       <p class="ok" role="status">
-        Paired. Now approve {deviceName} in shub on the machine: Settings > Devices. This page goes on by itself.
+        Paired. Now approve {deviceName} on a trusted host or a Control phone: Settings > Devices. This page goes on by itself.
       </p>
     {:else if paired}
       <p class="ok" role="status">This device is signed in as {deviceName}.</p>

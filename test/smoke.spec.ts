@@ -252,7 +252,7 @@ test('login on 401: the host browser bootstraps with the token', async ({ page }
     '/api/config': { status: 401, json: { error: 'login required' } },
     'POST /api/auth/bootstrap': { device: { id: 'desk-1', state: 'active', level: 'control' } },
     'POST /api/auth/pairing/redeem': { device: { id: 'phone-1', state: 'pending', level: 'prompts' } },
-    'POST /api/auth/challenge': { status: 409, json: { error: 'waiting for approval on the machine' } },
+    'POST /api/auth/challenge': { status: 409, json: { error: 'waiting for approval' } },
   });
   await page.goto('/#/');
   await expect(page.getByText('your session hub')).toBeVisible();
@@ -270,13 +270,13 @@ test('login on 401: the host browser bootstraps with the token', async ({ page }
 test('a phone pairs with a code and waits for approval', async ({ page }) => {
   const { errors, calls } = await mockApi(page, {
     'POST /api/auth/pairing/redeem': { device: { id: 'phone-1', state: 'pending', level: 'prompts' } },
-    'POST /api/auth/challenge': { status: 409, json: { error: 'waiting for approval on the machine' } },
+    'POST /api/auth/challenge': { status: 409, json: { error: 'waiting for approval' } },
   });
   await page.goto('/pair/abc123');
   await page.getByLabel('Device name').fill('Pixel');
   await page.getByRole('button', { name: 'Pair this device' }).click();
   // Not approved on the machine yet: the challenge answers 409 and the page waits.
-  await expect(page.getByText(/Now approve Pixel in shub/)).toBeVisible();
+  await expect(page.getByText(/Now approve Pixel on a trusted host or a Control phone/)).toBeVisible();
   const redeem = calls.find((c) => c.path === '/api/auth/pairing/redeem')?.body as Record<string, unknown>;
   expect(redeem).toMatchObject({ code: 'abc123', deviceName: 'Pixel', publicKey: { kty: 'EC', crv: 'P-256' } });
   expect(redeem.publicKey).not.toHaveProperty('d');
@@ -1007,7 +1007,7 @@ test('a phone app adds a second machine by address and typed code', async ({ pag
   );
   // The second machine has not approved the phone yet.
   await page.route('https://pc.example.ts.net/api/auth/challenge', (r) =>
-    r.fulfill({ status: 409, json: { error: 'waiting for approval on the machine' }, headers: CORS }),
+    r.fulfill({ status: 409, json: { error: 'waiting for approval' }, headers: CORS }),
   );
   await page.getByLabel('Address').fill('pc.example.ts.net');
   await page.getByLabel('Pairing code').fill('abcd-efgh');

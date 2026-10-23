@@ -15,6 +15,8 @@ import { join } from 'node:path';
 import QRCode from 'qrcode';
 import { DEVICE_LEVELS, ROUTES, type ClientKind, type Device, type DeviceLevel, type Right } from '../../shared/api.ts';
 import { publicUrl } from '../config/index.ts';
+import { kindOf } from '../group/index.ts';
+import { machineName } from '../notify/index.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import { HttpError, requireUser, type Caller, type Router } from '../api/router.ts';
@@ -41,6 +43,8 @@ const MIGRATIONS = [
   `ALTER TABLE devices ADD COLUMN state TEXT NOT NULL DEFAULT 'active'`,
   // The origin of the app the phone paired from: another machine's app calls this one cross-origin (CORS).
   `ALTER TABLE devices ADD COLUMN app_origin TEXT`,
+  // The host that made the pairing code the device redeemed (shown in the approve dialog).
+  `ALTER TABLE devices ADD COLUMN via TEXT`,
 ];
 
 interface DeviceRow {
@@ -53,6 +57,7 @@ interface DeviceRow {
   push: number;
   public_key: string | null;
   app_origin: string | null;
+  via: string | null;
   level: DeviceLevel;
   state: Device['state'];
 }
@@ -86,6 +91,7 @@ function toDevice(row: DeviceRow): Device {
     push: row.push === 1,
     level: row.level,
     state: row.state,
+    host: row.via ?? undefined,
   };
 }
 
@@ -111,7 +117,7 @@ export class AuthService implements Auth {
   #tokenFile: string;
   #tokenHash = '';
   #clients = new Map<string, { kind: ClientKind; id: string }>();
-  #pairings = new Map<string, number>(); // code -> expiresAt ms
+  #pairings = new Map<string, { expires: number; host: string }>(); // code -> expiry (ms) and the host that made it
   #pairingMisses = 0;
   #challenges = new Map<string, { deviceId: string; expires: number }>(); // nonce -> device
   #deviceTokens = new Map<string, { deviceId: string; expires: number }>(); // token hash -> device
@@ -228,7 +234,7 @@ export class AuthService implements Auth {
   createDevice(
     name: string,
     kind: Device['kind'],
-    key: { publicKey: string; appOrigin?: string | null },
+    key: { publicKey: string; appOrigin?: string | null; via?: string | null },
     active = false,
   ): Device {
     const now = new Date().toISOString();
@@ -242,14 +248,22 @@ export class AuthService implements Auth {
       push: 0,
       public_key: key.publicKey,
       app_origin: key.appOrigin ?? null,
-      level: kind === 'phone' ? 'prompts' : 'control',
+      via: key.via ?? null,
+      level: active ? 'control' : 'prompts',
       state: active ? 'active' : 'pending',
     };
+    this.#insert(row);
+    this.#publish(row.id);
+    this.#ctx.bus.emit({ type: 'devices.changed' });
+    return toDevice(row);
+  }
+
+  #insert(row: DeviceRow): void {
     this.#db
       .prepare(
         `INSERT INTO devices
-           (id, name, kind, session_hash, paired_at, last_seen_at, push, public_key, level, state, app_origin)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, name, kind, session_hash, paired_at, last_seen_at, push, public_key, level, state, app_origin, via)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         row.id,
@@ -263,9 +277,65 @@ export class AuthService implements Auth {
         row.level,
         row.state,
         row.app_origin,
+        row.via,
       );
-    this.#ctx.bus.emit({ type: 'devices.changed' });
-    return toDevice(row);
+  }
+
+  /** Writes the device into the group as `device:<id>` so every host learns of it, its level and its revoke. */
+  #publish(id: string): void {
+    const r = this.#row(id);
+    if (!r?.public_key) return;
+    this.#services.group.put(`device:${id}`, {
+      name: r.name,
+      kind: r.kind,
+      publicKey: r.public_key,
+      appOrigin: r.app_origin,
+      via: r.via,
+      level: r.level,
+      state: r.state,
+      pairedAt: r.paired_at,
+    });
+  }
+
+  /**
+   * Makes this host's devices match the group's items: new ones join, level and state follow, a tombstone ends the
+   * device here (tokens and sockets at once). Called after the host-to-host sync merged items, and on start so a host
+   * that was offline applies a revoke when it comes back. A key is never replaced and a tombstone never undone.
+   */
+  applyGroup(): void {
+    for (const item of this.#services.group.list()) {
+      if (kindOf(item.key) !== 'device') continue;
+      const id = item.key.slice('device:'.length);
+      const row = this.#row(id);
+      const b = item.body as Record<string, string | null> | null;
+      if (b?.kind === 'host') continue; // another shub host (server/group/sync.ts), not a browser or phone
+      if (item.deleted || !b) {
+        if (row) this.#drop(id);
+        continue;
+      }
+      if (!row) {
+        this.#insert({
+          id,
+          name: b.name!,
+          kind: b.kind as Device['kind'],
+          session_hash: sha256(newSecret()),
+          paired_at: b.pairedAt!,
+          last_seen_at: new Date().toISOString(),
+          push: 0,
+          public_key: b.publicKey!,
+          app_origin: b.appOrigin ?? null,
+          via: b.via ?? null,
+          level: b.level as DeviceLevel,
+          state: b.state as Device['state'],
+        });
+      } else if (row.level !== b.level || row.state !== b.state || row.name !== b.name) {
+        this.#db
+          .prepare('UPDATE devices SET level = ?, state = ?, name = ? WHERE id = ?')
+          .run(b.level!, b.state!, b.name!, id);
+        if (row.level !== b.level) closeDeviceSockets(id);
+      } else continue;
+      this.#ctx.bus.emit({ type: 'devices.changed' });
+    }
   }
 
   /** The first browser on a host: the access token (read from the token file, so you are on the machine) is its proof. */
@@ -276,10 +346,10 @@ export class AuthService implements Auth {
 
   async startPairing(): Promise<{ code: string; url: string; qrSvg: string; expiresAt: string }> {
     const now = Date.now();
-    for (const [code, exp] of this.#pairings) if (exp < now) this.#pairings.delete(code);
+    for (const [code, exp] of this.#pairings) if (exp.expires < now) this.#pairings.delete(code);
     const code = newCode();
     const expires = now + PAIRING_TTL_MS;
-    this.#pairings.set(code, expires);
+    this.#pairings.set(code, { expires, host: machineName() });
     this.#pairingMisses = 0;
     const base = publicUrl(this.#services.config.get()) ?? `http://127.0.0.1:${this.#ctx.port}`;
     const url = `${base}/pair/${code}`;
@@ -298,14 +368,18 @@ export class AuthService implements Auth {
     const key = parsePublicKey(publicKey);
     if (this.#pairingMisses >= MAX_PAIRING_MISSES) throw new HttpError(429, 'too many wrong codes; make a new one');
     const normalized = typeof code === 'string' ? normalizeCode(code) : '';
-    const expires = this.#pairings.get(normalized);
-    if (!expires) {
+    const pairing = this.#pairings.get(normalized);
+    if (!pairing) {
       this.#pairingMisses++;
       throw new HttpError(401, 'unknown or used pairing code');
     }
     this.#pairings.delete(normalized);
-    if (expires < Date.now()) throw new HttpError(401, 'pairing code expired');
-    const device = this.createDevice(name, kind === 'browser' ? 'browser' : 'phone', { publicKey: key, appOrigin });
+    if (pairing.expires < Date.now()) throw new HttpError(401, 'pairing code expired');
+    const device = this.createDevice(name, kind === 'browser' ? 'browser' : 'phone', {
+      publicKey: key,
+      appOrigin,
+      via: pairing.host,
+    });
     this.#services.notify?.devicePending(device.name);
     return device;
   }
@@ -313,7 +387,7 @@ export class AuthService implements Auth {
   challenge(deviceId: unknown): { nonce: string } {
     const row = typeof deviceId === 'string' ? this.#row(deviceId) : undefined;
     if (!row?.public_key) throw new HttpError(404, 'unknown device');
-    if (row.state !== 'active') throw new HttpError(409, 'waiting for approval on the machine');
+    if (row.state !== 'active') throw new HttpError(409, 'waiting for approval');
     const now = Date.now();
     for (const [n, c] of this.#challenges) if (c.expires < now) this.#challenges.delete(n);
     const nonce = randomBytes(32).toString('base64url');
@@ -356,11 +430,13 @@ export class AuthService implements Auth {
 
   approve(id: string): Device | undefined {
     this.#db.prepare("UPDATE devices SET state = 'active' WHERE id = ?").run(id);
+    this.#publish(id);
     return this.#changed(id);
   }
 
   setLevel(id: string, level: DeviceLevel): Device | undefined {
     this.#db.prepare('UPDATE devices SET level = ? WHERE id = ?').run(level, id);
+    this.#publish(id);
     // Open sockets were let in with the old level (terminal typing is decided at connect).
     closeDeviceSockets(id);
     return this.#changed(id);
@@ -387,11 +463,18 @@ export class AuthService implements Auth {
 
   renameDevice(id: string, name: string): Device | undefined {
     this.#db.prepare('UPDATE devices SET name = ? WHERE id = ?').run(name, id);
+    this.#publish(id);
     const row = this.#db.prepare('SELECT * FROM devices WHERE id = ?').get(id) as DeviceRow | undefined;
     return row && toDevice(row);
   }
 
+  /** Revoke: the device ends here at once and a tombstone in the group ends it on every host. */
   deleteDevice(id: string): boolean {
+    this.#services.group.remove(`device:${id}`);
+    return this.#drop(id);
+  }
+
+  #drop(id: string): boolean {
     const deleted = Number(this.#db.prepare('DELETE FROM devices WHERE id = ?').run(id).changes) > 0;
     for (const [h, t] of this.#deviceTokens) if (t.deviceId === id) this.#deviceTokens.delete(h);
     closeDeviceSockets(id);
@@ -415,22 +498,28 @@ export class AuthService implements Auth {
 }
 
 /**
- * Approving a device and changing its level happen only on the machine itself: shub opened via loopback in the
- * host's own browser (kind `desktop`, made by the bootstrap with the access token), or the CLI. Paired browsers
- * and phones never raise themselves or another device.
+ * Approving a device and changing its level work on a trusted host (the host's own browser, kind `desktop`, opened via
+ * loopback, or the CLI) or from a phone at level Control (it confirms in a dialog that names the device). Nothing
+ * else: a secret in a synced file admits nobody, and no device raises itself.
  */
 const isLoopback = (req: IncomingMessage): boolean =>
   ['127.0.0.1', 'localhost', '[::1]'].includes((req.headers.host ?? '').toLowerCase().replace(/:\d+$/, ''));
 
-function onThisMachine(auth: AuthService, req: IncomingMessage, caller: Caller): boolean {
+const deviceOf = (auth: AuthService, caller: Caller): Device | undefined =>
+  caller.kind === 'user' && caller.deviceId ? auth.devices().find((d) => d.id === caller.deviceId) : undefined;
+
+function mayManageDevices(auth: AuthService, req: IncomingMessage, caller: Caller): boolean {
   if (caller.kind === 'cli') return true;
-  const own = caller.deviceId && auth.devices().find((d) => d.id === caller.deviceId)?.kind === 'desktop';
-  return isLoopback(req) && caller.kind === 'user' && !!own;
+  const own = deviceOf(auth, caller);
+  if (own?.kind === 'desktop') return isLoopback(req);
+  return own?.kind === 'phone' && own.level === 'control';
 }
 
-function requireThisMachine(auth: AuthService, req: IncomingMessage, caller: Caller): void {
+function requireManager(auth: AuthService, req: IncomingMessage, caller: Caller): void {
   requireUser(caller);
-  if (!onThisMachine(auth, req, caller)) throw new HttpError(403, 'only possible in shub on the machine itself');
+  if (!mayManageDevices(auth, req, caller)) {
+    throw new HttpError(403, 'only possible on a trusted host or from a phone at level Control');
+  }
 }
 
 function deviceName(body: { deviceName?: unknown }, req: IncomingMessage): string {
@@ -456,7 +545,7 @@ function routes(auth: AuthService, router: Router): void {
   router.add(ROUTES.me, (req) => {
     const id = req.caller.deviceId;
     const device = id ? auth.devices().find((d) => d.id === id) : undefined;
-    return { caller: req.caller, device: device ?? null, local: onThisMachine(auth, req.raw, req.caller) };
+    return { caller: req.caller, device: device ?? null, local: mayManageDevices(auth, req.raw, req.caller) };
   });
   router.add(ROUTES.pairingStart, (req) => {
     requireUser(req.caller);
@@ -483,8 +572,12 @@ function routes(auth: AuthService, router: Router): void {
     },
     { public: true },
   );
-  router.add(ROUTES.deviceApprove, (req) => {
-    requireThisMachine(auth, req.raw, req.caller);
+  router.add(ROUTES.deviceApprove, async (req) => {
+    requireManager(auth, req.raw, req.caller);
+    // A phone approves through a dialog that names the device; the app says so with `confirm`.
+    if (deviceOf(auth, req.caller)?.kind === 'phone' && (await req.json<{ confirm?: unknown }>()).confirm !== true) {
+      throw new HttpError(400, 'confirm the device first');
+    }
     const device = auth.approve(req.params.id);
     if (!device) throw new HttpError(404, 'no such device');
     return device;
@@ -499,7 +592,8 @@ function routes(auth: AuthService, router: Router): void {
     let device: Device | undefined;
     if (level !== undefined) {
       if (!isLevel(level)) throw new HttpError(400, `level must be one of ${DEVICE_LEVELS.join(', ')}`);
-      requireThisMachine(auth, req.raw, req.caller);
+      requireManager(auth, req.raw, req.caller);
+      if (req.params.id === req.caller.deviceId) throw new HttpError(403, 'a device never changes its own level');
       device = auth.setLevel(req.params.id, level);
     }
     if (name !== undefined) {
@@ -532,7 +626,7 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
       name: 'auth',
       routes: (router) => (routes(auth, router), phoneSetupRoutes(ctx, services, router)),
       // After every module exists, so the dropped phones' push subscriptions go too.
-      start: () => auth.dropCookieDevices(),
+      start: () => (auth.dropCookieDevices(), auth.applyGroup()),
     },
     service: auth,
   };
