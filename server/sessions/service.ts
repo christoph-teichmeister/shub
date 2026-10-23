@@ -15,6 +15,7 @@ import type {
   StartSessionRequest,
   SubagentRun,
 } from '../../shared/api.ts';
+import { COMPACT_AT } from '../../shared/api.ts';
 import { commandTarget } from '../../shared/commands.ts';
 import { HttpError } from '../api/router.ts';
 import type { Context } from '../context.ts';
@@ -55,6 +56,7 @@ const MIGRATIONS = [
   'UPDATE sessions SET status_since = last_activity_at',
 ];
 const WAIT_EVERY_MIN = 5;
+const COMPACT_PAUSE_CAP_MS = 5 * 60_000;
 /** Failed checks in a row before the user hears the check does not work. */
 const WAIT_FAILS_NOTIFY = 3;
 
@@ -182,6 +184,8 @@ export class SessionsService implements Sessions {
   #startedGapMs: number;
   /** Commands to type once their resumed session's Claude is up (SessionStart). */
   #afterStart = new Map<string, () => void>();
+  /** Sessions being compacted before they park -> whether they pause once the fill drops. */
+  #compacting = new Map<string, boolean>();
 
   constructor(ctx: Context, services: Services, options: SessionsOptions = {}) {
     this.#ctx = ctx;
@@ -519,6 +523,7 @@ export class SessionsService implements Sessions {
     const idle =
       ['your-turn', 'new'].includes(session.status) || (session.status === 'needs-you' && !session.pendingPermission);
     if (clean && idle) this.setStatus(id, 'waiting');
+    if (clean && idle && session.kind === 'claude') this.#compactParking(id, false);
     if (!clean && session.status === 'waiting') this.setStatus(id, 'your-turn');
     this.#services.permissions.log({
       actor,
@@ -593,6 +598,29 @@ export class SessionsService implements Sessions {
     if (JSON.stringify(session.context ?? null) === JSON.stringify(context)) return;
     this.#db.prepare('UPDATE sessions SET context = ? WHERE id = ?').run(context && JSON.stringify(context), id);
     this.#emitUpdated(id);
+    const wasPaused = this.#compacting.get(id);
+    if (wasPaused !== undefined && (context?.tokens ?? 0) < COMPACT_AT) {
+      this.#compacting.delete(id);
+      // The user may have taken the session over meanwhile.
+      if (wasPaused && ['waiting', 'your-turn'].includes(session.status)) this.pause(id, 'shub:auto-compact');
+    }
+  }
+
+  /** An idle, full session is compacted as it parks (pause, wait); `thenPause` pauses once the fill dropped. */
+  #compactParking(id: string, thenPause: boolean): boolean {
+    const session = this.get(id);
+    const idle = session && ['your-turn', 'waiting'].includes(session.status);
+    if (!idle || !this.#tmux.has(tmuxName(id)) || (session.context?.tokens ?? 0) < COMPACT_AT) return false;
+    if (this.#compacting.has(id)) return true;
+    this.#compacting.set(id, thenPause);
+    this.sendKeys(id, ['/compact', 'Enter']);
+    // ponytail: fixed 5 min cap; a /compact that never reports back pauses anyway
+    if (thenPause) {
+      setTimeout(() => {
+        if (this.#compacting.delete(id) && this.get(id)?.status !== 'paused') this.pause(id, 'shub:auto-compact');
+      }, COMPACT_PAUSE_CAP_MS).unref();
+    }
+    return true;
   }
 
   setClaudeSessionId(id: string, claudeSessionId: string): void {
@@ -612,6 +640,9 @@ export class SessionsService implements Sessions {
   pause(id: string, actor: string): Session {
     const session = this.require(id);
     if (session.kind === 'shell') throw new HttpError(400, 'shells cannot be paused');
+    // Full and idle: compact first, so the resume later does not carry 160k+ tokens; the pause follows.
+    if (session.kind === 'claude' && this.#compactParking(id, true)) return session;
+    this.#compacting.delete(id);
     this.#tmux.kill(tmuxName(id));
     this.#restorable.delete(id);
     this.setStatus(id, 'paused', null);

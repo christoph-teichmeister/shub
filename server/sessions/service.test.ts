@@ -497,3 +497,27 @@ test('an MR/PR link pins a chip and names a session shub named, never a given na
   assert.equal(svc.get(s.id)?.links.at(-1)?.label, 'PR #7', 'the chip still comes');
   svc.close(s.id, 'chris');
 });
+
+test('pausing or waiting a full idle session compacts it first; a pause follows once the fill dropped', async () => {
+  const full = { tokens: 170_000, window: 200_000 };
+  const small = { tokens: 20_000, window: 200_000 };
+  const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  svc.setStatus(s.id, 'your-turn');
+  svc.setContext(s.id, small);
+  svc.wait(s.id, 'a reply', 'chris');
+  assert.ok(!pane(s.id).includes('/compact'), 'below the line nothing is sent');
+  svc.wait(s.id, null, 'chris');
+
+  svc.setContext(s.id, full);
+  svc.wait(s.id, 'a reply', 'chris');
+  await waitFor(() => pane(s.id).includes('/compact'), '/compact typed on wait');
+  svc.setContext(s.id, small);
+  assert.equal(svc.get(s.id)?.status, 'waiting', 'a wait stays a wait');
+
+  svc.setContext(s.id, full);
+  svc.pause(s.id, 'chris');
+  assert.notEqual(svc.get(s.id)?.status, 'paused', 'compacting first');
+  svc.setContext(s.id, small);
+  assert.equal(svc.get(s.id)?.status, 'paused', 'compacted: paused');
+  svc.close(s.id, 'chris');
+});
