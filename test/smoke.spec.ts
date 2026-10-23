@@ -75,6 +75,10 @@ const API: Record<string, unknown> = {
   '/api/worktrees/children': [],
   '/api/auth/me': { caller: { kind: 'user', id: 'user' }, device: null },
   '/api/devices': [],
+  '/api/group/peers': [
+    { id: 'h2', name: 'Laptop', url: 'https://laptop.tail.ts.net', state: 'in-sync' },
+    { id: 'h3', name: 'Mini', state: 'offline', since: '2026-10-20T10:00:00Z' },
+  ],
   '/api/phone-setup': {
     tailscale: {
       installed: true,
@@ -395,6 +399,19 @@ test('update dot on the user chip; read-only updates from a git checkout', async
   const updates = page.getByRole('region', { name: 'Updates' });
   await expect(updates.getByText('git manages its updates')).toBeVisible();
   await expect(updates.getByRole('button', { name: /Install|Check now/ })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('settings > Sync lists the other hosts of the group with their state', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  await page.goto('/#/settings/sync');
+  const hosts = page.getByRole('region', { name: 'Other hosts' });
+  await expect(hosts.getByText('Laptop', { exact: true })).toBeVisible();
+  await expect(hosts.getByText('In sync')).toBeVisible();
+  await expect(hosts.getByText('https://laptop.tail.ts.net')).toBeVisible();
+  await expect(hosts.getByText('Mini', { exact: true })).toBeVisible();
+  await expect(hosts.getByText('no address published yet')).toBeVisible();
+  await expect(hosts.getByText(/^Offline since/)).toBeVisible();
   expect(errors).toEqual([]);
 });
 

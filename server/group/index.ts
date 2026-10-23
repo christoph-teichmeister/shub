@@ -3,10 +3,13 @@
 // Host-to-host sync, pairing and the conflict UI build on this; nothing here talks to the network.
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import type { Config, SyncCategory, SyncSettings } from '../../shared/api.ts';
+import { ROUTES, type Config, type SyncCategory, type SyncSettings } from '../../shared/api.ts';
+import { requireUser } from '../api/router.ts';
+import { publicUrl } from '../config/index.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
+import { HostSync } from './sync.ts';
 
 /** Host id -> how many changes that host made to the item. */
 export type Version = Record<string, number>;
@@ -124,6 +127,7 @@ export class GroupStore {
   #db: DatabaseSync;
   /** This host's id in every version vector. */
   readonly hostId: string;
+  #listeners: ((key: string) => void)[] = [];
 
   constructor(db: DatabaseSync, migrate: (module: string, statements: string[]) => void) {
     migrate('group', [
@@ -133,17 +137,17 @@ export class GroupStore {
       'CREATE TABLE group_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
     ]);
     this.#db = db;
-    this.hostId = this.#meta('host') ?? this.#setMeta('host', randomUUID());
+    this.hostId = this.meta('host') ?? this.setMeta('host', randomUUID());
   }
 
-  #meta(key: string): string | null {
+  meta(key: string): string | null {
     return (
       (this.#db.prepare('SELECT value FROM group_meta WHERE key = ?').get(key) as { value: string } | undefined)
         ?.value ?? null
     );
   }
 
-  #setMeta(key: string, value: string): string {
+  setMeta(key: string, value: string): string {
     this.#db.prepare('INSERT OR REPLACE INTO group_meta (key, value) VALUES (?, ?)').run(key, value);
     return value;
   }
@@ -158,6 +162,11 @@ export class GroupStore {
       this.#db.exec('ROLLBACK');
       throw err;
     }
+  }
+
+  /** Called with the key of every item that changed, here or through a merge. */
+  onChange(listener: (key: string) => void): void {
+    this.#listeners.push(listener);
   }
 
   get(key: string): GroupItem | undefined {
@@ -189,6 +198,7 @@ export class GroupStore {
     this.#db
       .prepare('INSERT OR REPLACE INTO group_items (key, body, version, deleted, theirs) VALUES (?, ?, ?, ?, NULL)')
       .run(key, deleted ? null : JSON.stringify(body), JSON.stringify(version), deleted ? 1 : 0);
+    this.#listeners.forEach((l) => l(key));
     return { key, body: deleted ? null : body, version, deleted };
   }
 
@@ -198,7 +208,19 @@ export class GroupStore {
    */
   merge(incoming: GroupItem): Order {
     const ours = this.get(incoming.key);
-    const order = ours ? compareItems(incoming, ours) : 'newer';
+    let order = ours ? compareItems(incoming, ours) : 'newer';
+    // Both hosts made the same change (e.g. imported the same config.json): not a conflict, the versions just join.
+    if (
+      ours &&
+      order === 'conflict' &&
+      ours.deleted === incoming.deleted &&
+      canon(ours.body) === canon(incoming.body)
+    ) {
+      const joined = { ...ours.version };
+      for (const [host, n] of Object.entries(incoming.version)) joined[host] = Math.max(joined[host] ?? 0, n);
+      incoming = { ...incoming, version: joined };
+      order = 'newer';
+    }
     if (order === 'newer') {
       this.#db
         .prepare('INSERT OR REPLACE INTO group_items (key, body, version, deleted, theirs) VALUES (?, ?, ?, ?, NULL)')
@@ -208,6 +230,7 @@ export class GroupStore {
           JSON.stringify(incoming.version),
           incoming.deleted ? 1 : 0,
         );
+      this.#listeners.forEach((l) => l(incoming.key));
     } else if (order === 'conflict') {
       this.#db.prepare('UPDATE group_items SET theirs = ? WHERE key = ?').run(JSON.stringify(incoming), incoming.key);
     }
@@ -258,15 +281,52 @@ export class GroupStore {
   importConfig(config: Partial<Config>): boolean {
     if (this.imported()) return false;
     this.setConfig(config);
-    this.#setMeta('imported', '1');
+    this.setMeta('imported', '1');
     return true;
   }
 
   imported(): boolean {
-    return this.#meta('imported') !== null;
+    return this.meta('imported') !== null;
   }
 }
 
-export function create(_ctx: Context, services: Services): { module: ShubModule; service: GroupStore } {
-  return { module: { name: 'group' }, service: new GroupStore(services.state.db, services.state.migrate) };
+export function create(ctx: Context, services: Services): { module: ShubModule; service: GroupStore } {
+  const group = new GroupStore(services.state.db, services.state.migrate);
+  const sync = new HostSync(group, {
+    sync: () => services.config.get().sync,
+    url: () => publicUrl(services.config.get()),
+    onMerged: () => services.config.reload(),
+  });
+  const actions = [
+    ['challenge', ROUTES.groupChallenge],
+    ['session', ROUTES.groupSession],
+    ['pull', ROUTES.groupPull],
+    ['push', ROUTES.groupPush],
+  ] as const;
+  return {
+    module: {
+      name: 'group',
+      routes(router) {
+        // Public: the hosts have no login, the handler checks the key and the group itself.
+        for (const [action, spec] of actions)
+          router.add(
+            spec,
+            async (req) =>
+              sync.handle(action, await req.json(), /^Bearer\s+(\S+)$/i.exec(req.raw.headers.authorization ?? '')?.[1]),
+            { public: true },
+          );
+        router.add(ROUTES.groupPeers, (req) => {
+          requireUser(req.caller);
+          return sync.peers();
+        });
+      },
+      start() {
+        // A URL set later (phone setup) is published as soon as the config changes.
+        ctx.bus.on((e) => e.type === 'config.changed' && sync.announce());
+        sync.start();
+      },
+      stop: () => sync.stop(),
+    },
+    service: group,
+  };
 }

@@ -32,6 +32,8 @@ export interface StateDb {
 /** server/config: ~/.config/shub/config.json, written atomically, emits config.changed. */
 export interface ConfigStore {
   get(): Config;
+  /** Re-read the group store and local.json after items came in from another host. */
+  reload(): void;
   update(mutate: (config: Config) => void, actor: string): Config;
   project(id: string): Project | undefined;
   projectView(id: string): ProjectView | undefined;
