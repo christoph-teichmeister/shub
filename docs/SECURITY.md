@@ -30,6 +30,8 @@ Not covered: anything a process does with your Unix user's rights outside shub. 
 - **Push to a phone app with several machines**: the app owns one VAPID key pair and hands both halves to each machine with its subscription. That private key only lets a machine send pushes to this one phone.
 - **Client tokens**: every Claude session and every plugin process gets its own Bearer token (`SHUB_TOKEN`), revoked when it ends. The token decides the caller kind; only the hashes are stored.
 
+- **Host-to-host sync**: every host has its own ECDSA P-256 key (private half in `shub.db`, never synced) and is a host item of the device group together with its tailnet URL. A host signs in to another by signing a single-use challenge (valid one minute) and gets a token valid five minutes, held in memory; the other host checks the key against its own copy of the group, on sign-in and again on every call, so a revoked host is out at once. The sync routes need no login and answer only to such a token. Categories switched off in Settings > Sync are neither sent nor accepted, and plugin `env` stays home unless switched on. The dialing host trusts the URL the group lists; it does not check the other end's identity, so keep it on the tailnet.
+
 ## Caller kinds
 
 | Kind              | Who                                                                                  |

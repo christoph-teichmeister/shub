@@ -132,6 +132,17 @@ export const SYNC_CATEGORIES = [
 export type SyncCategory = (typeof SYNC_CATEGORIES)[number];
 export type SyncSettings = Partial<Record<SyncCategory, boolean>>;
 
+/** Another host of the device group, as Settings > Sync shows it. */
+export interface HostPeer {
+  id: string;
+  name: string;
+  /** Its tailnet address; absent while it has none (no public URL set there), so it cannot be dialed. */
+  url?: string;
+  state: 'in-sync' | 'catching-up' | 'offline' | 'conflict';
+  /** When it first failed to answer, while state is offline. */
+  since?: string;
+}
+
 export type TerminalCursorStyle = 'underline' | 'block' | 'bar';
 export interface TerminalSettings {
   /** CSS font-family list; fonts missing on a device fall back to the next one. */
@@ -628,6 +639,13 @@ export const ROUTES = {
   deviceApprove: 'POST /api/devices/:id/approve', // only from the machine itself -> Device
   deviceDelete: 'DELETE /api/devices/:id',
   rotateToken: 'POST /api/auth/rotate',
+
+  // Host-to-host sync (server/group/sync.ts): no login, hosts sign a challenge with their key from the group.
+  groupChallenge: 'POST /api/group/challenge', // { hostId } -> { nonce }; 403 unless that host is in the group
+  groupSession: 'POST /api/group/session', // { hostId, nonce, signature } -> { token }
+  groupPull: 'POST /api/group/pull', // Bearer -> { items }
+  groupPush: 'POST /api/group/push', // Bearer, { items } -> { changed, conflicts }
+  groupPeers: 'GET /api/group/peers', // -> HostPeer[], user only
 
   config: 'GET /api/config',
   projects: 'GET /api/projects',
