@@ -29,6 +29,8 @@ const LAST_SEEN_THROTTLE_MS = 60 * 1000;
 /** A phone's sign-in token lives this long, in memory only; the app renews it by signing a new challenge. */
 export const DEVICE_TOKEN_TTL_MS = 5 * 60 * 1000;
 const CHALLENGE_TTL_MS = 60 * 1000;
+/** An approved browser may join its host to another host's group within this long. */
+const JOIN_TTL_MS = 30 * 60 * 1000;
 /** What a phone signs: the nonce bound to its purpose. */
 export const challengeMessage = (nonce: string): string => `shub-login:${nonce}`;
 
@@ -430,8 +432,25 @@ export class AuthService implements Auth {
 
   approve(id: string): Device | undefined {
     this.#db.prepare("UPDATE devices SET state = 'active' WHERE id = ?").run(id);
+    // A browser from another host's app may carry the join once, soon after it was approved on this host.
+    const row = this.#row(id);
+    if (row?.kind === 'browser' && row.app_origin)
+      this.#services.group.setMeta(`join:${id}`, String(Date.now() + JOIN_TTL_MS));
     this.#publish(id);
     return this.#changed(id);
+  }
+
+  joinKind(req: IncomingMessage, caller: Caller): 'approved' | 'manager' | null {
+    const own = deviceOf(this, caller);
+    if (own?.kind === 'browser' && Number(this.#services.group.meta(`join:${own.id}`)) > Date.now()) return 'approved';
+    return mayManageDevices(this, req, caller) ? 'manager' : null;
+  }
+
+  finishJoin(caller: Caller): void {
+    this.#services.group.setMeta(`join:${caller.deviceId}`, '0');
+    // This host's own browsers pair again with the group; phones and the approved browser stay.
+    for (const d of this.devices())
+      if ((d.kind === 'desktop' || d.kind === 'browser') && d.id !== caller.deviceId) this.deleteDevice(d.id);
   }
 
   setLevel(id: string, level: DeviceLevel): Device | undefined {

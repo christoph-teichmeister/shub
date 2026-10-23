@@ -140,3 +140,32 @@ test('conflict routes are for the user only; a phone may not settle a device ite
   });
   await assert.rejects(call(ROUTES.groupResolve, who('user'), { key: 'device:x', pick: 'ours' }), { status: 404 });
 });
+
+test('join routes: refused unless auth names the caller a trusted host or an approved browser', async () => {
+  const state = openState(mkdtempSync(join(tmpdir(), 'shub-group-')));
+  let kind: 'approved' | 'manager' | null = null;
+  let finished = 0;
+  const services = {
+    state,
+    config: { get: () => ({}), reload: () => {} },
+    auth: { joinKind: () => kind, finishJoin: () => finished++ },
+  } as unknown as Services;
+  const router = new Router();
+  const { service } = create({ bus: new EventBus() } as Context, services);
+  create({ bus: new EventBus() } as Context, services).module.routes!(router);
+  const call = async (spec: string, body?: unknown) => {
+    const [method, path] = spec.split(' ');
+    const caller: Caller = { kind: 'user', id: 'chris', rights: [], deviceId: 'd' };
+    return router
+      .match(method, path)!
+      .route.handler({ caller, raw: {}, json: async () => body ?? {} } as never, {} as never);
+  };
+  await assert.rejects(call(ROUTES.groupJoinOffer), { status: 403 }); // a pairing code alone is no consent
+  await assert.rejects(call(ROUTES.groupJoin, { host: {} }), { status: 403 });
+  assert.equal(finished, 0);
+  kind = 'approved';
+  const host = (await call(ROUTES.groupJoinOffer)) as { id: string };
+  assert.equal(host.id, service.hostId);
+  await assert.rejects(call(ROUTES.groupJoin, { host: { id: 'x' } }), { status: 400 });
+  assert.equal(finished, 0); // a failed join does not use up the approval
+});

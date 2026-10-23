@@ -6,7 +6,14 @@
   import Dialog from '../Dialog/Dialog.svelte';
   import Icon from '../Icon/Icon.svelte';
   import TextField from '../TextField/TextField.svelte';
-  import { addMachine, fleet, parseTarget, switchTo, waitForApproval } from '../../stores/machines.svelte.ts';
+  import {
+    addMachine,
+    fleet,
+    parseTarget,
+    joinHosts,
+    switchTo,
+    waitForApproval,
+  } from '../../stores/machines.svelte.ts';
   import { app, ui } from '../../stores/state.svelte.ts';
 
   let address = $state('');
@@ -77,6 +84,10 @@
       waitingFor = fleet.list.find((m) => m.origin === origin)?.name ?? origin;
       abort = new AbortController();
       await waitForApproval(origin, abort.signal);
+      if (!ui.phone)
+        await joinHosts(origin).catch((e: Error) =>
+          Promise.reject(new Error(`Paired, but the hosts did not join: ${e.message}`)),
+        );
       close();
       switchTo(origin);
     } catch (err) {

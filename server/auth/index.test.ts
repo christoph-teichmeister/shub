@@ -179,3 +179,37 @@ test('leaked synced files admit nobody: a device item in config, a guessed code 
   assert.throws(() => h.auth.challenge(pending.id), /waiting for approval/);
   h.close();
 });
+
+test('only a browser approved here just now, or a trusted host, may join this host to another', async () => {
+  const { generateKeyPairSync } = await import('node:crypto');
+  const stateDir = mkdtempSync(join(tmpdir(), 'shub-auth-'));
+  const services = {
+    state: openState(stateDir),
+    config: { get: () => ({ plugins: [] }) as unknown as Config },
+    permissions: { rightsFor },
+  } as unknown as Services;
+  services.group = new GroupStore(services.state.db, services.state.migrate);
+  const auth = new AuthService({ paths: { stateDir }, port: 4780, bus: { emit() {} } } as unknown as Context, services);
+  auth.init();
+  const jwk = () => generateKeyPairSync('ec', { namedCurve: 'P-256' }).publicKey.export({ format: 'jwk' });
+  const redeem = async (kind: string, origin: string | null) =>
+    auth.redeemPairing((await auth.startPairing()).code, kind, jwk(), origin, kind === 'phone' ? 'phone' : 'browser');
+  const req = { headers: { host: '192.0.2.1:4780' } } as IncomingMessage;
+  const caller = (id: string) => ({ kind: 'user', id: 'chris', rights: [], deviceId: id }) as never;
+
+  const other = await redeem('own', null); // a browser of this host, not from another app
+  const mine = await redeem('from-a', 'https://a.ts.net'); // the desktop browser of host A
+  auth.approve(other.id);
+  assert.equal(auth.joinKind(req, caller(mine.id)), null); // pairing code alone: still pending, no join
+  auth.approve(mine.id);
+  assert.equal(auth.joinKind(req, caller(mine.id)), 'approved');
+  assert.equal(auth.joinKind(req, caller(other.id)), null); // approved, but did not come from another host's app
+  auth.finishJoin(caller(mine.id));
+  assert.equal(auth.joinKind(req, caller(mine.id)), null); // used up
+  assert.deepEqual(
+    auth.devices().map((d) => d.id),
+    [mine.id], // this host's other browsers were dropped
+  );
+  services.state.db.close();
+  rmSync(stateDir, { recursive: true, force: true });
+});

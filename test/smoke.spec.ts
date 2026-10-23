@@ -1055,6 +1055,13 @@ test('a desktop browser pairs, adds a host, switches between hosts and starts ov
     'POST /api/auth/challenge': { nonce: 'n1' },
     'POST /api/auth/session': { token: 't1', expiresAt: '2099-01-01T00:00:00Z' },
   });
+  // Each host answers the join offer with its own info (one route table: the answer follows the caller's origin).
+  await page.route('**/api/group/join/offer', (r) =>
+    r.fulfill({
+      json: { id: r.request().url().includes('pc.example') ? 'pc-host' : 'laptop-host', name: 'h', publicKey: {} },
+      headers: CORS,
+    }),
+  );
   // First browser on the host: the token creates its key (first-browser bootstrap), signed in at once.
   await page.route(
     '**/api/config',
@@ -1081,6 +1088,11 @@ test('a desktop browser pairs, adds a host, switches between hosts and starts ov
   const redeem = () =>
     calls.find((c) => c.origin === 'https://pc.example.ts.net' && c.path === '/api/auth/pairing/redeem');
   await expect.poll(() => redeem()?.body).toMatchObject({ code: 'abcd-efgh', kind: 'browser' });
+  // The approved browser carried each host's info to the other: both hosts join one group.
+  const joined = (origin: string) =>
+    calls.find((c) => c.origin === origin && c.path === '/api/group/join')?.body as { host: { id: string } };
+  await expect.poll(() => joined('https://pc.example.ts.net')?.host.id).toBe('laptop-host');
+  expect(joined(new URL(page.url()).origin)?.host.id).toBe('pc-host');
   // It switched to the new host; both show as chips, the shown one marked.
   await expect
     .poll(() => calls.some((c) => c.origin === 'https://pc.example.ts.net' && c.path === '/api/sessions'))

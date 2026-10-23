@@ -11,7 +11,7 @@ import {
   verify,
 } from 'node:crypto';
 import { hostname } from 'node:os';
-import type { HostPeer, SyncSettings } from '../../shared/api.ts';
+import type { HostInfo, HostPeer, SyncSettings } from '../../shared/api.ts';
 import { HttpError } from '../api/router.ts';
 import { forSync, type GroupItem, type GroupStore } from './index.ts';
 
@@ -97,6 +97,54 @@ export class HostSync {
     if (url) body.url = url;
     const have = this.#group.get(`device:${this.hostId}`);
     if (!have || JSON.stringify(have.body) !== JSON.stringify(body)) this.#group.put(`device:${this.hostId}`, body);
+  }
+
+  /** What another host needs to add this one to its group (the join step, see join()). */
+  info(): HostInfo {
+    this.announce();
+    const body = this.#group.get(`device:${this.hostId}`)!.body as HostBody;
+    return { id: this.hostId, name: body.name, url: body.url, publicKey: body.publicKey };
+  }
+
+  /**
+   * Join step: the user's approved browser carried this host's key and URL from the other host. Adds the other host
+   * to our group (never replacing a key we already know) and syncs at once, so both sides merge their items.
+   * Whoever calls this has been checked as the consent (see server/auth: a trusted host or an approved browser).
+   */
+  join(host: unknown): void {
+    const h = host as Partial<HostInfo> | undefined;
+    let url: string | undefined;
+    try {
+      const u = new URL(String(h?.url));
+      if (/^https?:$/.test(u.protocol)) url = u.origin;
+    } catch {}
+    const key = h?.publicKey;
+    const valid =
+      typeof h?.id === 'string' &&
+      /^[\w-]{8,64}$/.test(h.id) &&
+      typeof h.name === 'string' &&
+      url &&
+      key?.kty === 'EC' &&
+      key.crv === 'P-256' &&
+      !('d' in key);
+    if (!valid) throw new HttpError(400, 'bad host');
+    try {
+      createPublicKey({ key: { kty: key.kty, crv: key.crv, x: key.x, y: key.y }, format: 'jwk' });
+    } catch {
+      throw new HttpError(400, 'bad host key');
+    }
+    if (h.id === this.hostId || this.revoked) throw new HttpError(409, 'cannot join this host to itself');
+    const known = this.#group.get(`device:${h.id}`);
+    if (known?.deleted) throw new HttpError(409, 'host was revoked');
+    const knownKey = (known?.body as HostBody | null)?.publicKey;
+    if (knownKey && (knownKey.x !== key.x || knownKey.y !== key.y)) throw new HttpError(409, 'host key differs');
+    this.#group.put(`device:${h.id}`, {
+      name: String(h.name).slice(0, 60),
+      kind: 'host',
+      publicKey: { kty: key.kty, crv: key.crv, x: key.x, y: key.y },
+      url,
+    } satisfies HostBody);
+    void this.round();
   }
 
   start(): void {

@@ -49,6 +49,10 @@ export interface Auth {
   revokeClientToken(token: string): void;
   /** Origins of paired phones' apps: they may call this machine cross-origin. */
   appOrigins(): string[];
+  /** Who may join this host to another: 'approved' (a browser approved here just now), 'manager' (trusted host or Control phone), else null. */
+  joinKind(req: IncomingMessage, caller: Caller): 'approved' | 'manager' | null;
+  /** The approved browser's join is done: the approval is used up, this host's other browsers are dropped. */
+  finishJoin(caller: Caller): void;
 }
 
 /** server/permissions: the rights model from docs/SECURITY.md. Pure decisions + approvals + activity log. */

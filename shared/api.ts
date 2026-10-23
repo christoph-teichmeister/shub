@@ -143,6 +143,14 @@ export interface HostPeer {
   since?: string;
 }
 
+/** What one host tells another to join its group: id, name, tailnet URL and public key (the host key never leaves). */
+export interface HostInfo {
+  id: string;
+  name: string;
+  url?: string;
+  publicKey: { kty: string; crv: string; x: string; y: string };
+}
+
 /** One side of an open sync conflict: the version this host holds, or the one another host sent. */
 export interface ConflictSide {
   /** Names of the hosts that made changes the other side lacks. */
@@ -686,6 +694,9 @@ export const ROUTES = {
   groupSession: 'POST /api/group/session', // { hostId, nonce, signature } -> { token }
   groupPull: 'POST /api/group/pull', // Bearer -> { items }
   groupPush: 'POST /api/group/push', // Bearer, { items } -> { changed, conflicts }
+  // Join two hosts after a browser paired (see docs/SECURITY.md): the browser carries each host's info to the other.
+  groupJoinOffer: 'POST /api/group/join/offer', // -> HostInfo of this host; only a trusted host or a browser just approved here
+  groupJoin: 'POST /api/group/join', // { host: HostInfo } -> { ok }; same checks, adds that host to the group and syncs
   groupPeers: 'GET /api/group/peers', // -> HostPeer[], user only
   groupConflicts: 'GET /api/group/conflicts', // -> GroupConflict[]; open ones, any level sees them
   groupResolve: 'POST /api/group/resolve', // { key, pick: 'ours' | 'theirs' } -> 204; control level

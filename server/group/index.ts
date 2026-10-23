@@ -12,7 +12,8 @@ import {
   type SyncCategory,
   type SyncSettings,
 } from '../../shared/api.ts';
-import { HttpError, requireUser } from '../api/router.ts';
+import type { IncomingMessage } from 'node:http';
+import { HttpError, requireUser, type Caller } from '../api/router.ts';
 import { publicUrl } from '../config/index.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
@@ -393,6 +394,20 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
           if (!group.resolve(key, pick)) throw new HttpError(404, 'no open conflict for that item');
           services.config.reload();
           ctx.bus.emit({ type: 'conflicts.changed' });
+          return { ok: true };
+        });
+        // The join: allowed to a trusted host or a browser approved here just now, never to a code alone.
+        const joiner = (req: { caller: Caller; raw: IncomingMessage }) => {
+          requireUser(req.caller);
+          const kind = services.auth.joinKind(req.raw, req.caller);
+          if (!kind) throw new HttpError(403, 'only possible on a trusted host or by a browser approved here');
+          return kind;
+        };
+        router.add(ROUTES.groupJoinOffer, (req) => (joiner(req), sync.info()));
+        router.add(ROUTES.groupJoin, async (req) => {
+          const kind = joiner(req);
+          sync.join((await req.json<{ host?: unknown }>()).host);
+          if (kind === 'approved') services.auth.finishJoin(req.caller);
           return { ok: true };
         });
         router.add(ROUTES.groupPeers, (req) => {
