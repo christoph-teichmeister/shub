@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Session } from '../../../../../shared/api.ts';
-  import { contextFill, idleWithAgents, STATUS_LABEL, waitTitle } from '../../status.ts';
+  import { canCompact as compactable, contextFill, idleWithAgents, STATUS_LABEL, waitTitle } from '../../status.ts';
   import Icon from '../Icon/Icon.svelte';
   import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
@@ -43,7 +43,7 @@
   let over = $state<'before' | 'after' | null>(null);
   const fill = $derived(contextFill(session));
   // Typed into a running turn, /compact would queue as a prompt: only offered on your turn.
-  const canCompact = $derived(session.status === 'your-turn');
+  const canCompact = $derived(compactable(session));
   // ✕ turns red under the pointer: it sits next to hide, so a slip shows before the click.
   let closeHot = $state(false);
   const half = (e: DragEvent) => {

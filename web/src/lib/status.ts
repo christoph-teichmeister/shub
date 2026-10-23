@@ -14,6 +14,11 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
 /** The turn is over and only background agents still run: working underneath, but nothing is typing. */
 export const idleWithAgents = (s: Session): boolean => s.status === 'working' && !!s.background && !!s.agents?.length;
 
+/** /compact typed into a running turn would queue as a prompt: only offered once the turn is over.
+ *  A needs-you without an open permission question is Claude's idle reminder, so it counts. */
+export const canCompact = (s: Session): boolean =>
+  s.status === 'your-turn' || (s.status === 'needs-you' && !s.pendingPermission);
+
 const commandCount = (n: number) => `${n} ${n === 1 ? 'command' : 'commands'}`;
 
 /** Status text of one session: a needs-you that waits for commands Claude handed over says so,

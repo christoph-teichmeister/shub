@@ -38,7 +38,7 @@
   import Conflicts from '../components/Conflicts/Conflicts.svelte';
   import StatusBadge from '../components/StatusBadge/StatusBadge.svelte';
   import StatusDot from '../components/StatusDot/StatusDot.svelte';
-  import { contextFill, dropPositions, placeSessions, projectBadge } from '../status.ts';
+  import { canCompact, contextFill, dropPositions, placeSessions, projectBadge } from '../status.ts';
   import { childStart, placeChildren, sessionsIn } from '../children.ts';
   import WorktreeRow from '../components/WorktreeRow/WorktreeRow.svelte';
   import AgentRow from '../components/AgentRow/AgentRow.svelte';
@@ -541,8 +541,8 @@
               id: 'compact',
               label: 'Compact',
               hint: `${fill.pct} %`,
-              disabled: s.status !== 'your-turn',
-              description: s.status === 'your-turn' ? undefined : 'Once it is your turn',
+              disabled: !canCompact(s),
+              description: canCompact(s) ? undefined : 'Once it is your turn',
             },
           ]
         : []),
