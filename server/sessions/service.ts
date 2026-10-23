@@ -604,6 +604,8 @@ export class SessionsService implements Sessions {
       // The user may have taken the session over meanwhile.
       if (wasPaused && ['waiting', 'your-turn'].includes(session.status)) this.pause(id, 'shub:auto-compact');
     }
+    // A wait set mid-turn parks on the Stop hook; its fill arrives here a moment later.
+    else if (session.status === 'waiting' && session.kind === 'claude') this.#compactParking(id, false);
   }
 
   /** An idle, full session is compacted as it parks (pause, wait); `thenPause` pauses once the fill dropped. */

@@ -515,6 +515,17 @@ test('pausing or waiting a full idle session compacts it first; a pause follows 
   assert.equal(svc.get(s.id)?.status, 'waiting', 'a wait stays a wait');
 
   svc.setContext(s.id, full);
+  svc.wait(s.id, null, 'chris');
+  svc.setStatus(s.id, 'working');
+  svc.wait(s.id, 'a reply', 'chris'); // set mid-turn: parks on Stop
+  svc.setStatus(s.id, 'waiting');
+  svc.setContext(s.id, small);
+  svc.setContext(s.id, full); // the fill read after Stop
+  await waitFor(() => (pane(s.id).match(/\/compact/g)?.length ?? 0) >= 2, '/compact after a mid-turn wait');
+  svc.setContext(s.id, small);
+  svc.wait(s.id, null, 'chris');
+
+  svc.setContext(s.id, full);
   svc.pause(s.id, 'chris');
   assert.notEqual(svc.get(s.id)?.status, 'paused', 'compacting first');
   svc.setContext(s.id, small);
