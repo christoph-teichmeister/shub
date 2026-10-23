@@ -16,7 +16,6 @@
   import ProjectSettings from './lib/views/ProjectSettings.svelte';
   import Styleguide from './lib/views/Styleguide.svelte';
   import ThemeEditor from './lib/views/ThemeEditor.svelte';
-  import Village from './lib/views/Village/Village.svelte';
 
   const route = $derived(router.route);
   const signIn = $derived(route.name === 'pair' || route.name === 'login' || app.authRequired);
@@ -77,7 +76,7 @@
 {:else if route.name !== 'settings' && app.ready && !app.unreachable && app.projects.length === 0}
   <FirstRun firstRun />
 {:else if route.name === 'village' && !ui.phone}
-  <Village />
+  {#await import('./lib/views/Village/Village.svelte') then { default: Village }}<Village />{/await}
 {:else if ui.phone}
   <Phone />
 {:else}
