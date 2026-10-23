@@ -19,11 +19,12 @@ test('session settings hook every event and keep Claude tools off the secrets in
     JSON.stringify(s.hooks.PreToolUse),
     /report\.sh' PreToolUse.*"matcher":"Bash\|Edit\|Write\|MultiEdit\|NotebookEdit".*guard\.sh/,
   );
-  const d = s.permissions.deny;
-  assert.ok(d.includes('Read(//home/u/.local/state/shub/token)'));
-  assert.ok(d.includes('Edit(//home/u/.local/state/shub/token)'));
-  assert.ok(d.includes('Edit(//home/u/.local/state/shub/sessions/**)'));
-  assert.ok(!d.some((rule) => rule.includes('notes') || rule.includes('shub/**')), 'notes/ stays editable');
+  assert.deepEqual(s.permissions.deny, [
+    'Read(//home/u/.local/state/shub/token)',
+    'Read(//home/u/.local/state/shub/shub.db*)',
+    'Read(//home/u/.local/state/shub/vapid.json)',
+    'Edit(//home/u/.local/state/shub/**)',
+  ]);
 });
 
 test("the status line reports to shub and still draws the user's own one", () => {

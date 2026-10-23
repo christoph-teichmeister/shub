@@ -9,6 +9,8 @@ export interface Paths {
   configDir: string;
   /** ~/.local/state/shub: secrets, runtime state, sqlite db, pasted files. */
   stateDir: string;
+  /** ~/.local/share/shub: user data Claude may edit (notes). Kept out of stateDir, whose Edit is denied. */
+  dataDir: string;
   /** Folder of this checkout (for hook scripts, built web app). */
   appDir: string;
 }
@@ -41,6 +43,7 @@ export function createContext(env: NodeJS.ProcessEnv = process.env): Context {
     paths: {
       configDir: env.SHUB_CONFIG_DIR ?? join(env.XDG_CONFIG_HOME ?? join(home, '.config'), 'shub'),
       stateDir: env.SHUB_STATE_DIR ?? join(env.XDG_STATE_HOME ?? join(home, '.local', 'state'), 'shub'),
+      dataDir: env.SHUB_DATA_DIR ?? join(env.XDG_DATA_HOME ?? join(home, '.local', 'share'), 'shub'),
       appDir: new URL('..', import.meta.url).pathname,
     },
     // Never bind anything but loopback; phone access goes through `tailscale serve`.

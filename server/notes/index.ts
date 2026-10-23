@@ -1,6 +1,6 @@
 // A Markdown draft per session that the user edits in the notes panel and Claude edits as a plain file.
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { ROUTES } from '../../shared/api.ts';
 import { HttpError, requireUser } from '../api/router.ts';
@@ -32,11 +32,18 @@ export function saveNotes(file: string, text: string, rev: string): { rev: strin
 }
 
 export function create(ctx: Context, services: Services): { module: ShubModule } {
+  const notesDir = join(ctx.paths.dataDir, 'notes');
+  // Notes used to live in stateDir, where Claude's Edit is denied; move them over once.
+  const old = join(ctx.paths.stateDir, 'notes');
+  if (existsSync(old) && !existsSync(notesDir)) {
+    mkdirSync(ctx.paths.dataDir, { recursive: true });
+    renameSync(old, notesDir);
+  }
   // A pane shares the draft of the session it belongs to; the id is a known session, never a path.
   const fileFor = (id: string): string => {
     const session = services.sessions.get(id);
     if (!session) throw new HttpError(404, 'no such session');
-    return join(ctx.paths.stateDir, 'notes', `${session.parentId ?? session.id}.md`);
+    return join(notesDir, `${session.parentId ?? session.id}.md`);
   };
   return {
     module: {

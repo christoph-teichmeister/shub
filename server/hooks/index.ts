@@ -71,7 +71,7 @@ export function userStatusLine(cwd: string, home = homedir()): Record<string, un
 
 /**
  * Content of `--settings <file>`: shub's hooks, so the user's own settings stay untouched, plus deny rules
- * that keep Claude's file tools out of stateDir (access token, client tokens, VAPID key), except notes/. An Edit rule covers
+ * that keep Claude's file tools out of stateDir (access token, client tokens, VAPID key). An Edit rule covers
  * Write too; a separate Write rule never matches and Claude Code warns about it at startup.
  */
 export function hookSettings(appDir: string, stateDir: string, statusLine?: Record<string, unknown>): object {
@@ -95,22 +95,7 @@ export function hookSettings(appDir: string, stateDir: string, statusLine?: Reco
   // "//" marks an absolute path in Claude's permission rules. Reading stays allowed for the rest of
   // stateDir, because pasted images live in <stateDir>/pastes and Claude reads them from there.
   const dir = `/${stateDir.replace(/\/+$/, '')}`;
-  // Deny rules beat allows, so Edit is denied per entry instead of for stateDir/** to leave notes/ editable.
-  const deny = [
-    ...['token', 'shub.db*', 'vapid.json'].map((file) => `Read(${dir}/${file})`),
-    ...[
-      'bin',
-      'release',
-      'sessions',
-      'pastes',
-      'config.last-good.json',
-      'shell.bashrc',
-      'tmux.conf',
-      'token',
-      'shub.db*',
-      'vapid.json',
-    ].flatMap((entry) => [`Edit(${dir}/${entry})`, `Edit(${dir}/${entry}/**)`]),
-  ];
+  const deny = [...['token', 'shub.db*', 'vapid.json'].map((file) => `Read(${dir}/${file})`), `Edit(${dir}/**)`];
   // The status line is the only place Claude Code tells the real context window; it wraps the user's own one.
   const own = typeof statusLine?.command === 'string' ? ` ${shellQuote(statusLine.command)}` : '';
   const line = `sh ${shellQuote(join(appDir, 'server', 'hooks', 'statusline.sh'))}${own}`;
