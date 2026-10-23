@@ -28,7 +28,7 @@
   import TextField from '../components/TextField/TextField.svelte';
   import { api } from '../stores/api.ts';
   import { pushEnabled, pushSupported, subscribePush } from '../stores/push.ts';
-  import { fleet, removeMachine } from '../stores/machines.svelte.ts';
+  import { fleet, removeMachine, renameMachine } from '../stores/machines.svelte.ts';
   import { href, router } from '../stores/router.svelte.ts';
   import {
     app,
@@ -115,6 +115,7 @@
     { id: 'account', title: 'Account & security', description: 'Who is signed in, what changed, the access token.' },
   ] as const;
 
+  let renamingMachine = $state<{ origin: string; name: string } | null>(null);
   let query = $state('');
   let search = $state<HTMLInputElement>();
   const words = $derived(query.toLowerCase().split(/\s+/).filter(Boolean));
@@ -889,9 +890,26 @@
         <ul class="list">
           {#each fleet.list as m (m.origin)}
             <li class="item">
-              <span class="grow stack"
-                ><span class="strong">{m.name}</span><span class="muted small">{new URL(m.origin).host}</span></span
-              >
+              {#if renamingMachine?.origin === m.origin}
+                <form
+                  class="grow rename"
+                  onsubmit={(e) => {
+                    e.preventDefault();
+                    const { origin, name } = renamingMachine!;
+                    renamingMachine = null;
+                    renameMachine(origin, name).catch(toastError);
+                  }}
+                >
+                  <TextField label="Machine name" hideLabel bind:value={renamingMachine.name} />
+                  <Button size="sm" type="submit">Save</Button>
+                  <Button size="sm" onclick={() => (renamingMachine = null)}>Cancel</Button>
+                </form>
+              {:else}
+                <span class="grow stack"
+                  ><span class="strong">{m.name}</span><span class="muted small">{new URL(m.origin).host}</span></span
+                >
+                <Button size="sm" onclick={() => (renamingMachine = { origin: m.origin, name: m.name })}>Rename</Button>
+              {/if}
               {#if m.origin !== location.origin}<Button
                   size="sm"
                   variant="danger"
@@ -1864,6 +1882,12 @@
     border: var(--hairline) solid var(--line);
     border-radius: var(--radius-lg);
     background: var(--bg);
+  }
+
+  .rename {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
   }
 
   .item.waiting {
