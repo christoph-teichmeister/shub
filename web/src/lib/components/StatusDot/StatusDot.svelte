@@ -2,7 +2,7 @@
   import type { SessionStatus } from '../../../../../shared/api.ts';
   import Icon from '../Icon/Icon.svelte';
 
-  let { status }: { status: SessionStatus } = $props();
+  let { status, idle = false }: { status: SessionStatus; idle?: boolean } = $props();
 </script>
 
 {#if status === 'your-turn'}
@@ -12,7 +12,7 @@
 {:else if status === 'paused'}
   <span class="mark paused" aria-hidden="true"><Icon name="pause" size="xs" weight={2.4} /></span>
 {:else}
-  <span class="dot {status}" aria-hidden="true"></span>
+  <span class="dot {status}" class:idle aria-hidden="true"></span>
 {/if}
 
 <style>
@@ -29,6 +29,10 @@
 
   .working {
     border: var(--ring) solid var(--status-working);
+  }
+
+  .working.idle {
+    opacity: 0.45;
   }
 
   .new {

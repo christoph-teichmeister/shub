@@ -230,6 +230,8 @@ export interface Session {
   pendingCommands?: HandedCommand[] | null;
   /** Background shells (servers, tests) still running after Claude's turn ended. */
   shells?: number;
+  /** Claude's turn ended but background work (agents, shells) still runs: status stays working until it reports back. */
+  background?: boolean;
   /** Subagents running inside the session (no pane of their own), from the SubagentStart/Stop hooks. */
   agents?: SubagentRun[];
   /** How full Claude's context is, from the transcript after each turn and tool call; null before the first reply. */

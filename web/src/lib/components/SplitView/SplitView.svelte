@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { Session } from '../../../../../shared/api.ts';
-  import { STATUS_LABEL } from '../../status.ts';
+  import { idleWithAgents, STATUS_LABEL } from '../../status.ts';
   import StatusDot from '../StatusDot/StatusDot.svelte';
 
   interface Props {
@@ -25,7 +25,7 @@
       onfocusin={() => onselect?.(session.id)}
     >
       <button type="button" class="head" onclick={() => onselect?.(session.id)}>
-        <StatusDot status={session.status} />
+        <StatusDot status={session.status} idle={idleWithAgents(session)} />
         <span class="name">{session.name}</span>
         <span class="status">{STATUS_LABEL[session.status]}</span>
       </button>
