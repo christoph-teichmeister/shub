@@ -897,6 +897,7 @@
         style:width="{world.W}px"
         style:height="{world.H}px"
         style:transform="translate({pan.x}px, {pan.y}px) scale({zoom})"
+        style:will-change={me.moving ? 'transform' : null}
       >
         <canvas class="ground" bind:this={ground} width={world.W / 2} height={world.H / 2}></canvas>
         {#each world.districts as d (d.id)}
