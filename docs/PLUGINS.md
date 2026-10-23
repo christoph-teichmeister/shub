@@ -14,7 +14,7 @@ shub plugin remove <name>                 # asks first, stops it, deletes its fo
 ```
 
 Plugins live in `~/.config/shub/plugins/<name>/` (`$SHUB_CONFIG_DIR/plugins`). Enabled state and granted
-rights are in `config.json` under `plugins`; change them in Settings > Plugins, with `shub plugin enable`
+rights are stored with the settings (group store); change them in Settings > Plugins, with `shub plugin enable`
 or `PATCH /api/plugins/:name` `{ "enabled": true, "grantedRights": ["read"] }` (you only).
 
 ## Manifest: `shub-plugin.json`
@@ -74,8 +74,8 @@ Automatic starts share a budget of 5 per hour with all other non-user callers. F
 | `SHUB_TOKEN`       | Bearer token for this process run, revoked when it exits |
 | `SHUB_PLUGIN_NAME` | the manifest name                                        |
 
-The rest of shub's environment is inherited. Extra variables go in `config.json` under the plugin's entry, so they
-travel with a shared config; a variable already set in shub's environment wins. They apply from the plugin's next start.
+The rest of shub's environment is inherited. Extra variables go in the plugin's settings entry (`env`); they
+stay on this machine unless Settings > Sync > Plugin environment is on. A variable already set in shub's environment wins. They apply from the plugin's next start.
 
 ```json
 "plugins": [{ "name": "kb-board", "enabled": true, "grantedRights": ["read"], "env": { "KB_CARD_URL": "https://…/cards/{id}" } }]

@@ -110,10 +110,27 @@ export interface Config {
   updateMode?: UpdateMode;
   /** https address the phone reaches shub at (the `tailscale serve` name); local.json. SHUB_PUBLIC_URL wins. */
   publicUrl?: string;
+  /** What this host syncs with the device group; local.json. A missing category is on, except pluginEnv. */
+  sync?: SyncSettings;
   /** Never stored: why config.json or local.json could not be read. shub then runs on the last good config and
    *  refuses changes until the file is fixed (it reloads on save). */
   problem?: string;
 }
+
+/** What can sync between the hosts of a device group; the devices themselves always sync. */
+export const SYNC_CATEGORIES = [
+  'projects',
+  'themes',
+  'terminal',
+  'notifications',
+  'permissionMode',
+  'plugins',
+  'pluginEnv',
+  'sessions',
+  'transcripts',
+] as const;
+export type SyncCategory = (typeof SYNC_CATEGORIES)[number];
+export type SyncSettings = Partial<Record<SyncCategory, boolean>>;
 
 export type TerminalCursorStyle = 'underline' | 'block' | 'bar';
 export interface TerminalSettings {

@@ -12,7 +12,7 @@
     TerminalSettings,
     UpdateStatus,
   } from '../../../../shared/api.ts';
-  import { terminalSettingsError } from '../../../../shared/api.ts';
+  import { terminalSettingsError, type SyncCategory } from '../../../../shared/api.ts';
   import Button from '../components/Button/Button.svelte';
   import Checkbox from '../components/Checkbox/Checkbox.svelte';
   import ChoiceButton from '../components/ChoiceButton/ChoiceButton.svelte';
@@ -68,6 +68,23 @@
     { value: 'off', label: 'Don\'t check (only "Check now")' },
   ];
 
+  const SYNC: { key: SyncCategory; label: string; hint?: string; off?: boolean }[] = [
+    { key: 'projects', label: 'Projects and groups', hint: 'Folders stay per machine; one missing here shows dimmed.' },
+    { key: 'themes', label: 'Themes' },
+    { key: 'terminal', label: 'Terminal' },
+    { key: 'notifications', label: 'Notifications' },
+    { key: 'permissionMode', label: 'Default permission mode' },
+    { key: 'plugins', label: 'Plugins' },
+    { key: 'pluginEnv', label: 'Plugin environment', hint: 'May hold secrets. Off unless you switch it on.' },
+    { key: 'sessions', label: 'Session list' },
+    { key: 'transcripts', label: 'Transcripts' },
+  ];
+  async function setSync(key: SyncCategory, value: boolean) {
+    const config = await api<Config>('settings', { body: { sync: { [key]: value } } }).catch(toastError);
+    if (config) app.config = config;
+    else void loadConfig();
+  }
+
   const CURSORS = [
     { value: 'underline', label: 'Underline' },
     { value: 'block', label: 'Block' },
@@ -84,6 +101,11 @@
       id: 'devices',
       title: 'Devices',
       description: 'Phones that reach this shub, and the other machines this app knows.',
+    },
+    {
+      id: 'sync',
+      title: 'Sync',
+      description: 'What this machine shares with your other devices. The devices themselves always sync.',
     },
     { id: 'plugins', title: 'Plugins', description: 'Each plugin can only do what it asked for and you granted.' },
     { id: 'updates', title: 'Updates', description: 'Which shub version runs and how new ones arrive.' },
@@ -484,6 +506,7 @@
           {#if a.id === 'appearance'}{@render appearance()}
           {:else if a.id === 'sessions'}{@render sessions()}
           {:else if a.id === 'devices'}{@render devicesPane()}
+          {:else if a.id === 'sync'}{@render sync()}
           {:else if a.id === 'plugins'}{@render plugins()}
           {:else if a.id === 'updates'}{@render updates()}
           {:else}{@render account()}{/if}
@@ -1083,6 +1106,24 @@
       </Section>
     </div>
   {/if}
+{/snippet}
+
+{#snippet sync()}
+  <div class="card">
+    <Section
+      title="Sync"
+      description="This choice is per machine: a category that is off is neither sent nor accepted here."
+    >
+      {#each SYNC as c (c.key)}
+        <Checkbox
+          label={c.label}
+          hint={c.hint}
+          checked={app.config?.sync?.[c.key] ?? c.key !== 'pluginEnv'}
+          onchange={(e) => setSync(c.key, e.currentTarget.checked)}
+        />
+      {/each}
+    </Section>
+  </div>
 {/snippet}
 
 {#snippet account()}
