@@ -5,7 +5,7 @@
 // Never touches ~/.local/share/shub, ~/.config/shub, systemd, the default tmux server or GitHub.
 //   npm run build && node scripts/release/dry-run.ts [--archive <shub-<version>-<platform>.tar.gz>]
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { generateKeyPairSync } from 'node:crypto';
+import { generateKeyPairSync, webcrypto } from 'node:crypto';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -175,10 +175,40 @@ try {
   // 4. A newer release appears; the browser user installs it from Settings (the same API calls).
   await publish(next);
   const token = readFileSync(join(root, 'state', 'token'), 'utf8').trim();
+  // Installing is for a signed-in browser: bootstrap a device key on this loopback host, then sign in like the app.
+  const { publicKey, privateKey } = await webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+    'sign',
+  ]);
+  const post = async (path: string, body: unknown) => {
+    const res = await fetch(`${base}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json()) as Record<string, any>;
+    if (!res.ok) throw new Error(`POST ${path}: ${res.status} ${JSON.stringify(data)}`);
+    return data;
+  };
+  const { device } = await post('/api/auth/bootstrap', {
+    token,
+    deviceName: 'dry-run',
+    publicKey: await webcrypto.subtle.exportKey('jwk', publicKey),
+  });
+  const { nonce } = await post('/api/auth/challenge', { deviceId: device.id });
+  const signature = await webcrypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    privateKey,
+    new TextEncoder().encode(`shub-login:${nonce}`),
+  );
+  const session = await post('/api/auth/session', {
+    deviceId: device.id,
+    nonce,
+    signature: Buffer.from(signature).toString('base64url'),
+  });
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await fetch(`${base}${path}`, {
       method,
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      headers: { authorization: `Bearer ${session.token}`, 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = await res.json();
