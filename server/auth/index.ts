@@ -308,6 +308,7 @@ export class AuthService implements Auth {
       const id = item.key.slice('device:'.length);
       const row = this.#row(id);
       const b = item.body as Record<string, string | null> | null;
+      if (b?.kind === 'host') continue; // another shub host (server/group/sync.ts), not a browser or phone
       if (item.deleted || !b) {
         if (row) this.#drop(id);
         continue;

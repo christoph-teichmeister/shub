@@ -157,6 +157,14 @@ test('a revoke syncs to a host that was offline and ends the device there at onc
   b.close();
 });
 
+test('another shub host in the group is not a device here', () => {
+  const h = host();
+  h.group.put('device:host-2', { name: 'Laptop', kind: 'host', publicKey: { kty: 'EC' } });
+  h.auth.applyGroup();
+  assert.deepEqual(h.auth.devices(), []);
+  h.close();
+});
+
 test('leaked synced files admit nobody: a device item in config, a guessed code and a pending device do nothing', async () => {
   const h = host();
   h.group.setConfig({
