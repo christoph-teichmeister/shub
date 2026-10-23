@@ -80,14 +80,19 @@ export class HostSync {
     return this.#group.hostId;
   }
 
+  /** Revoked: our own host item is a tombstone. Revoke wins, so a revoked host never makes itself a member again. */
+  get revoked(): boolean {
+    return !!this.#group.get(`device:${this.hostId}`)?.deleted;
+  }
+
   /** Make this host a member of the group, with the URL it can be reached at. */
   announce(): void {
+    if (this.revoked) return;
     const body: HostBody = { name: this.#deps.name ?? hostname(), kind: 'host', publicKey: this.#publicKey };
     const url = this.#deps.url();
     if (url) body.url = url;
     const have = this.#group.get(`device:${this.hostId}`);
-    if (!have || have.deleted || JSON.stringify(have.body) !== JSON.stringify(body))
-      this.#group.put(`device:${this.hostId}`, body);
+    if (!have || JSON.stringify(have.body) !== JSON.stringify(body)) this.#group.put(`device:${this.hostId}`, body);
   }
 
   start(): void {
@@ -248,6 +253,7 @@ export class HostSync {
   /** Pull from and push to every host we can dial: on start and every few minutes. */
   async round(): Promise<void> {
     this.announce();
+    if (this.revoked) return;
     await Promise.all(
       this.peers()
         .filter((p) => p.url)
