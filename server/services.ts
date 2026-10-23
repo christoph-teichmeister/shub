@@ -51,8 +51,10 @@ export interface Auth {
   appOrigins(): string[];
   /** Who may join this host to another: 'approved' (a browser approved here just now), 'manager' (trusted host or Control phone), else null. */
   joinKind(req: IncomingMessage, caller: Caller): 'approved' | 'manager' | null;
-  /** The approved browser's join is done: the approval is used up, this host's other browsers are dropped. */
+  /** The approved browser's join is done: the approval is used up; nothing is dropped. */
   finishJoin(caller: Caller): void;
+  /** Items of other hosts were merged: make this host's devices match the group (new ones, levels, revokes). */
+  applyGroup(): void;
 }
 
 /** server/permissions: the rights model from docs/SECURITY.md. Pure decisions + approvals + activity log. */

@@ -208,8 +208,22 @@ test('only a browser approved here just now, or a trusted host, may join this ho
   assert.equal(auth.joinKind(req, caller(mine.id)), null); // used up
   assert.deepEqual(
     auth.devices().map((d) => d.id),
-    [mine.id], // this host's other browsers were dropped
+    [other.id, mine.id], // nothing is dropped: this host's other browsers stay in the group
   );
   services.state.db.close();
   rmSync(stateDir, { recursive: true, force: true });
+});
+
+test('the group hosts may call this host cross-origin; a revoked host may not', () => {
+  const h = host();
+  h.group.put('device:host-2', {
+    name: 'Laptop',
+    kind: 'host',
+    publicKey: { kty: 'EC' },
+    url: 'https://laptop.ts.net',
+  });
+  assert.ok(h.auth.appOrigins().includes('https://laptop.ts.net'));
+  h.group.remove('device:host-2');
+  assert.deepEqual(h.auth.appOrigins(), []);
+  h.close();
 });

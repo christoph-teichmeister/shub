@@ -269,6 +269,38 @@ test('login on 401: the host browser bootstraps with the token', async ({ page }
   expect(errors.filter((e) => !e.includes('401') && !e.includes('409'))).toEqual([]);
 });
 
+test('the machine chips come from the group: one pairing signs the browser in on every host with its own key', async ({
+  page,
+}) => {
+  const { calls, errors } = await mockApi(page, {
+    'POST /api/auth/bootstrap': { device: { id: 'desk-1', state: 'active', level: 'control' } },
+    'POST /api/auth/challenge': { nonce: 'n1' },
+    'POST /api/auth/session': { token: 't1', expiresAt: '2099-01-01T00:00:00Z' },
+  });
+  await page.route('https://laptop.tail.ts.net/api/sessions', (r) => r.fulfill({ json: [], headers: CORS }));
+  // First browser on this host: the token creates its key; the group lists the Laptop (default mock).
+  await page.route(
+    '**/api/config',
+    (r) => r.fulfill({ status: 401, json: { error: 'login required' }, headers: CORS }),
+    {
+      times: 1,
+    },
+  );
+  await page.goto('/#/');
+  await page.getByLabel('Access token').fill('secret');
+  const reloaded = page.waitForEvent('load');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await reloaded;
+  const chips = page.getByRole('navigation', { name: 'Machines' });
+  await expect(chips.getByRole('button', { name: /Laptop/ })).toBeVisible();
+  // It signs in on the Laptop as the same device, with no pairing there.
+  await expect
+    .poll(() => calls.find((c) => c.origin === 'https://laptop.tail.ts.net' && c.path === '/api/auth/challenge')?.body)
+    .toEqual({ deviceId: 'desk-1' });
+  expect(calls.some((c) => c.path === '/api/auth/pairing/redeem')).toBe(false);
+  expect(errors.filter((e) => !e.includes('401'))).toEqual([]);
+});
+
 test('a phone pairs with a code and waits for approval', async ({ page }) => {
   const { errors, calls } = await mockApi(page, {
     'POST /api/auth/pairing/redeem': { device: { id: 'phone-1', state: 'pending', level: 'prompts' } },

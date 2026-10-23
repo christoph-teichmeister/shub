@@ -344,6 +344,7 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
     url: () => publicUrl(services.config.get()),
     onMerged: () => {
       services.config.reload();
+      services.auth.applyGroup();
       ctx.bus.emit({ type: 'conflicts.changed' });
     },
     serve: (action, body) => transcripts.serve(action, body),
