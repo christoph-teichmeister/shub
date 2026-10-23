@@ -70,7 +70,8 @@ pairing QR code. `SHUB_PUBLIC_URL` still works and wins over `publicUrl`. A syst
 
 Projects, groups, buttons, themes and settings live as versioned items in the group store (the `shub.db` file in
 `~/.local/state/shub/`), no secrets. An existing `~/.config/shub/config.json` is imported once on first start and then
-ignored.
+ignored. Hosts of the same device group (each publishes its tailnet URL there) push changes to each other at once and
+catch up on start and every five minutes; Settings > Sync lists them with their state.
 
 - Project paths under your home are stored as `~/...`. A project whose folder is missing on a machine shows dimmed
   there and is never removed.

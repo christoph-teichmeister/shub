@@ -4,6 +4,7 @@
     ActivityEntry,
     Config,
     Device,
+    HostPeer,
     LaunchPermissionMode,
     PhoneSetup,
     PluginInfo,
@@ -268,12 +269,24 @@
     serving = false;
   }
 
+  let hostPeers = $state<HostPeer[]>([]);
+  const loadPeers = () =>
+    api<HostPeer[]>('groupPeers').then(
+      (list) => (hostPeers = list),
+      () => (hostPeers = []),
+    );
+  const PEER_STATES = { 'in-sync': 'In sync', 'catching-up': 'Catching up', conflict: 'Conflict waiting' } as const;
+  const peerState = (p: HostPeer) =>
+    p.state === 'offline' ? (p.since ? `Offline since ${when(p.since)}` : 'Offline') : PEER_STATES[p.state];
+
   onMount(() => {
     void loadDevices();
     void loadPhone();
+    void loadPeers();
     void pushEnabled().then((on) => (push = on));
     const tick = setInterval(() => (now = Date.now()), 1000);
-    return () => clearInterval(tick);
+    const peers = setInterval(loadPeers, 10_000);
+    return () => (clearInterval(tick), clearInterval(peers));
   });
 
   async function useTheme(id: string) {
@@ -1109,6 +1122,28 @@
 {/snippet}
 
 {#snippet sync()}
+  <div class="card">
+    <Section
+      title="Other hosts"
+      description="Hosts of your device group, found through the group, no addresses to type."
+    >
+      {#if !hostPeers.length}<p class="muted small">No other host yet.</p>{/if}
+      <ul class="list">
+        {#each hostPeers as p (p.id)}
+          <li class="item">
+            <span class="grow stack">
+              <span class="strong">{p.name}</span>
+              <span class="muted small">{p.url ?? 'no address published yet'}</span>
+            </span>
+            <StatusBadge
+              text={peerState(p)}
+              tone={p.state === 'in-sync' ? 'done' : p.state === 'conflict' ? 'needs-you' : 'neutral'}
+            />
+          </li>
+        {/each}
+      </ul>
+    </Section>
+  </div>
   <div class="card">
     <Section
       title="Sync"
