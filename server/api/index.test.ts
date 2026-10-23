@@ -391,6 +391,47 @@ test('pairing: a second browser pairs with a code, is approved on the host, and 
   assert.equal((await asUser('DELETE', `/api/devices/${again.device.id}`)).status, 200);
 });
 
+test('a Control phone makes codes and approves, no device raises itself, any trusted device revokes', async () => {
+  const pairPhone = async (name: string, code: string) => {
+    const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+    const res = await call('POST', '/api/auth/pairing/redeem', {
+      code,
+      deviceName: name,
+      publicKey: publicKey.export({ format: 'jwk' }),
+    });
+    assert.equal(res.status, 200);
+    return { device: (await res.json()).device, privateKey };
+  };
+  const as = (token: string) => (method: string, path: string, body?: unknown) =>
+    call(method, path, body, { authorization: `Bearer ${token}` });
+
+  const a = await pairPhone('phone A', (await (await asUser('POST', '/api/auth/pairing')).json()).code);
+  assert.equal((await asUser('POST', `/api/devices/${a.device.id}/approve`)).status, 200);
+  const asA = as(await signInWith(a.device.id, a.privateKey));
+  assert.equal((await asA('POST', '/api/auth/pairing')).status, 403, 'Prompts: no codes yet');
+  assert.equal((await asUser('PATCH', `/api/devices/${a.device.id}`, { level: 'control' })).status, 200);
+
+  // A phone at Control makes the code; the new device names the host that made it.
+  const { code } = await (await asA('POST', '/api/auth/pairing')).json();
+  const b = await pairPhone('phone B', code);
+  assert.equal(b.device.state, 'pending');
+  assert.equal(b.device.host, process.env.SHUB_MACHINE_NAME || hostname());
+  assert.equal((await asA('POST', `/api/devices/${b.device.id}/approve`)).status, 400, 'the dialog confirms first');
+  assert.equal((await asA('POST', `/api/devices/${b.device.id}/approve`, { confirm: true })).status, 200);
+  const asB = as(await signInWith(b.device.id, b.privateKey));
+  assert.equal(b.device.level, 'prompts');
+
+  // Nobody raises itself; a Prompts phone raises nobody; a Control phone raises another device.
+  assert.equal((await asA('PATCH', `/api/devices/${a.device.id}`, { level: 'view' })).status, 403);
+  assert.equal((await asB('PATCH', `/api/devices/${b.device.id}`, { level: 'control' })).status, 403);
+  assert.equal((await asA('PATCH', `/api/devices/${b.device.id}`, { level: 'control' })).status, 200);
+
+  // Any trusted device revokes, even one at Prompts: A is gone at once.
+  assert.equal((await asB('DELETE', `/api/devices/${a.device.id}`)).status, 200);
+  assert.equal((await asA('GET', '/api/devices')).status, 401);
+  assert.equal((await asUser('DELETE', `/api/devices/${b.device.id}`)).status, 200);
+});
+
 test("another machine's app pairs cross-origin with a short code and may call this machine afterwards", async () => {
   const app = 'https://other-machine.example.ts.net';
   const foreign = (method: string, path: string, origin: string, body?: unknown) =>

@@ -5,16 +5,16 @@ protects against, the exact rules it enforces, and, just as important, what it d
 
 ## Threat model
 
-| Threat                                                                                                                       | Covered by                                                                                                       |
-| ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Someone on your network or the internet reaching shub                                                                        | Loopback-only bind, Tailscale for the phone                                                                      |
-| A web page in your browser talking to shub (CSRF, DNS rebinding)                                                             | Host and Origin allow-lists                                                                                      |
-| A Claude session (e.g. reviewing someone else's code) being talked into starting more sessions, changing buttons or projects | Permission rules, approvals, activity log                                                                        |
-| A runaway session or plugin starting sessions in a loop                                                                      | Rate limit, "one level deep"                                                                                     |
-| A plugin doing more than you agreed to                                                                                       | Per-plugin token with only the rights you granted                                                                |
-| Secrets showing up in the Docker panel                                                                                       | Env values with secret-looking keys and URL passwords are masked                                                 |
-| A tampered or fake update                                                                                                    | Signed `SHA256SUMS`, downloads only from the GitHub releases                                                     |
-| A lost phone, or code in the phone app that should not be there                                                              | Non-extractable device key in every browser, five-minute tokens, levels, approval on the machine, instant revoke |
+| Threat                                                                                                                       | Covered by                                                                                                                             |
+| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Someone on your network or the internet reaching shub                                                                        | Loopback-only bind, Tailscale for the phone                                                                                            |
+| A web page in your browser talking to shub (CSRF, DNS rebinding)                                                             | Host and Origin allow-lists                                                                                                            |
+| A Claude session (e.g. reviewing someone else's code) being talked into starting more sessions, changing buttons or projects | Permission rules, approvals, activity log                                                                                              |
+| A runaway session or plugin starting sessions in a loop                                                                      | Rate limit, "one level deep"                                                                                                           |
+| A plugin doing more than you agreed to                                                                                       | Per-plugin token with only the rights you granted                                                                                      |
+| Secrets showing up in the Docker panel                                                                                       | Env values with secret-looking keys and URL passwords are masked                                                                       |
+| A tampered or fake update                                                                                                    | Signed `SHA256SUMS`, downloads only from the GitHub releases                                                                           |
+| A lost phone, or code in the phone app that should not be there                                                              | Non-extractable device key in every browser, five-minute tokens, levels, approval on a trusted host or a Control phone, instant revoke |
 
 Not covered: anything a process does with your Unix user's rights outside shub. See [Honest scope](#honest-scope).
 
@@ -24,7 +24,7 @@ Not covered: anything a process does with your Unix user's rights outside shub. 
 - Every request needs the `Host` to be loopback on shub's port or the host of `SHUB_PUBLIC_URL`. A foreign `Origin` is refused.
 - **Access token** in `<stateDir>/token` (mode 0600). The first browser on a host sends it once to join (see below); as a Bearer token it identifies the `cli` caller. There is no cookie login. Rotate it in Settings.
 - **First browser on a host**: opened on `127.0.0.1`/`localhost`, a browser creates its key and sends the public half with the access token (`POST /api/auth/bootstrap`); the server accepts it only for a loopback Host and approves it at once, because reading the token file proves you are on the machine. This device has kind `desktop`. Browsers from before key sign-in (cookie, no key) are dropped on start and join this way once.
-- **Pairing** (every later browser and every phone): single-use code (8 characters without look-alikes, about 40 bits), shown as QR and as text, valid five minutes; after 20 wrong codes pairing locks until you make a new one. The device creates an ECDSA P-256 key pair in the browser whose private half cannot be read out (Web Crypto, non-extractable, kept in IndexedDB); shub stores only the public half. The device stays **pending** until you approve it in shub on this machine (or `shub device approve`). A browser loses its key when its site data is cleared: it pairs again, and the dead entry is removed in Settings > Devices.
+- **Pairing** (every later browser and every phone): single-use code (8 characters without look-alikes, about 40 bits), shown as QR and as text, valid five minutes; after 20 wrong codes pairing locks until you make a new one. The device creates an ECDSA P-256 key pair in the browser whose private half cannot be read out (Web Crypto, non-extractable, kept in IndexedDB); shub stores only the public half. The device stays **pending** until you approve it on a trusted host (shub in the host's own browser, or `shub device approve`) or on a phone at level Control, which asks in a dialog that names the new device, its kind and the host that made the code. A browser loses its key when its site data is cleared: it pairs again, and the dead entry is removed in Settings > Devices.
 - **Sign-in**: the device signs a single-use challenge (valid one minute) and gets a token valid five minutes, held only in the app's memory and renewed the same way. Requests send it as `Authorization: Bearer`, WebSockets as the subprotocol `bearer.<token>`. Nothing on the phone outlives five minutes if copied; the key itself cannot be copied, so code running in the app could only misuse it while the app is open.
 - **One app, several machines**: a phone app installed from one machine can pair further machines. It then calls them cross-origin with that machine's token (never a cookie). Each machine answers CORS only for the app origins of phones paired with it (`devices.app_origin`); only the pairing redeem accepts any origin, because it needs the code anyway. The app's pages allow `connect-src https:` for that reason.
 - **Push to a phone app with several machines**: the app owns one VAPID key pair and hands both halves to each machine with its subscription. That private key only lets a machine send pushes to this one phone.
@@ -54,9 +54,17 @@ Every paired device has a level. One gate in the server (`server/auth/levels.ts`
 | Control | everything you can do in the browser, including typing in terminals and starting sessions                                                                                                                                |
 
 - A new phone gets **Prompts** once approved, a browser **Control**. Terminals open read-only below Control: keystrokes are dropped, resizes still apply.
-- Approving a phone and changing any level work only in shub on the machine itself: the host's own browser (kind `desktop`, opened on `127.0.0.1`/`localhost`), or the `shub` CLI. A paired browser or phone never approves or raises itself or another device.
-- Removing a phone, or changing its level, closes its open WebSockets at once; removing it also ends its token.
+- A new device joins at **Prompts** (a browser from the pairing flow too). Approving it and changing any level work on a **trusted host** (the host's own browser, kind `desktop`, opened on `127.0.0.1`/`localhost`, or the `shub` CLI) or from a **phone at level Control**; a phone's approval must carry the dialog's confirmation. A paired browser never approves, a Prompts or View phone never raises anyone, and no device changes its own level.
+- **Revoke** works from any signed-in device, whatever its level.
+- Removing a device, or changing its level, closes its open WebSockets at once; removing it also ends its token.
 - Devices paired before this scheme (device cookie, no key) are dropped on start.
+
+## Device group
+
+Every device is also an item (`device:<id>`: public key, kind, level, state, the host that made its code) in the device group, the versioned store every host keeps equal by host-to-host sync. A host accepts a device if its key is in its copy. Items come only from a trusted host, never from a file: a secret in synced files (config, a dotfiles repo) admits nobody, and the access token and `local.json` never sync.
+
+- **Revoke is a tombstone.** Removing a device ends its tokens and open connections on this host at once and leaves a tombstone that syncs to every host; a host that was offline applies it when it reconnects. A revoke always wins: it is never a conflict, and a key is never brought back by an older copy of the item.
+- **First browser**: a host has no device yet, so its first browser joins with the access token on loopback (see above); that is the only join without a code.
 
 ## Rules
 
@@ -80,7 +88,7 @@ Every write through shub is written to the activity log (Settings > Activity) wi
 
 These rules only cover requests that go **through shub**. A Claude session runs in a shell as your user. From there it can run `claude -p "..."`, `tmux new`, `tmux send-keys` into another session, read `<stateDir>/token` and call shub as `cli`, or simply edit files, without shub ever seeing a request. What stands in the way of that is Claude Code's own permission prompts, nothing else. The per-session settings deny Claude's Read tool on the token, the database and the VAPID key, and its Edit and Write tools on all of `<stateDir>`; that only stops Claude's own file tools, not a shell command such as `cat <stateDir>/token`.
 
-The same goes for phones: a session that reads the token file can call `shub device approve` or raise a phone's level as `cli`. Approval on the machine stops a stranger with a pairing code, not a process already running as you.
+The same goes for phones: a session that reads the token file can call `shub device approve` or raise a phone's level as `cli`. Approval on a trusted host or a Control phone stops a stranger with a pairing code, not a process already running as you.
 
 So shub makes actions visible and stops mistakes; it is **not a wall** between sessions. In practice:
 

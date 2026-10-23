@@ -50,7 +50,7 @@ export const app = $state({
     name?: string;
     caller?: { kind: string; id: string; level?: DeviceLevel };
     device?: Device | null;
-    /** shub opened on the machine itself: only here can devices be approved or raised. */
+    /** A trusted host or a Control phone: only here can devices be approved or raised. */
     local?: boolean;
   } | null,
   /** Bumped on devices.changed so Settings > Devices refetches. */

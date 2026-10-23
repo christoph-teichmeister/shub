@@ -216,6 +216,7 @@
   let push = $state(false);
   let unpair = $state<Device | null>(null);
   let renaming = $state<Device | null>(null);
+  let approving = $state<Device | null>(null);
   let newName = $state('');
   let rotating = $state(false);
   let logs = $state<{ plugin: string; lines: string[] } | null>(null);
@@ -235,7 +236,7 @@
     if (app.devicesVersion) void loadDevices();
   });
 
-  /** Approving and changing levels only work in shub on the machine itself. */
+  /** Approving and changing levels work on a trusted host and from a phone at level Control. */
   const local = $derived(!!app.me?.local);
   const LEVEL_OPTIONS = [
     { value: 'view', label: 'View' },
@@ -244,7 +245,11 @@
   ];
 
   async function approve(d: Device) {
-    await api('deviceApprove', { params: { id: d.id } }).then(() => toast(`${d.name} approved`), toastError);
+    approving = null;
+    await api('deviceApprove', { params: { id: d.id }, body: { confirm: true } }).then(
+      () => toast(`${d.name} approved`),
+      toastError,
+    );
     void loadDevices();
   }
 
@@ -540,8 +545,8 @@
           <span class="grow"><span class="strong">{d.name}</span> wants to connect</span>
           {#if local}
             <Button size="sm" onclick={() => (unpair = d)}>Reject</Button>
-            <Button size="sm" variant="primary" onclick={() => approve(d)}>Approve</Button>
-          {:else}<span class="small">Approve on the machine</span>{/if}
+            <Button size="sm" variant="primary" onclick={() => (approving = d)}>Approve</Button>
+          {:else}<span class="small">Approve on a trusted host</span>{/if}
         </div>
       {/each}
       {#if showUpdate && update?.latest}
@@ -803,7 +808,7 @@
         <p class="muted small">
           View reads sessions and gets push. Prompts also answers approvals, permission questions and Run chips. Control
           also types in terminals and starts sessions. A new phone gets Prompts once approved, a browser Control;
-          approving and changing levels only work in shub on this machine (opened via localhost).
+          approving and changing levels work on a trusted host (opened via localhost) and from a phone at level Control.
         </p>
       </details>
       {#if !devices.length}<p class="muted small">No paired devices yet.</p>{/if}
@@ -820,8 +825,8 @@
             </span>
             {#if d.kind !== 'desktop'}
               {#if d.state === 'pending'}
-                {#if local}<Button size="sm" variant="primary" onclick={() => approve(d)}>Approve</Button>
-                {:else}<span class="muted small">Approve on the machine</span>{/if}
+                {#if local}<Button size="sm" variant="primary" onclick={() => (approving = d)}>Approve</Button>
+                {:else}<span class="muted small">Approve on a trusted host</span>{/if}
               {:else if local}
                 <span class="segment" role="group" aria-label="What {d.name} may do">
                   {#each LEVEL_OPTIONS as o (o.value)}
@@ -1196,6 +1201,19 @@
   {#snippet actions()}
     <Button variant="ghost" onclick={() => (unpair = null)}>Cancel</Button>
     <Button variant="danger" onclick={() => unpair && doUnpair(unpair)}>Unpair</Button>
+  {/snippet}
+</Dialog>
+
+<Dialog
+  open={!!approving}
+  title="Approve {approving?.name}?"
+  description="A {approving?.kind} that redeemed a code made on {approving?.host ??
+    'a host'} wants to join your devices. Only approve it if you just paired it yourself."
+  onclose={() => (approving = null)}
+>
+  {#snippet actions()}
+    <Button variant="ghost" onclick={() => (approving = null)}>Cancel</Button>
+    <Button variant="primary" onclick={() => approving && approve(approving)}>Approve</Button>
   {/snippet}
 </Dialog>
 

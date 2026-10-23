@@ -12,7 +12,7 @@ export interface Machine {
   name: string;
 }
 
-/** The device exists but nobody approved it on the machine yet. */
+/** The device exists but nobody approved it yet. */
 export class PendingError extends Error {}
 
 const DB = 'shub-device';
@@ -105,7 +105,7 @@ const b64url = (buf: ArrayBuffer) =>
 
 async function signIn({ origin, deviceId, keys }: Machine): Promise<string> {
   const challenge = await post<{ nonce?: string }>(origin, ROUTES.authChallenge, { deviceId });
-  if (challenge.status === 409) throw new PendingError('waiting for approval on the machine');
+  if (challenge.status === 409) throw new PendingError('waiting for approval');
   if (challenge.status === 404) {
     // Unpaired on that machine: drop the key so the app offers to pair again.
     await forgetDevice(origin);
