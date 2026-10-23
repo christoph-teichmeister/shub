@@ -175,16 +175,10 @@ try {
   // 4. A newer release appears; the browser user installs it from Settings (the same API calls).
   await publish(next);
   const token = readFileSync(join(root, 'state', 'token'), 'utf8').trim();
-  const login = await fetch(`${base}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', origin: base },
-    body: JSON.stringify({ token, deviceName: 'dry-run' }),
-  });
-  const cookie = login.headers.get('set-cookie')!.split(';')[0];
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await fetch(`${base}${path}`, {
       method,
-      headers: { cookie, origin: base, 'content-type': 'application/json' },
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = await res.json();
