@@ -1,6 +1,6 @@
-// A phone's sign-in on each of its machines (docs/SECURITY.md): per machine a P-256 key pair whose private half
+// A browser's or phone's sign-in on each of its machines (docs/SECURITY.md): per machine a P-256 key pair whose private half
 // cannot be read out, kept in IndexedDB; every few minutes the app signs a challenge and gets a short-lived
-// token, held in memory only. Desktop browsers have no machines here and keep their cookie.
+// token, held in memory only.
 import { ROUTES } from '../../../../shared/api.ts';
 
 export interface Machine {
@@ -128,7 +128,7 @@ async function signIn({ origin, deviceId, keys }: Machine): Promise<string> {
   return session.data.token;
 }
 
-/** Bearer token for this phone on a machine, renewed shortly before it runs out; null without a key (cookie). */
+/** Bearer token for this device on a machine, renewed shortly before it runs out; null without a key. */
 export async function deviceToken(origin = here, fresh = false): Promise<string | null> {
   const machine = await find(origin);
   if (!machine) return null;

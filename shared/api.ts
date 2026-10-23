@@ -461,7 +461,7 @@ export interface ServiceInspect {
 
 /**
  * What a paired phone may do (docs/SECURITY.md): view = read + push, prompts = also answer approvals,
- * permission questions and Run chips, control = everything. Desktop logins with the access token are control.
+ * permission questions and Run chips, control = everything. Browsers are control.
  */
 export type DeviceLevel = 'view' | 'prompts' | 'control';
 export const DEVICE_LEVELS: DeviceLevel[] = ['view', 'prompts', 'control'];
@@ -469,7 +469,8 @@ export const DEVICE_LEVELS: DeviceLevel[] = ['view', 'prompts', 'control'];
 export interface Device {
   id: string;
   name: string;
-  kind: 'desktop' | 'phone';
+  /** desktop: the host's own browser (bootstrap); browser: a paired desktop browser; phone. */
+  kind: 'desktop' | 'browser' | 'phone';
   pairedAt: string;
   lastSeenAt: string;
   push: boolean;
@@ -615,11 +616,11 @@ export const ROUTES = {
   health: 'GET /api/health',
   usage: 'GET /api/usage', // -> Usage | {}: the last 5h/7d limits any session's status line reported
   bundle: 'GET /api/bundle', // { name, manifest, sums?, signature? } for a phone app's loader; 404 in dev builds
-  login: 'POST /api/auth/login', // { token } -> sets cookie
+  bootstrap: 'POST /api/auth/bootstrap', // { token, deviceName, publicKey } -> { device } (active); loopback only
   logout: 'POST /api/auth/logout',
   me: 'GET /api/auth/me',
   pairingStart: 'POST /api/auth/pairing', // -> { code, url, qrSvg, expiresAt }
-  pairingRedeem: 'POST /api/auth/pairing/redeem', // { code, deviceName, publicKey: JWK } -> { device } (pending)
+  pairingRedeem: 'POST /api/auth/pairing/redeem', // { code, deviceName, publicKey: JWK, kind?: 'browser' } -> { device } (pending)
   authChallenge: 'POST /api/auth/challenge', // { deviceId } -> { nonce }; 409 while the device is pending
   authSession: 'POST /api/auth/session', // { deviceId, nonce, signature } -> { token, expiresAt }
   devices: 'GET /api/devices',

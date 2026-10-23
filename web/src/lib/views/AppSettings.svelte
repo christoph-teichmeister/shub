@@ -783,14 +783,14 @@
   <div class="card">
     <Section title="Paired devices">
       {#snippet aside()}
-        {#if shared}<Button size="sm" variant="primary" onclick={newCode}>+ Pair a phone</Button>{/if}
+        {#if shared}<Button size="sm" variant="primary" onclick={newCode}>+ Pair a device</Button>{/if}
       {/snippet}
       <details class="more">
         <summary>What do the levels mean?</summary>
         <p class="muted small">
           View reads sessions and gets push. Prompts also answers approvals, permission questions and Run chips. Control
-          also types in terminals and starts sessions. A new phone gets Prompts once approved; approving and changing
-          levels only work in shub on this machine (opened via localhost).
+          also types in terminals and starts sessions. A new phone gets Prompts once approved, a browser Control;
+          approving and changing levels only work in shub on this machine (opened via localhost).
         </p>
       </details>
       {#if !devices.length}<p class="muted small">No paired devices yet.</p>{/if}
@@ -805,7 +805,7 @@
               >
               <span class="muted small">{d.kind} · seen {when(d.lastSeenAt)} · push {d.push ? 'on' : 'off'}</span>
             </span>
-            {#if d.kind === 'phone'}
+            {#if d.kind !== 'desktop'}
               {#if d.state === 'pending'}
                 {#if local}<Button size="sm" variant="primary" onclick={() => approve(d)}>Approve</Button>
                 {:else}<span class="muted small">Approve on the machine</span>{/if}
@@ -849,9 +849,12 @@
     </div>
   {/if}
 
-  {#if fleet.list.length > 1}
+  {#if fleet.list.length > 0}
     <div class="card">
-      <Section title="Machines" description="The machines this app knows. Removing one signs this phone out there.">
+      <Section title="Machines" description="The machines this app knows. Removing one signs this device out there.">
+        {#snippet aside()}
+          {#if !ui.phone}<Button size="sm" onclick={() => (fleet.adding = true)}>+ Add a machine</Button>{/if}
+        {/snippet}
         <ul class="list">
           {#each fleet.list as m (m.origin)}
             <li class="item">

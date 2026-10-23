@@ -243,25 +243,34 @@ test('styleguide renders every section', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('login on 401 and phone pairing', async ({ page }) => {
+test('login on 401: the host browser bootstraps with the token', async ({ page }) => {
   const { errors, calls } = await mockApi(page, {
     '/api/config': { status: 401, json: { error: 'login required' } },
+    'POST /api/auth/bootstrap': { device: { id: 'desk-1', state: 'active', level: 'control' } },
     'POST /api/auth/pairing/redeem': { device: { id: 'phone-1', state: 'pending', level: 'prompts' } },
     'POST /api/auth/challenge': { status: 409, json: { error: 'waiting for approval on the machine' } },
   });
   await page.goto('/#/');
   await expect(page.getByText('your session hub')).toBeVisible();
   await page.getByLabel('Access token').fill('secret');
-  await expect(page.getByLabel('Remember this device for 30 days')).toBeChecked();
   // Login reloads the page; wait for that, or the reload races the goto below.
   const reloaded = page.waitForEvent('load');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await reloaded;
-  await expect.poll(() => calls.find((c) => c.path === '/api/auth/login')?.body).toMatchObject({ token: 'secret' });
+  await expect
+    .poll(() => calls.find((c) => c.path === '/api/auth/bootstrap')?.body)
+    .toMatchObject({ token: 'secret', publicKey: { kty: 'EC', crv: 'P-256' } });
+  expect(errors.filter((e) => !e.includes('401') && !e.includes('409'))).toEqual([]);
+});
 
+test('a phone pairs with a code and waits for approval', async ({ page }) => {
+  const { errors, calls } = await mockApi(page, {
+    'POST /api/auth/pairing/redeem': { device: { id: 'phone-1', state: 'pending', level: 'prompts' } },
+    'POST /api/auth/challenge': { status: 409, json: { error: 'waiting for approval on the machine' } },
+  });
   await page.goto('/pair/abc123');
   await page.getByLabel('Device name').fill('Pixel');
-  await page.getByRole('button', { name: 'Pair this phone' }).click();
+  await page.getByRole('button', { name: 'Pair this device' }).click();
   // Not approved on the machine yet: the challenge answers 409 and the page waits.
   await expect(page.getByText(/Now approve Pixel in shub/)).toBeVisible();
   const redeem = calls.find((c) => c.path === '/api/auth/pairing/redeem')?.body as Record<string, unknown>;
@@ -971,7 +980,7 @@ test('a phone app adds a second machine by address and typed code', async ({ pag
   await page.setViewportSize({ width: 390, height: 844 });
   // First machine: the one the app comes from, approved at once in this mock.
   await page.goto('/pair/ABCDEFGH');
-  await page.getByRole('button', { name: 'Pair this phone' }).click();
+  await page.getByRole('button', { name: 'Pair this device' }).click();
   await expect(page.getByText(/signed in as/)).toBeVisible();
 
   await page.goto('/#/');
@@ -986,10 +995,66 @@ test('a phone app adds a second machine by address and typed code', async ({ pag
   await page.getByLabel('Address').fill('pc.example.ts.net');
   await page.getByLabel('Pairing code').fill('abcd-efgh');
   await page.getByRole('button', { name: 'Pair', exact: true }).click();
-  await expect(page.getByText(/Now approve this phone on pc/)).toBeVisible();
+  await expect(page.getByText(/Now approve this device on pc/)).toBeVisible();
   const redeem = calls.find((c) => c.origin === 'https://pc.example.ts.net' && c.path === '/api/auth/pairing/redeem');
   expect(redeem?.body).toMatchObject({ code: 'abcd-efgh', publicKey: { kty: 'EC', crv: 'P-256' } });
   expect(errors.filter((e) => !e.includes('409'))).toEqual([]);
+});
+
+test('a desktop browser pairs, adds a host, switches between hosts and starts over when its key is lost', async ({
+  page,
+}) => {
+  const { calls, errors } = await mockApi(page, {
+    'POST /api/auth/bootstrap': { device: { id: 'desk-1', state: 'active', level: 'control' } },
+    'POST /api/auth/pairing/redeem': { device: { id: 'dev-1', state: 'pending', level: 'control' } },
+    'POST /api/auth/challenge': { nonce: 'n1' },
+    'POST /api/auth/session': { token: 't1', expiresAt: '2099-01-01T00:00:00Z' },
+  });
+  // First browser on the host: the token creates its key (first-browser bootstrap), signed in at once.
+  await page.route(
+    '**/api/config',
+    (r) => r.fulfill({ status: 401, json: { error: 'login required' }, headers: CORS }),
+    {
+      times: 1,
+    },
+  );
+  await page.goto('/#/');
+  await page.getByLabel('Access token').fill('secret');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('link', { name: 'ai-portal' }).first()).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Machines' })).toHaveCount(0); // one host: no switcher
+
+  // A second host: pair by address and code from Settings > Devices; it approves at once in this mock.
+  await page.route('https://pc.example.ts.net/api/health', (r) =>
+    r.fulfill({ json: { ok: true, version: '2026.10.0', apiVersion: 1, machine: 'pc' }, headers: CORS }),
+  );
+  await page.goto('/#/settings/devices');
+  await page.getByRole('button', { name: '+ Add a machine' }).click();
+  await page.getByLabel('Address').fill('pc.example.ts.net');
+  await page.getByLabel('Pairing code').fill('abcd-efgh');
+  await page.getByRole('button', { name: 'Pair', exact: true }).click();
+  const redeem = () =>
+    calls.find((c) => c.origin === 'https://pc.example.ts.net' && c.path === '/api/auth/pairing/redeem');
+  await expect.poll(() => redeem()?.body).toMatchObject({ code: 'abcd-efgh', kind: 'browser' });
+  // It switched to the new host; both show as chips, the shown one marked.
+  await expect
+    .poll(() => calls.some((c) => c.origin === 'https://pc.example.ts.net' && c.path === '/api/sessions'))
+    .toBe(true);
+  const chips = page.getByRole('navigation', { name: 'Machines' });
+  await expect(chips.getByRole('button', { name: /pc/ })).toHaveAttribute('aria-current', 'true');
+  await chips.getByRole('button', { name: /laptop/ }).click();
+  await expect(chips.getByRole('button', { name: /laptop/ })).toHaveAttribute('aria-current', 'true');
+
+  // Site data cleared: the host forgot the key (404), the app drops it and offers the sign-in again.
+  await page.route('**/api/auth/challenge', (r) =>
+    r.fulfill({ status: 404, json: { error: 'unknown device' }, headers: CORS }),
+  );
+  await page.route('**/api/config', (r) =>
+    r.fulfill({ status: 401, json: { error: 'login required' }, headers: CORS }),
+  );
+  await page.reload();
+  await expect(page.getByLabel('Access token')).toBeVisible();
+  expect(errors.filter((e) => !/40[14]/.test(e))).toEqual([]);
 });
 
 test('the crab village draws every session as a crab, queues the ones that need you, acts on them, Alt V goes back', async ({

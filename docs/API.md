@@ -13,17 +13,17 @@ shub listens on `127.0.0.1:4780` only; phones reach it through `tailscale serve`
 
 ## Auth
 
-| Client                  | How                                                                                                                                                                                                | Caller kind                                 |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| Browser (desktop)       | `POST /api/auth/login {token, deviceName?}` with the access token; sets cookie `shub_session`                                                                                                      | `user`                                      |
-| Phone                   | `POST /api/auth/pairing` (logged-in user) returns `{code, url, qrSvg, expiresAt}`; the phone opens `url` (`/pair/<code>`) and the web app calls `POST /api/auth/pairing/redeem {code, deviceName}` | `user`                                      |
-| CLI with the token file | `Authorization: Bearer <access token>`                                                                                                                                                             | `cli`                                       |
-| Claude session / plugin | `Authorization: Bearer <client token>` (issued by shub, e.g. `SHUB_TOKEN` in sessions)                                                                                                             | `session`, `spawned-session`, `plugin`, ... |
+| Client                             | How                                                                                                                                                                                                                                                                           | Caller kind                                 |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Browser or phone (first on a host) | `POST /api/auth/bootstrap {token, deviceName?, publicKey}` in shub opened on `127.0.0.1`/`localhost`: creates an active device with the access token as proof                                                                                                                 | `user`                                      |
+| Phone                              | `POST /api/auth/pairing` (logged-in user) returns `{code, url, qrSvg, expiresAt}`; the phone opens `url` (`/pair/<code>`) and the web app calls `POST /api/auth/pairing/redeem {code, deviceName, publicKey, kind?}` (every later browser and phone; approved on the machine) | `user`                                      |
+| CLI with the token file            | `Authorization: Bearer <access token>`                                                                                                                                                                                                                                        | `cli`                                       |
+| Claude session / plugin            | `Authorization: Bearer <client token>` (issued by shub, e.g. `SHUB_TOKEN` in sessions)                                                                                                                                                                                        | `session`, `spawned-session`, `plugin`, ... |
 
 - The access token is 32 random bytes (hex) in `<stateDir>/token` (`~/.local/state/shub/token`, mode 0600), created
   on first start. Only its path is ever logged.
-- The cookie is `HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000` (30 days), plus `Secure` behind
-  `x-forwarded-proto: https`. Each cookie is a device (`GET /api/devices`, `DELETE /api/devices/:id`).
+- There is no cookie login. Every browser and phone is a device with its own key (`GET /api/devices`,
+  `DELETE /api/devices/:id`); a browser whose site data was cleared pairs again.
 - Pairing codes are single use and valid 5 minutes.
 - `POST /api/auth/rotate` writes a new access token to the file and signs out every device except the caller's.
   Client tokens stay valid. The response `{ok, token, tokenFile}` is the only place the new token is shown
@@ -36,8 +36,7 @@ shub listens on `127.0.0.1:4780` only; phones reach it through `tailscale serve`
 ### Request guard
 
 - `Host` must be `127.0.0.1:<port>`, `localhost:<port>` or the host of `SHUB_PUBLIC_URL`, else `403` (DNS rebinding).
-- A foreign `Origin` is always refused. Requests that carry a cookie and change state (not GET/HEAD/OPTIONS), and
-  every WebSocket upgrade with a cookie, must send an allowed `Origin` (CSRF). Bearer clients send neither.
+- A foreign `Origin` is always refused. Bearer clients send none.
 - No login needed: `GET /api/health`, `POST /api/auth/login`, `POST /api/auth/pairing/redeem`, the static web app.
   `/api/hooks/*` and `/api/guard` authenticate with the session's client token instead of a cookie.
 

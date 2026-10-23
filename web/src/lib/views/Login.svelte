@@ -1,6 +1,5 @@
 <script lang="ts">
   import Button from '../components/Button/Button.svelte';
-  import Checkbox from '../components/Checkbox/Checkbox.svelte';
   import TextField from '../components/TextField/TextField.svelte';
   import Wordmark from '../components/Wordmark/Wordmark.svelte';
   import { onMount } from 'svelte';
@@ -9,14 +8,23 @@
   import { pushSupported, subscribePush } from '../stores/push.ts';
   import type { Device } from '../../../../shared/api.ts';
 
-  /** Set on /pair/<code>: the phone signs in with the pairing code instead of the token. */
+  /** Set on /pair/<code>: the device signs in with the pairing code instead of the token. */
   let { pairCode }: { pairCode?: string } = $props();
 
   let token = $state('');
-  let remember = $state(true);
+  let typedCode = $state('');
+  const phone = matchMedia('(max-width: 699px)').matches;
   let deviceName = $state(
-    /android/i.test(navigator.userAgent) ? 'Android phone' : /iphone/i.test(navigator.userAgent) ? 'iPhone' : 'Phone',
+    /android/i.test(navigator.userAgent)
+      ? 'Android phone'
+      : /iphone/i.test(navigator.userAgent)
+        ? 'iPhone'
+        : phone
+          ? 'Phone'
+          : 'Browser',
   );
+  /** Opened on the machine itself: the access token (a file only you can read there) makes this the first browser. */
+  const onHost = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
   let error = $state('');
   let busy = $state(false);
   let paired = $state(false);
@@ -46,7 +54,7 @@
   const message = (err: unknown) =>
     err instanceof ApiError && err.status === 401
       ? pairCode
-        ? 'This code is used or ran out. Make a new one in Settings on the desktop.'
+        ? 'This code is used or ran out. Make a new one in Settings > Devices on a trusted device.'
         : 'Wrong token'
       : err instanceof Error
         ? err.message
@@ -57,18 +65,17 @@
     busy = true;
     error = '';
     try {
-      if (pairCode) {
-        // The private key never leaves this phone; the machine only gets the public half.
-        const { keys, publicKey } = await newKeys();
-        const { device } = await api<{ device: Device }>('pairingRedeem', {
-          body: { code: pairCode, deviceName: deviceName.trim(), publicKey },
-        });
-        const health = await api<{ machine?: string }>('health').catch(() => null);
-        await rememberDevice({ origin: here, deviceId: device.id, keys, name: health?.machine ?? location.hostname });
-        void waitForApproval();
-      } else {
-        // ponytail: the server always sets a 30-day cookie; `remember` is sent for when it learns session cookies.
-        await api('login', { body: { token: token.trim(), remember } });
+      // The private key never leaves this device; the machine only gets the public half.
+      const { keys, publicKey } = await newKeys();
+      const code = pairCode ?? typedCode.trim();
+      const body = { deviceName: deviceName.trim(), publicKey };
+      const { device } = code
+        ? await api<{ device: Device }>('pairingRedeem', { body: { ...body, code, kind: phone ? 'phone' : 'browser' } })
+        : await api<{ device: Device }>('bootstrap', { body: { ...body, token: token.trim() } });
+      const health = await api<{ machine?: string }>('health').catch(() => null);
+      await rememberDevice({ origin: here, deviceId: device.id, keys, name: health?.machine ?? location.hostname });
+      if (code) void waitForApproval();
+      else {
         location.replace('/#/');
         location.reload();
       }
@@ -101,19 +108,19 @@
 
     {#if waiting}
       <p class="ok" role="status">
-        Paired. Now approve {deviceName} in shub on {location.host}: Settings > Devices. This page goes on by itself.
+        Paired. Now approve {deviceName} in shub on the machine: Settings > Devices. This page goes on by itself.
       </p>
     {:else if paired}
-      <p class="ok" role="status">This phone is signed in as {deviceName}.</p>
+      <p class="ok" role="status">This device is signed in as {deviceName}.</p>
       {#if pushSupported()}
         <p class="note">Get a push when a session needs you. Add shub to the home screen first on iOS.</p>
         <Button block variant="primary" onclick={push}>Turn on push</Button>
       {/if}
       <Button block variant={pushSupported() ? 'ghost' : 'primary'} onclick={done}>Open shub</Button>
     {:else if pairCode}
-      <TextField label="Device name" bind:value={deviceName} required hint="Shown in the device list on the desktop." />
-      <Button block variant="primary" type="submit" disabled={busy}>Pair this phone</Button>
-    {:else}
+      <TextField label="Device name" bind:value={deviceName} required hint="Shown in Settings > Devices." />
+      <Button block variant="primary" type="submit" disabled={busy}>Pair this device</Button>
+    {:else if onHost}
       <TextField
         label="Access token"
         type="password"
@@ -121,10 +128,21 @@
         required
         autocomplete="current-password"
         mono
-        hint="It is in ~/.local/state/shub/token on the desktop. A paired phone signs in by QR code instead."
+        hint="It is in ~/.local/state/shub/token. This browser gets its own key and signs in with it from now on."
       />
-      <Checkbox label="Remember this device for 30 days" bind:checked={remember} />
       <Button block variant="primary" type="submit" disabled={busy}>Sign in</Button>
+    {:else}
+      <TextField
+        label="Pairing code"
+        bind:value={typedCode}
+        required
+        mono
+        placeholder="ABCD-EFGH"
+        autocapitalize="characters"
+        hint="Make one in Settings > Devices in shub on another device, or open its QR link."
+      />
+      <TextField label="Device name" bind:value={deviceName} required />
+      <Button block variant="primary" type="submit" disabled={busy}>Pair this device</Button>
     {/if}
     {#if error}<p class="error" role="alert">{error}</p>{/if}
   </form>

@@ -6,6 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { generateKeyPairSync, sign, type KeyObject } from 'node:crypto';
 import { WebSocket } from 'ws';
 import type { Right } from '../../shared/api.ts';
 import { createContext, type Context } from '../context.ts';
@@ -41,7 +42,8 @@ let server: Server;
 let services: Services;
 let base: string;
 let accessToken: string;
-let cookie = '';
+let userToken = ''; // the host's own browser, signed in by key
+let userDeviceId = '';
 const approvals: unknown[] = [];
 
 before(async () => {
@@ -104,7 +106,31 @@ function call(method: string, path: string, body?: unknown, headers: Record<stri
   });
 }
 
-const asUser = (method: string, path: string, body?: unknown) => call(method, path, body, { cookie, origin: base });
+const asUser = (method: string, path: string, body?: unknown) =>
+  call(method, path, body, { authorization: `Bearer ${userToken}` });
+
+/** Signs a challenge with the device's key, as a browser does, and returns its short-lived token. */
+async function signInWith(deviceId: string, privateKey: KeyObject): Promise<string> {
+  const { nonce } = await (await call('POST', '/api/auth/challenge', { deviceId })).json();
+  const signature = sign('sha256', Buffer.from(`shub-login:${nonce}`), {
+    key: privateKey,
+    dsaEncoding: 'ieee-p1363',
+  }).toString('base64url');
+  const res = await call('POST', '/api/auth/session', { deviceId, nonce, signature });
+  assert.equal(res.status, 200);
+  return (await res.json()).token as string;
+}
+
+/** The first browser on the host: bootstraps with the access token and a key of its own. */
+async function bootstrapBrowser(name: string, token = accessToken) {
+  const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const res = await call('POST', '/api/auth/bootstrap', {
+    token,
+    deviceName: name,
+    publicKey: publicKey.export({ format: 'jwk' }),
+  });
+  return { res, privateKey };
+}
 
 test('token file is 0600 and 64 hex chars', () => {
   assert.match(accessToken, /^[0-9a-f]{64}$/);
@@ -130,34 +156,46 @@ test('foreign Host and Origin are refused', async () => {
   });
   assert.equal(status, 403);
   assert.equal(
-    (await call('POST', '/api/auth/login', { token: accessToken }, { origin: 'http://evil.example' })).status,
+    (await call('POST', '/api/auth/bootstrap', { token: accessToken }, { origin: 'http://evil.example' })).status,
     403,
   );
 });
 
-test('login needs the right token and sets a strict cookie', async () => {
+test('bootstrap: the first browser on the host joins with the access token and its own key', async () => {
   assert.equal((await call('GET', '/api/projects')).status, 401);
-  assert.equal((await call('POST', '/api/auth/login', { token: 'nope' })).status, 401);
-  const res = await call('POST', '/api/auth/login', { token: accessToken, deviceName: 'desk' }, { origin: base });
+  assert.equal((await bootstrapBrowser('desk', 'nope')).res.status, 401);
+  assert.equal((await call('POST', '/api/auth/bootstrap', { token: accessToken, publicKey: {} })).status, 400);
+  const { res, privateKey } = await bootstrapBrowser('desk');
   assert.equal(res.status, 200);
-  const setCookie = res.headers.get('set-cookie')!;
-  assert.ok(setCookie.startsWith(`shub_session_${ctx.port}=`), 'a test port gets its own cookie name');
-  assert.match(setCookie, /^shub_session_\d+=[0-9a-f]{64}; HttpOnly; SameSite=Strict; Path=\/; Max-Age=2592000$/);
-  cookie = setCookie.split(';')[0];
-  const https = await call('POST', '/api/auth/login', { token: accessToken }, { 'x-forwarded-proto': 'https' });
-  assert.match(https.headers.get('set-cookie')!, /; Secure$/);
-  const once = await call('POST', '/api/auth/login', { token: accessToken, remember: false });
-  assert.match(once.headers.get('set-cookie')!, /^shub_session_\d+=[0-9a-f]{64}; HttpOnly; SameSite=Strict; Path=\/$/);
+  const { device } = await res.json();
+  assert.equal(device.kind, 'desktop');
+  assert.equal(device.state, 'active');
+  assert.equal(device.level, 'control');
+  assert.ok(!res.headers.get('set-cookie'), 'no cookie login any more');
+  userDeviceId = device.id;
+  userToken = await signInWith(device.id, privateKey);
+  const me = await (await asUser('GET', '/api/auth/me')).json();
+  assert.equal(me.caller.deviceId, device.id);
+  assert.equal(me.local, true, 'the host browser approves on the machine');
 });
 
-test('the default port keeps the plain cookie name, others get their own', () => {
-  assert.equal(auth.cookieName(4780), 'shub_session');
-  assert.equal(auth.cookieName(4799), 'shub_session_4799');
+test('a cookie no longer signs in', async () => {
+  const cookie = 'shub_session=abc';
+  assert.equal((await call('GET', '/api/projects', undefined, { cookie, origin: base })).status, 401);
 });
 
-test('cookie requests that change state need an Origin', async () => {
-  assert.equal((await call('POST', '/api/projects/reorder', { ids: [] }, { cookie })).status, 403);
-  assert.equal((await asUser('POST', '/api/projects/reorder', { ids: [] })).status, 200);
+test('cookie rows from before key sign-in are dropped on start', () => {
+  const svc = services.auth as unknown as auth.AuthService;
+  services.state.db
+    .prepare(
+      `INSERT INTO devices (id, name, kind, session_hash, paired_at, last_seen_at) VALUES ('old', 'old', 'desktop', 'h', '', '')`,
+    )
+    .run();
+  svc.dropCookieDevices();
+  assert.deepEqual(
+    svc.devices().map((d) => d.id),
+    [userDeviceId],
+  );
 });
 
 test('folders: lists subfolders for the picker, user only', async () => {
@@ -270,7 +308,6 @@ test('settings and themes', async () => {
 });
 
 test('pairing: a phone pairs with its key, waits for approval and then signs in by challenge', async () => {
-  const { generateKeyPairSync, sign } = await import('node:crypto');
   const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
   const start = await (await asUser('POST', '/api/auth/pairing')).json();
   assert.equal(start.url, `http://127.0.0.1:${ctx.port}/pair/${start.code}`);
@@ -289,17 +326,7 @@ test('pairing: a phone pairs with its key, waits for approval and then signs in 
 
   // Approved in shub on the machine (loopback, signed in with the access token).
   assert.equal((await asUser('POST', `/api/devices/${device.id}/approve`)).status, 200);
-  const signIn = async () => {
-    const { nonce } = await (await call('POST', '/api/auth/challenge', { deviceId: device.id })).json();
-    const signature = sign('sha256', Buffer.from(`shub-login:${nonce}`), {
-      key: privateKey,
-      dsaEncoding: 'ieee-p1363',
-    }).toString('base64url');
-    const res = await call('POST', '/api/auth/session', { deviceId: device.id, nonce, signature });
-    assert.equal(res.status, 200);
-    return (await res.json()).token as string;
-  };
-  const token = await signIn();
+  const token = await signInWith(device.id, privateKey);
   const asPhone = (method: string, path: string, body?: unknown) =>
     fetch(base + path, {
       method,
@@ -326,8 +353,45 @@ test('pairing: a phone pairs with its key, waits for approval and then signs in 
   assert.equal((await asPhone('GET', '/api/devices')).status, 401);
 });
 
+test('pairing: a second browser pairs with a code, is approved on the host, and pairs again after losing its key', async () => {
+  const pair = async () => {
+    const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+    const { code } = await (await asUser('POST', '/api/auth/pairing')).json();
+    const res = await call('POST', '/api/auth/pairing/redeem', {
+      code,
+      deviceName: 'laptop',
+      kind: 'browser',
+      publicKey: publicKey.export({ format: 'jwk' }),
+    });
+    assert.equal(res.status, 200);
+    const { device } = await res.json();
+    assert.equal(device.kind, 'browser');
+    assert.equal(device.state, 'pending');
+    return { device, privateKey };
+  };
+  const first = await pair();
+  assert.equal((await call('POST', '/api/auth/challenge', { deviceId: first.device.id })).status, 409);
+  assert.equal((await asUser('POST', `/api/devices/${first.device.id}/approve`)).status, 200);
+  const laptop = await signInWith(first.device.id, first.privateKey);
+  const asLaptop = (method: string, path: string) =>
+    call(method, path, undefined, { authorization: `Bearer ${laptop}` });
+  assert.equal((await asLaptop('GET', '/api/projects')).status, 200, 'control: a browser works like the host one');
+  // Not the host's own browser: no approving, even through loopback.
+  const second = await pair();
+  assert.equal((await asLaptop('POST', `/api/devices/${second.device.id}/approve`)).status, 403);
+  assert.equal(((await (await asLaptop('GET', '/api/auth/me')).json()) as { local: boolean }).local, false);
+
+  // Site data cleared: the key is gone. Its entry is removed by a trusted device, and the browser pairs again.
+  assert.equal((await asUser('DELETE', `/api/devices/${first.device.id}`)).status, 200);
+  assert.equal((await asUser('DELETE', `/api/devices/${second.device.id}`)).status, 200);
+  assert.equal((await call('POST', '/api/auth/challenge', { deviceId: first.device.id })).status, 404);
+  assert.equal((await asLaptop('GET', '/api/projects')).status, 401);
+  const again = await pair();
+  assert.equal((await asUser('POST', `/api/devices/${again.device.id}/approve`)).status, 200);
+  assert.equal((await asUser('DELETE', `/api/devices/${again.device.id}`)).status, 200);
+});
+
 test("another machine's app pairs cross-origin with a short code and may call this machine afterwards", async () => {
-  const { generateKeyPairSync } = await import('node:crypto');
   const app = 'https://other-machine.example.ts.net';
   const foreign = (method: string, path: string, origin: string, body?: unknown) =>
     fetch(base + path, {
@@ -392,11 +456,11 @@ test('a device can be renamed', async () => {
   assert.equal((await asUser('PATCH', '/api/devices/nope', { name: 'x' })).status, 404);
 });
 
-test('events WebSocket says hello and forwards bus events; needs Origin with a cookie', async () => {
+test('events WebSocket says hello and forwards bus events; needs the device token', async () => {
   const wsUrl = base.replace('http', 'ws') + '/api/events';
-  const noOrigin = new WebSocket(wsUrl, { headers: { cookie } });
-  await new Promise<void>((resolve) => noOrigin.on('error', () => resolve()));
-  const ws = new WebSocket(wsUrl, { headers: { cookie, origin: base } });
+  const noToken = new WebSocket(wsUrl, { headers: { origin: base } });
+  await new Promise<void>((resolve) => noToken.on('error', () => resolve()));
+  const ws = new WebSocket(wsUrl, ['shub', `bearer.${userToken}`], { headers: { origin: base } });
   const messages: { type: string }[] = [];
   await new Promise<void>((resolve) =>
     ws.on('message', (data) => {
@@ -414,7 +478,10 @@ test('events WebSocket says hello and forwards bus events; needs Origin with a c
 
 test('events SSE stream', async () => {
   const controller = new AbortController();
-  const res = await fetch(base + '/api/events/stream', { headers: { cookie }, signal: controller.signal });
+  const res = await fetch(base + '/api/events/stream', {
+    headers: { authorization: `Bearer ${userToken}` },
+    signal: controller.signal,
+  });
   assert.equal(res.headers.get('content-type'), 'text/event-stream');
   const reader = res.body!.getReader();
   const first = new TextDecoder().decode((await reader.read()).value);
@@ -431,37 +498,20 @@ test('static files with SPA fallback; unknown api paths are JSON 404', async () 
   assert.equal((await call('GET', '/api/nope')).status, 404);
 });
 
-test('logging in again with a valid cookie reuses the device; unused desktops are pruned after 30 days', async () => {
-  const count = async () => (await (await asUser('GET', '/api/devices')).json()).length;
-  const svc = services.auth as unknown as auth.AuthService;
-  const before = await count();
-  const again = await call('POST', '/api/auth/login', { token: accessToken }, { cookie, origin: base });
-  const fresh = again.headers.get('set-cookie')!.split(';')[0];
-  assert.notEqual(fresh, cookie, 'the secret is rotated');
-  assert.equal((await call('GET', '/api/devices', undefined, { cookie: fresh, origin: base })).status, 200);
-  cookie = fresh;
-  assert.equal(await count(), before);
-
-  const { device } = svc.createDevice('old', 'desktop');
-  services.state.db
-    .prepare('UPDATE devices SET last_seen_at = ? WHERE id = ?')
-    .run(new Date(Date.now() - 31 * 24 * 3600 * 1000).toISOString(), device.id);
-  svc.pruneStaleDesktops();
-  assert.equal(await count(), before);
-});
-
 test('rotate signs out other devices but keeps the caller', async () => {
-  const other = await call('POST', '/api/auth/login', { token: accessToken });
-  const otherCookie = other.headers.get('set-cookie')!.split(';')[0];
+  const other = await bootstrapBrowser('other');
+  const { device } = await other.res.json();
+  const otherToken = await signInWith(device.id, other.privateKey);
   const rotated = await asUser('POST', '/api/auth/rotate');
   assert.equal(rotated.status, 200);
   assert.equal(rotated.headers.get('cache-control'), 'no-store');
   const { token } = (await rotated.json()) as { token: string };
   assert.equal(token, readFileSync(join(ctx.paths.stateDir, 'token'), 'utf8').trim(), 'new token, shown once');
-  assert.equal((await call('GET', '/api/auth/me', undefined, { cookie: otherCookie })).status, 401);
+  assert.equal((await call('GET', '/api/auth/me', undefined, { authorization: `Bearer ${otherToken}` })).status, 401);
+  assert.equal((await call('POST', '/api/auth/challenge', { deviceId: device.id })).status, 404);
   const me = await asUser('GET', '/api/auth/me');
   assert.equal(me.status, 200);
   assert.ok(!(await me.text()).includes(token), 'not retrievable later');
-  assert.equal((await call('POST', '/api/auth/login', { token: accessToken })).status, 401);
-  assert.equal((await call('POST', '/api/auth/login', { token })).status, 200);
+  assert.equal((await bootstrapBrowser('x')).res.status, 401, 'the old token is dead');
+  assert.equal((await bootstrapBrowser('x', token)).res.status, 200);
 });

@@ -1,18 +1,17 @@
 <script lang="ts">
-  // The machines a phone app knows, as chips: the shown one highlighted, the others with their state.
-  // "+" pairs another machine: scan its QR (where the browser can) or type its address and code.
+  // The machines this browser or phone knows, as chips: the shown one highlighted, the others with their state.
+  // A desktop browser shows them only with more than one machine. "+" pairs another machine: scan its QR (where the browser can) or type its address and code.
   import { onDestroy } from 'svelte';
   import Button from '../Button/Button.svelte';
   import Dialog from '../Dialog/Dialog.svelte';
   import Icon from '../Icon/Icon.svelte';
   import TextField from '../TextField/TextField.svelte';
   import { addMachine, fleet, parseTarget, switchTo, waitForApproval } from '../../stores/machines.svelte.ts';
-  import { app } from '../../stores/state.svelte.ts';
+  import { app, ui } from '../../stores/state.svelte.ts';
 
-  let adding = $state(false);
   let address = $state('');
   let code = $state('');
-  let deviceName = $state(/iphone/i.test(navigator.userAgent) ? 'iPhone' : 'Phone');
+  let deviceName = $state(ui.phone ? (/iphone/i.test(navigator.userAgent) ? 'iPhone' : 'Phone') : 'Browser');
   let busy = $state(false);
   let error = $state('');
   let waitingFor = $state<string | null>(null);
@@ -74,7 +73,7 @@
     busy = true;
     error = '';
     try {
-      const origin = await addMachine(address, code, deviceName.trim() || 'Phone');
+      const origin = await addMachine(address, code, deviceName.trim() || deviceName, ui.phone);
       waitingFor = fleet.list.find((m) => m.origin === origin)?.name ?? origin;
       abort = new AbortController();
       await waitForApproval(origin, abort.signal);
@@ -91,7 +90,7 @@
   function close() {
     stopScan();
     abort?.abort();
-    adding = false;
+    fleet.adding = false;
     waitingFor = null;
     address = code = error = '';
   }
@@ -99,36 +98,38 @@
   onDestroy(close);
 </script>
 
-<nav class="machines" aria-label="Machines">
-  {#each fleet.list as m (m.origin)}
-    {@const s = fleet.status[m.origin]}
-    <button
-      class="chip"
-      class:shown={m.origin === fleet.selected}
-      class:needs={!!s?.needsYou}
-      class:off={s?.state === 'offline' || s?.state === 'pending' || (m.origin === fleet.selected && app.unreachable)}
-      aria-current={m.origin === fleet.selected ? 'true' : undefined}
-      onclick={() => m.origin !== fleet.selected && switchTo(m.origin)}
+{#if fleet.list.length > (ui.phone ? 0 : 1)}
+  <nav class="machines" aria-label="Machines">
+    {#each fleet.list as m (m.origin)}
+      {@const s = fleet.status[m.origin]}
+      <button
+        class="chip"
+        class:shown={m.origin === fleet.selected}
+        class:needs={!!s?.needsYou}
+        class:off={s?.state === 'offline' || s?.state === 'pending' || (m.origin === fleet.selected && app.unreachable)}
+        aria-current={m.origin === fleet.selected ? 'true' : undefined}
+        onclick={() => m.origin !== fleet.selected && switchTo(m.origin)}
+      >
+        <span class="dot" aria-hidden="true"></span>
+        <span class="name">{m.name.split('.')[0]}</span>
+        <span class="visually-hidden">{label(m.origin)}</span>
+        {#if s?.needsYou && m.origin !== fleet.selected}<span class="count" aria-hidden="true">{s.needsYou}</span>{/if}
+      </button>
+    {/each}
+    <button class="chip add" aria-label="Add a machine" onclick={() => (fleet.adding = true)}
+      ><Icon name="plus" size="sm" /></button
     >
-      <span class="dot" aria-hidden="true"></span>
-      <span class="name">{m.name.split('.')[0]}</span>
-      <span class="visually-hidden">{label(m.origin)}</span>
-      {#if s?.needsYou && m.origin !== fleet.selected}<span class="count" aria-hidden="true">{s.needsYou}</span>{/if}
-    </button>
-  {/each}
-  <button class="chip add" aria-label="Add a machine" onclick={() => (adding = true)}
-    ><Icon name="plus" size="sm" /></button
-  >
-</nav>
+  </nav>
+{/if}
 
 <Dialog
-  open={adding}
+  open={fleet.adding}
   title="Add a machine"
-  description="On the other machine open shub > Settings > Phone and make a pairing code."
+  description="On the other machine open shub > Settings > Devices and make a pairing code."
   onclose={close}
 >
   {#if waitingFor}
-    <p role="status">Now approve this phone on {waitingFor}: shub > Settings > Devices. This goes on by itself.</p>
+    <p role="status">Now approve this device on {waitingFor}: shub > Settings > Devices. This goes on by itself.</p>
   {:else}
     <form class="form" onsubmit={submit}>
       {#if canScan}
@@ -151,7 +152,7 @@
         spellcheck={false}
       />
       <TextField label="Pairing code" bind:value={code} placeholder="ABCD-EFGH" autocapitalize="characters" mono />
-      <TextField label="This phone's name" bind:value={deviceName} />
+      <TextField label="This device's name" bind:value={deviceName} />
       <Button variant="primary" block type="submit" disabled={busy || !address || !code}>Pair</Button>
     </form>
   {/if}
