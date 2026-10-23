@@ -36,7 +36,12 @@ const project: Project = {
   ],
 };
 const ctx: Context = {
-  paths: { configDir: join(root, 'config'), stateDir: join(root, 'state'), appDir: process.cwd() },
+  paths: {
+    configDir: join(root, 'config'),
+    stateDir: join(root, 'state'),
+    dataDir: join(root, 'data'),
+    appDir: process.cwd(),
+  },
   host: '127.0.0.1',
   port: 1,
   tmuxSocket: `shub-test-${process.pid}`,
