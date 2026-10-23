@@ -154,6 +154,17 @@ test('a revoked host is refused: no sign-in, and a token it holds stops working'
   assert.equal(a.group.get('project:evil'), undefined);
 });
 
+test('a revoked host cannot bring itself back', async () => {
+  const { a, b } = await pair();
+  a.group.remove(`device:${b.group.hostId}`);
+  b.group.merge(a.group.get(`device:${b.group.hostId}`)!); // b learns its tombstone
+  b.sync.announce();
+  assert.ok(b.sync.revoked);
+  assert.equal(b.group.get(`device:${b.group.hostId}`)!.deleted, true);
+  assert.notEqual(a.group.merge(b.group.get(`device:${b.group.hostId}`)!), 'newer');
+  assert.equal(a.group.get(`device:${b.group.hostId}`)!.deleted, true);
+});
+
 test('a signature from another key does not sign a host in', async () => {
   const { a, b } = await pair();
   const { nonce } = a.sync.handle('challenge', { hostId: b.group.hostId }) as { nonce: string };
