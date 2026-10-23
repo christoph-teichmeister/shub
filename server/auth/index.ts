@@ -1,4 +1,4 @@
-// Access token, device cookies, phone pairing and per-client Bearer tokens.
+// Access token, device keys (every browser and phone), pairing and per-client Bearer tokens.
 // Secrets are only stored as sha256 hashes in sqlite; the access token itself lives in <stateDir>/token (0600).
 import {
   createHash,
@@ -10,7 +10,7 @@ import {
   type JsonWebKey,
 } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { IncomingMessage } from 'node:http';
 import { join } from 'node:path';
 import QRCode from 'qrcode';
 import { DEVICE_LEVELS, ROUTES, type ClientKind, type Device, type DeviceLevel, type Right } from '../../shared/api.ts';
@@ -22,12 +22,6 @@ import { closeDeviceSockets } from '../api/upgrade.ts';
 import type { Auth, Services } from '../services.ts';
 import { phoneSetupRoutes } from './tailscale.ts';
 
-/**
- * Browsers keep cookies per host, not per port, so a second shub on the same machine (a test copy on another port)
- * gets its own cookie name instead of signing the other one out. The default port keeps the plain name.
- */
-export const cookieName = (port: number): string => (port === 4780 ? 'shub_session' : `shub_session_${port}`);
-const SESSION_MAX_AGE_S = 30 * 24 * 3600;
 const PAIRING_TTL_MS = 5 * 60 * 1000;
 const LAST_SEEN_THROTTLE_MS = 60 * 1000;
 /** A phone's sign-in token lives this long, in memory only; the app renews it by signing a new challenge. */
@@ -41,7 +35,7 @@ const MIGRATIONS = [
      id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, session_hash TEXT NOT NULL UNIQUE,
      paired_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, push INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE client_tokens (token_hash TEXT PRIMARY KEY, kind TEXT NOT NULL, client_id TEXT NOT NULL, created_at TEXT NOT NULL)`,
-  // Phones sign in with a key pair (public half here); desktop logins with the access token keep the cookie.
+  // Every browser and phone signs in with a key pair (public half here); cookie rows (no key) are dropped on start.
   `ALTER TABLE devices ADD COLUMN public_key TEXT`,
   `ALTER TABLE devices ADD COLUMN level TEXT NOT NULL DEFAULT 'control'`,
   `ALTER TABLE devices ADD COLUMN state TEXT NOT NULL DEFAULT 'active'`,
@@ -73,15 +67,6 @@ const MAX_PAIRING_MISSES = 20;
 
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
 const newSecret = (): string => randomBytes(32).toString('hex');
-
-export function parseCookies(header: string | undefined): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const part of (header ?? '').split(';')) {
-    const i = part.indexOf('=');
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
-  }
-  return out;
-}
 
 function bearer(req: IncomingMessage): string | null {
   const m = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? '');
@@ -122,7 +107,6 @@ const isLevel = (value: unknown): value is DeviceLevel => DEVICE_LEVELS.includes
 
 export class AuthService implements Auth {
   #ctx: Context;
-  readonly cookie: string;
   #services: Services;
   #tokenFile: string;
   #tokenHash = '';
@@ -134,7 +118,6 @@ export class AuthService implements Auth {
 
   constructor(ctx: Context, services: Services) {
     this.#ctx = ctx;
-    this.cookie = cookieName(ctx.port);
     this.#services = services;
     this.#tokenFile = join(ctx.paths.stateDir, 'token');
   }
@@ -152,16 +135,6 @@ export class AuthService implements Auth {
       client_id: string;
     }[];
     for (const r of rows) this.#clients.set(r.token_hash, { kind: r.kind, id: r.client_id });
-    this.pruneStaleDesktops();
-  }
-
-  /** A desktop cookie unused for 30 days no longer signs in (see `deviceOf`); its row would only pile up. */
-  pruneStaleDesktops(): void {
-    const cutoff = new Date(Date.now() - SESSION_MAX_AGE_S * 1000).toISOString();
-    const rows = this.#db.prepare("SELECT id FROM devices WHERE kind = 'desktop' AND last_seen_at < ?").all(cutoff) as {
-      id: string;
-    }[];
-    for (const { id } of rows) this.deleteDevice(id);
   }
 
   get #db() {
@@ -206,15 +179,6 @@ export class AuthService implements Auth {
     return { kind, id, rights: this.#services.permissions.rightsFor(kind, granted) };
   }
 
-  deviceOf(req: IncomingMessage): DeviceRow | undefined {
-    const session = parseCookies(req.headers.cookie)[this.cookie];
-    if (!session) return undefined;
-    const row = this.#db.prepare('SELECT * FROM devices WHERE session_hash = ?').get(sha256(session)) as
-      DeviceRow | undefined;
-    if (!row || Date.now() - Date.parse(row.last_seen_at) > SESSION_MAX_AGE_S * 1000) return undefined;
-    return row;
-  }
-
   resolve(req: IncomingMessage): Caller | null {
     const token = bearer(req);
     if (token) {
@@ -224,12 +188,7 @@ export class AuthService implements Auth {
       const client = this.#clients.get(sha256(token));
       return client ? this.#caller(client.kind, client.id) : null;
     }
-    const device = this.deviceOf(req);
-    if (!device) return null;
-    if (Date.now() - Date.parse(device.last_seen_at) > LAST_SEEN_THROTTLE_MS) {
-      this.#db.prepare('UPDATE devices SET last_seen_at = ? WHERE id = ?').run(new Date().toISOString(), device.id);
-    }
-    return { ...this.#caller('user', 'chris'), deviceId: device.id };
+    return null;
   }
 
   #deviceCaller(entry: { deviceId: string; expires: number }): Caller | null {
@@ -262,27 +221,29 @@ export class AuthService implements Auth {
     this.#db.prepare('DELETE FROM client_tokens WHERE token_hash = ?').run(hash);
   }
 
-  /** Creates a device and returns its cookie value (unused for phones, which sign in with their key). */
+  /**
+   * Creates a device that signs in with its key. `desktop` is the host's own browser (bootstrap), `browser` a paired
+   * desktop browser, `phone` a phone; a new phone may answer prompts once approved, browsers get control.
+   */
   createDevice(
     name: string,
     kind: Device['kind'],
-    phone?: { publicKey: string; appOrigin?: string | null },
-  ): { device: Device; session: string } {
-    const session = newSecret();
+    key: { publicKey: string; appOrigin?: string | null },
+    active = false,
+  ): Device {
     const now = new Date().toISOString();
     const row: DeviceRow = {
       id: randomUUID(),
       name: name.slice(0, 100) || kind,
       kind,
-      session_hash: sha256(session),
+      session_hash: sha256(newSecret()), // column predates key sign-in; only has to be unique
       paired_at: now,
       last_seen_at: now,
       push: 0,
-      public_key: phone?.publicKey ?? null,
-      app_origin: phone?.appOrigin ?? null,
-      // A new phone may answer prompts once approved; control needs a second look on the machine.
-      level: phone ? 'prompts' : 'control',
-      state: phone ? 'pending' : 'active',
+      public_key: key.publicKey,
+      app_origin: key.appOrigin ?? null,
+      level: kind === 'phone' ? 'prompts' : 'control',
+      state: active ? 'active' : 'pending',
     };
     this.#db
       .prepare(
@@ -303,22 +264,14 @@ export class AuthService implements Auth {
         row.state,
         row.app_origin,
       );
-    if (phone) this.#ctx.bus.emit({ type: 'devices.changed' });
-    return { device: toDevice(row), session };
+    this.#ctx.bus.emit({ type: 'devices.changed' });
+    return toDevice(row);
   }
 
-  /** A browser that still holds a valid desktop cookie gets a fresh secret on its own device, not a second row. */
-  login(token: unknown, name: string, current?: DeviceRow): { device: Device; session: string } {
+  /** The first browser on a host: the access token (read from the token file, so you are on the machine) is its proof. */
+  bootstrap(token: unknown, name: string, publicKey: unknown): Device {
     if (!this.#isAccessToken(token)) throw new HttpError(401, 'wrong token');
-    this.pruneStaleDesktops();
-    if (current?.kind !== 'desktop') return this.createDevice(name, 'desktop');
-    const session = newSecret();
-    const now = new Date().toISOString();
-    this.#db
-      .prepare('UPDATE devices SET session_hash = ?, last_seen_at = ? WHERE id = ?')
-      .run(sha256(session), now, current.id);
-    const row = this.#db.prepare('SELECT * FROM devices WHERE id = ?').get(current.id) as unknown as DeviceRow;
-    return { device: toDevice(row), session };
+    return this.createDevice(name, 'desktop', { publicKey: parsePublicKey(publicKey) }, true);
   }
 
   async startPairing(): Promise<{ code: string; url: string; qrSvg: string; expiresAt: string }> {
@@ -334,8 +287,14 @@ export class AuthService implements Auth {
     return { code, url, qrSvg, expiresAt: new Date(expires).toISOString() };
   }
 
-  /** The phone keeps its private key; the device waits as pending until approved on this machine. */
-  redeemPairing(code: unknown, name: string, publicKey: unknown, appOrigin: string | null = null): Device {
+  /** The device keeps its private key; it waits as pending until approved on this machine. */
+  redeemPairing(
+    code: unknown,
+    name: string,
+    publicKey: unknown,
+    appOrigin: string | null = null,
+    kind: unknown = 'phone',
+  ): Device {
     const key = parsePublicKey(publicKey);
     if (this.#pairingMisses >= MAX_PAIRING_MISSES) throw new HttpError(429, 'too many wrong codes; make a new one');
     const normalized = typeof code === 'string' ? normalizeCode(code) : '';
@@ -346,7 +305,7 @@ export class AuthService implements Auth {
     }
     this.#pairings.delete(normalized);
     if (expires < Date.now()) throw new HttpError(401, 'pairing code expired');
-    const { device } = this.createDevice(name, 'phone', { publicKey: key, appOrigin });
+    const device = this.createDevice(name, kind === 'browser' ? 'browser' : 'phone', { publicKey: key, appOrigin });
     this.#services.notify?.devicePending(device.name);
     return device;
   }
@@ -362,7 +321,7 @@ export class AuthService implements Auth {
     return { nonce };
   }
 
-  /** Checks the phone's signature over the challenge and hands out a short-lived token. */
+  /** Checks the device's signature over the challenge and hands out a short-lived token. */
   signIn(deviceId: unknown, nonce: unknown, signature: unknown): { token: string; expiresAt: string } {
     const challenge = typeof nonce === 'string' ? this.#challenges.get(nonce) : undefined;
     if (typeof nonce === 'string') this.#challenges.delete(nonce);
@@ -413,9 +372,9 @@ export class AuthService implements Auth {
     return row && toDevice(row);
   }
 
-  /** Phones paired before key sign-in kept a 30-day cookie; they pair again. */
-  dropCookiePhones(): void {
-    const rows = this.#db.prepare("SELECT id FROM devices WHERE kind = 'phone' AND public_key IS NULL").all() as {
+  /** Devices from before key sign-in (cookie, no key) are dropped: a browser signs in once with the token and gets a key. */
+  dropCookieDevices(): void {
+    const rows = this.#db.prepare('SELECT id FROM devices WHERE public_key IS NULL').all() as {
       id: string;
     }[];
     for (const { id } of rows) this.deleteDevice(id);
@@ -455,32 +414,23 @@ export class AuthService implements Auth {
   }
 }
 
-/** `maxAge` null: a browser-session cookie (the device row still expires after 30 days unseen). */
-function setSessionCookie(
-  req: IncomingMessage,
-  res: ServerResponse,
-  name: string,
-  value: string,
-  maxAge: number | null = SESSION_MAX_AGE_S,
-): void {
-  const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
-  const age = maxAge === null ? '' : `; Max-Age=${maxAge}`;
-  res.setHeader('set-cookie', `${name}=${encodeURIComponent(value)}; HttpOnly; SameSite=Strict; Path=/${age}${secure}`);
-}
-
 /**
- * Approving a device and changing its level happen only on the machine itself: shub opened via loopback in a
- * browser signed in with the access token, or the CLI. A phone (any level) never raises itself or another phone.
+ * Approving a device and changing its level happen only on the machine itself: shub opened via loopback in the
+ * host's own browser (kind `desktop`, made by the bootstrap with the access token), or the CLI. Paired browsers
+ * and phones never raise themselves or another device.
  */
-function onThisMachine(req: IncomingMessage, caller: Caller): boolean {
-  const host = (req.headers.host ?? '').toLowerCase().replace(/:\d+$/, '');
-  const loopback = host === '127.0.0.1' || host === 'localhost' || host === '[::1]';
-  return caller.kind === 'cli' || (loopback && caller.kind === 'user' && !caller.level);
+const isLoopback = (req: IncomingMessage): boolean =>
+  ['127.0.0.1', 'localhost', '[::1]'].includes((req.headers.host ?? '').toLowerCase().replace(/:\d+$/, ''));
+
+function onThisMachine(auth: AuthService, req: IncomingMessage, caller: Caller): boolean {
+  if (caller.kind === 'cli') return true;
+  const own = caller.deviceId && auth.devices().find((d) => d.id === caller.deviceId)?.kind === 'desktop';
+  return isLoopback(req) && caller.kind === 'user' && !!own;
 }
 
-function requireThisMachine(req: IncomingMessage, caller: Caller): void {
+function requireThisMachine(auth: AuthService, req: IncomingMessage, caller: Caller): void {
   requireUser(caller);
-  if (!onThisMachine(req, caller)) throw new HttpError(403, 'only possible in shub on the machine itself');
+  if (!onThisMachine(auth, req, caller)) throw new HttpError(403, 'only possible in shub on the machine itself');
 }
 
 function deviceName(body: { deviceName?: unknown }, req: IncomingMessage): string {
@@ -490,24 +440,23 @@ function deviceName(body: { deviceName?: unknown }, req: IncomingMessage): strin
 
 function routes(auth: AuthService, router: Router): void {
   router.add(
-    ROUTES.login,
-    async (req, res) => {
-      const body = await req.json<{ token?: unknown; deviceName?: unknown; remember?: unknown }>();
-      const { device, session } = auth.login(body.token, deviceName(body, req.raw), auth.deviceOf(req.raw));
-      setSessionCookie(req.raw, res, auth.cookie, session, body.remember === false ? null : SESSION_MAX_AGE_S);
-      return { device };
+    ROUTES.bootstrap,
+    async (req) => {
+      // Only in shub opened on the machine itself; a tailnet peer cannot become the first browser.
+      if (!isLoopback(req.raw)) throw new HttpError(403, 'only possible in shub on the machine itself');
+      const body = await req.json<{ token?: unknown; deviceName?: unknown; publicKey?: unknown }>();
+      return { device: auth.bootstrap(body.token, deviceName(body, req.raw), body.publicKey) };
     },
     { public: true },
   );
-  router.add(ROUTES.logout, (req, res) => {
+  router.add(ROUTES.logout, (req) => {
     if (req.caller.deviceId) auth.deleteDevice(req.caller.deviceId);
-    setSessionCookie(req.raw, res, auth.cookie, '', 0);
     return { ok: true };
   });
   router.add(ROUTES.me, (req) => {
     const id = req.caller.deviceId;
     const device = id ? auth.devices().find((d) => d.id === id) : undefined;
-    return { caller: req.caller, device: device ?? null, local: onThisMachine(req.raw, req.caller) };
+    return { caller: req.caller, device: device ?? null, local: onThisMachine(auth, req.raw, req.caller) };
   });
   router.add(ROUTES.pairingStart, (req) => {
     requireUser(req.caller);
@@ -516,10 +465,10 @@ function routes(auth: AuthService, router: Router): void {
   router.add(
     ROUTES.pairingRedeem,
     async (req, res) => {
-      const body = await req.json<{ code?: unknown; deviceName?: unknown; publicKey?: unknown }>();
+      const body = await req.json<{ code?: unknown; deviceName?: unknown; publicKey?: unknown; kind?: unknown }>();
       // Another machine's app pairs cross-origin; remember its origin so it may call this machine later.
       const origin = req.raw.headers.origin?.toLowerCase() ?? null;
-      return { device: auth.redeemPairing(body.code, deviceName(body, req.raw), body.publicKey, origin) };
+      return { device: auth.redeemPairing(body.code, deviceName(body, req.raw), body.publicKey, origin, body.kind) };
     },
     { public: true },
   );
@@ -535,7 +484,7 @@ function routes(auth: AuthService, router: Router): void {
     { public: true },
   );
   router.add(ROUTES.deviceApprove, (req) => {
-    requireThisMachine(req.raw, req.caller);
+    requireThisMachine(auth, req.raw, req.caller);
     const device = auth.approve(req.params.id);
     if (!device) throw new HttpError(404, 'no such device');
     return device;
@@ -550,7 +499,7 @@ function routes(auth: AuthService, router: Router): void {
     let device: Device | undefined;
     if (level !== undefined) {
       if (!isLevel(level)) throw new HttpError(400, `level must be one of ${DEVICE_LEVELS.join(', ')}`);
-      requireThisMachine(req.raw, req.caller);
+      requireThisMachine(auth, req.raw, req.caller);
       device = auth.setLevel(req.params.id, level);
     }
     if (name !== undefined) {
@@ -583,7 +532,7 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
       name: 'auth',
       routes: (router) => (routes(auth, router), phoneSetupRoutes(ctx, services, router)),
       // After every module exists, so the dropped phones' push subscriptions go too.
-      start: () => auth.dropCookiePhones(),
+      start: () => auth.dropCookieDevices(),
     },
     service: auth,
   };

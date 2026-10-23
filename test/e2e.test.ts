@@ -4,6 +4,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { generateKeyPairSync, sign } from 'node:crypto';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,7 +24,7 @@ const dirs = {
 const socket = `shub-e2e-${process.pid}`;
 let server: ChildProcess;
 let base = '';
-let cookie = '';
+let browserToken = ''; // the host browser's device token
 let log = '';
 
 // Fake claude: records its argv and the session token, then idles as a plain interactive shell.
@@ -55,8 +56,7 @@ function api(method: string, path: string, body?: unknown, headers: Record<strin
   return fetch(base + path, {
     method,
     headers: {
-      // Bearer requests (hooks) go without the browser cookie.
-      ...(cookie && !headers.authorization && { cookie, origin: base }),
+      ...(browserToken && !headers.authorization && { authorization: `Bearer ${browserToken}` }),
       ...(body !== undefined && { 'content-type': 'application/json' }),
       ...headers,
     },
@@ -122,17 +122,30 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-test('health, login, project, session, terminal, hooks, close', { timeout: 60_000 }, async () => {
+test('health, bootstrap login, project, session, terminal, hooks, close', { timeout: 60_000 }, async () => {
   const health = await json<{ ok: boolean; apiVersion: number }>('GET', '/api/health');
   assert.equal(health.ok, true);
   assert.equal((await api('GET', '/api/sessions')).status, 401, 'login required');
 
-  // Login with the token file the server created.
+  // Bootstrap the first browser with the token file the server created, then sign in by key.
   const token = readFileSync(join(dirs.state, 'token'), 'utf8').trim();
-  assert.equal((await api('POST', '/api/auth/login', { token: 'wrong' })).status, 401);
-  const login = await api('POST', '/api/auth/login', { token, deviceName: 'e2e' });
-  assert.equal(login.status, 200);
-  cookie = login.headers.get('set-cookie')!.split(';')[0];
+  const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const jwk = publicKey.export({ format: 'jwk' });
+  assert.equal((await api('POST', '/api/auth/bootstrap', { token: 'wrong', publicKey: jwk })).status, 401);
+  const boot = await json<{ device: { id: string } }>('POST', '/api/auth/bootstrap', {
+    token,
+    deviceName: 'e2e',
+    publicKey: jwk,
+  });
+  const { nonce } = await json<{ nonce: string }>('POST', '/api/auth/challenge', { deviceId: boot.device.id });
+  const signature = sign('sha256', Buffer.from(`shub-login:${nonce}`), { key: privateKey, dsaEncoding: 'ieee-p1363' });
+  browserToken = (
+    await json<{ token: string }>('POST', '/api/auth/session', {
+      deviceId: boot.device.id,
+      nonce,
+      signature: signature.toString('base64url'),
+    })
+  ).token;
   const me = await json<{ caller: { kind: string; deviceId?: string } }>('GET', '/api/auth/me');
   assert.equal(me.caller.kind, 'user');
   assert.ok(me.caller.deviceId);
@@ -159,9 +172,10 @@ test('health, login, project, session, terminal, hooks, close', { timeout: 60_00
   assert.ok(settings.permissions.deny.includes(`Read(/${dirs.state}/token)`));
 
   // Terminal WebSocket: what we type comes back through tmux.
-  const ws = new WebSocket(`${base.replace('http', 'ws')}/api/terminals/${started.id}?cols=100&rows=30`, {
-    headers: { cookie, origin: base },
-  });
+  const ws = new WebSocket(`${base.replace('http', 'ws')}/api/terminals/${started.id}?cols=100&rows=30`, [
+    'shub',
+    `bearer.${browserToken}`,
+  ]);
   let seen = '';
   ws.on('message', (d) => (seen += d.toString()));
   await new Promise((resolve, reject) => ws.once('open', resolve).once('error', reject));

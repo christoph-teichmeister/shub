@@ -66,10 +66,10 @@ export async function api<T = unknown>(name: RouteName, options: CallOptions = {
   return data as T;
 }
 
-/** A paired phone's short-lived token for a machine; null on a desktop (cookie) or when it cannot sign in. */
+/** This device's short-lived token for a machine; null without a key (first visit) or when it cannot sign in. */
 const bearer = (origin: string, fresh = false) => deviceToken(origin, fresh).catch(() => null);
 
-/** fetch with the phone's token; a 401 gets one retry with a freshly signed token. */
+/** fetch with the device's token; a 401 gets one retry with a freshly signed token. */
 async function send(origin: string, url: string, init: RequestInit): Promise<Response> {
   const token = await bearer(origin);
   if (!token) return fetch(url, init);

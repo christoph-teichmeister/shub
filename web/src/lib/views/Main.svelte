@@ -31,6 +31,7 @@
   import ServicesTree from '../components/ServicesTree/ServicesTree.svelte';
   import SessionRow from '../components/SessionRow/SessionRow.svelte';
   import SessionTab from '../components/SessionTab/SessionTab.svelte';
+  import MachineSwitcher from '../components/MachineSwitcher/MachineSwitcher.svelte';
   import Sidebar from '../components/Sidebar/Sidebar.svelte';
   import SidebarSection from '../components/SidebarSection/SidebarSection.svelte';
   import SplitView from '../components/SplitView/SplitView.svelte';
@@ -913,6 +914,7 @@
             {#if globalSession}<span class="rail-dot"><StatusDot status={globalSession.status} /></span>{/if}
           </button>
         </div>
+        <MachineSwitcher />
         <button type="button" class="search" onclick={() => (ui.search = true)}>
           <Icon name="search" />
           <span class="grow">Search or add project</span>

@@ -1,5 +1,5 @@
-// The machines a phone app knows (card "One shub app for all machines"): which one is shown, how the others
-// are doing, adding one by its pairing code. Keys and tokens live in device.ts.
+// The machines a browser or phone app knows: which one is shown, how the others are doing, adding one by its
+// pairing code. Keys and tokens live in device.ts.
 import type { Session } from '../../../../shared/api.ts';
 import { api } from './api.ts';
 import {
@@ -21,10 +21,12 @@ export interface MachineStatus {
 }
 
 export const fleet = $state({
-  /** Empty in a desktop browser (cookie sign-in): no switcher there. */
+  /** Empty until this browser has a key (see Login). */
   list: [] as { origin: string; name: string }[],
   selected: here,
   status: {} as Record<string, MachineStatus>,
+  /** The "Add a machine" dialog (also opened from Settings > Devices). */
+  adding: false,
 });
 
 const POLL_MS = 20_000;
@@ -73,10 +75,10 @@ export function parseTarget(address: string, code = ''): { origin: string; code:
 }
 
 /**
- * Pairs this phone with another machine: a new key for it, redeemed with that machine's code. The machine then
+ * Pairs this phone or browser with another machine: a new key for it, redeemed with that machine's code. The machine then
  * shows the phone as waiting; `waitForApproval` finishes once someone approves it there.
  */
-export async function addMachine(address: string, code: string, deviceName: string): Promise<string> {
+export async function addMachine(address: string, code: string, deviceName: string, phone = true): Promise<string> {
   const target = parseTarget(address, code);
   if (!target.code) throw new Error('The pairing code is missing');
   const health = await fetch(`${target.origin}/api/health`).then(
@@ -89,7 +91,7 @@ export async function addMachine(address: string, code: string, deviceName: stri
   const res = await fetch(`${target.origin}/api/auth/pairing/redeem`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: target.code, deviceName, publicKey }),
+    body: JSON.stringify({ code: target.code, deviceName, publicKey, kind: phone ? 'phone' : 'browser' }),
   });
   const data = (await res.json().catch(() => ({}))) as { device?: { id: string }; error?: string };
   if (!res.ok || !data.device) throw new Error(data.error ?? `Pairing failed (${res.status})`);
