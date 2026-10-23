@@ -644,6 +644,7 @@ export const ROUTES = {
   notes: 'GET /api/sessions/:id/notes', // -> { path, text, rev }: the session's shared Markdown draft (a pane shares its session's), user only
   notesSave: 'PUT /api/sessions/:id/notes', // { text, rev } -> { rev }; 409 when the file changed since `rev` (Claude edits it too)
   image: 'GET /api/image', // ?path= an image under /tmp/claude-* or the pastes folder -> the file (terminal image viewer)
+  markdownLink: 'GET /api/markdown-link', // ?path= a note inside the knowledge base -> { url } of the KB app, 404 if none
   oldSessions: 'GET /api/projects/:id/old-sessions',
   restorable: 'GET /api/sessions/restorable', // after reboot
   restore: 'POST /api/sessions/restore',

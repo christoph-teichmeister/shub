@@ -2,6 +2,8 @@
 
 /** An absolute image path; paths with spaces are not matched. */
 const IMAGE_PATH = /(?<![\w.~/-])\/[^\s'"`()<>[\]]+?\.(?:png|jpe?g|gif|webp)(?!\w)/gi;
+/** A path to a Markdown note with a slash in it; only the file name may hold spaces ("Decisions/2026-10-23 Some Note.md"). */
+export const NOTE_PATH = /(?<![\w.~/-])(?:~?\/)?(?:[\w.-]+\/)+[\w.-]+(?: [\w.-]+)*?\.md(?!\w)/g;
 /** Rows joined at most into one line, so a full-width table does not become one long line. */
 const MAX_ROWS = 8;
 
@@ -77,9 +79,9 @@ function lineEnd(buf: Buffer, first: number): number {
   return last;
 }
 
-function matches(buf: Buffer, first: number, last: number): ImagePath[] {
+function matches(buf: Buffer, first: number, last: number, re: RegExp): ImagePath[] {
   const { text, pos } = joined(buf, first, last);
-  return [...text.matchAll(IMAGE_PATH)].map((m) => ({
+  return [...text.matchAll(re)].map((m) => ({
     path: m[0],
     start: pos[m.index],
     end: pos[m.index + m[0].length - 1],
@@ -87,10 +89,10 @@ function matches(buf: Buffer, first: number, last: number): ImagePath[] {
 }
 
 /** Image paths that touch row y (0-based), with the rows they wrap over. */
-export function imagePathsAt(buf: Buffer, y: number): ImagePath[] {
+export function imagePathsAt(buf: Buffer, y: number, re = IMAGE_PATH): ImagePath[] {
   let first = y;
   while (y - first < MAX_ROWS - 1 && continues(buf, first)) first--;
-  return matches(buf, first, lineEnd(buf, first)).filter((p) => p.start.y <= y + 1 && p.end.y >= y + 1);
+  return matches(buf, first, lineEnd(buf, first), re).filter((p) => p.start.y <= y + 1 && p.end.y >= y + 1);
 }
 
 /** Every image path in the buffer, oldest first, each once. */
@@ -98,7 +100,7 @@ export function allImagePaths(buf: Buffer): string[] {
   const paths = new Set<string>();
   for (let y = 0; y < buf.length; y++) {
     const last = lineEnd(buf, y);
-    for (const p of matches(buf, y, last)) paths.add(p.path);
+    for (const p of matches(buf, y, last, IMAGE_PATH)) paths.add(p.path);
     y = last;
   }
   return [...paths];

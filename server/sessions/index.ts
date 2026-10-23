@@ -9,6 +9,7 @@ import type { Services } from '../services.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
 import { viewableImage } from './image.ts';
 import { buttonPrompt, isSimpleInput } from './launch.ts';
+import { noteUrl } from './markdown.ts';
 import { FILE_PASTE_MAX, NAMED_KEYS, SessionsService, type SessionsOptions } from './service.ts';
 import { attachTerminals } from './terminal.ts';
 
@@ -226,6 +227,12 @@ function routes(sessions: SessionsService, services: Services, router: Router, s
     if (!image) throw new HttpError(404, 'no image shub may show');
     res.writeHead(200, { 'content-type': image.type, 'cache-control': 'no-store' });
     createReadStream(image.file).pipe(res);
+  });
+  router.add(ROUTES.markdownLink, (req) => {
+    requireRight(req.caller, 'read');
+    const url = noteUrl(req.query.get('path') ?? '');
+    if (!url) throw new HttpError(404, 'no note in the knowledge base');
+    return { url };
   });
   router.add(ROUTES.oldSessions, (req) => {
     requireRight(req.caller, 'read');

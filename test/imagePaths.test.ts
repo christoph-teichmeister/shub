@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { allImagePaths, imagePathsAt, type Buffer } from '../web/src/lib/components/TerminalView/imagePaths.ts';
+import {
+  allImagePaths,
+  imagePathsAt,
+  NOTE_PATH,
+  type Buffer,
+} from '../web/src/lib/components/TerminalView/imagePaths.ts';
 
 /** A fake xterm buffer `cols` wide; a row starting with `\u0001` is soft-wrapped; `😀` takes two cells. */
 function buffer(cols: number, rows: string[]): Buffer {
@@ -58,4 +63,14 @@ test('a wide character before the path keeps the columns right', () => {
 test('allImagePaths lists each path once, wrapped ones too', () => {
   const buf = buffer(12, ['- /tmp/claud', '\u0001e-x/a.png ok', '/x/b.jpg', '/x/b.jpg']);
   assert.deepEqual(allImagePaths(buf), ['/tmp/claude-x/a.png', '/x/b.jpg']);
+});
+
+test('NOTE_PATH finds note paths with spaces in the file name only', () => {
+  const line =
+    'Design note: Decisions/2026-10-23 Shub Device Group.md. See docs/SECURITY.md and ~/a/b.md, not plain.md';
+  const buf = buffer(120, [line]);
+  assert.deepEqual(
+    imagePathsAt(buf, 0, NOTE_PATH).map((p) => p.path),
+    ['Decisions/2026-10-23 Shub Device Group.md', 'docs/SECURITY.md', '~/a/b.md'],
+  );
 });
