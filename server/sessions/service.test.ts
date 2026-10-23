@@ -13,6 +13,7 @@ import { installUpgrades } from '../api/upgrade.ts';
 import { EventBus, type Context } from '../context.ts';
 import type { Services } from '../services.ts';
 import { CHILD_MIGRATIONS, childRows, recordChildren } from '../projects/children.ts';
+import { GroupStore } from '../group/index.ts';
 import { openState } from '../state/index.ts';
 import type { LaunchSpec } from './launch.ts';
 import { encodeCwd } from './old.ts';
@@ -56,6 +57,7 @@ const state = openState(ctx.paths.stateDir);
 let defaultPermissionMode: Config['defaultPermissionMode'] = 'default';
 const services = {
   state,
+  group: new GroupStore(state.db, state.migrate),
   config: {
     get: () => ({ projects: [project], defaultPermissionMode }) as unknown as Config,
     project: (id: string) => (id === 'p1' ? project : undefined),
@@ -269,9 +271,25 @@ test('start can reopen an old conversation with --resume; /clear moves the id', 
       svc.start({ ...req, resumeClaudeSessionId: '1b0e4c2a-6a39-4d55-9f7e-0c6a1d2c3b4a' }, 'chris'),
       /no such conversation/,
     );
+    assert.equal(launches.at(-1)?.fork, false);
     const fresh = '2b0e4c2a-6a39-4d55-9f7e-0c6a1d2c3b4a';
     svc.setClaudeSessionId(s.id, fresh);
     assert.equal(svc.get(s.id)?.claudeSessionId, fresh);
+    // A conversation another host ran forks, whatever the client asked; and it is listed with its host.
+    const theirs = '3b0e4c2a-6a39-4d55-9f7e-0c6a1d2c3b4a';
+    writeFileSync(join(dir, `${theirs}.jsonl`), JSON.stringify({ type: 'user', message: { content: 'from laptop' } }));
+    services.group.put(`session:${theirs}`, {
+      claudeSessionId: theirs,
+      projectId: 'p1',
+      rel: '',
+      name: 'from laptop',
+      lastAt: '2026-10-23T10:00:00.000Z',
+      hostId: 'other',
+      host: 'laptop',
+    });
+    assert.equal(svc.oldSessions('p1').find((o) => o.claudeSessionId === theirs)?.host, 'laptop');
+    await svc.start({ kind: 'claude', projectId: 'p1', resumeClaudeSessionId: theirs }, 'chris');
+    assert.equal(launches.at(-1)?.fork, true);
   } finally {
     if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = before;

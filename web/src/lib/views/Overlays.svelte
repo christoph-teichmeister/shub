@@ -104,12 +104,13 @@
       kind: 'claude',
       name: h.old.firstPrompt.slice(0, 40),
       resumeClaudeSessionId: h.old.claudeSessionId,
+      fork: !!h.old.host,
     });
     if (s) location.hash = sessionHref(s);
   }
 
   function open(h: Hit) {
-    if (h.kind === 'old') return void resume(h);
+    if (h.kind === 'old') return h.old.resumable === false ? undefined : void resume(h);
     close();
     if (h.kind === 'add') go('settings', 'project', 'new');
     else go('p', h.project.id);
@@ -205,13 +206,19 @@
                 </span>
               {:else if h.kind === 'old'}
                 <span class="tile" aria-hidden="true"><Icon name="message" /></span>
-                <span class="text">
+                <span class="text" class:dimmed={h.old.resumable === false}>
                   <span class="name"
                     >"{h.old.firstPrompt.slice(0, 80)}" <span class="muted">in {h.project.name}</span></span
                   >
-                  <span class="sub">{h.old.lastAt.slice(0, 10)} · {h.old.turns} turns</span>
+                  <span class="sub"
+                    >{h.old.lastAt.slice(0, 10)} · {h.old.host
+                      ? `from ${h.old.host}${h.old.resumable === false ? ', not on this machine yet' : ''}`
+                      : `${h.old.turns} turns`}</span
+                  >
                 </span>
-                <Button size="sm" onclick={() => resume(h)}>Resume</Button>
+                <Button size="sm" disabled={h.old.resumable === false} onclick={() => resume(h)}
+                  >{h.old.host ? 'Fork' : 'Resume'}</Button
+                >
               {:else}
                 <ProjectIcon icon={h.project.resolvedIcon} name={h.project.name} />
                 <span class="text">
@@ -349,6 +356,10 @@
     letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     color: var(--muted);
+  }
+
+  .dimmed {
+    opacity: 0.5;
   }
 
   .hit {

@@ -22,7 +22,7 @@ function hosts(...names: string[]): Record<string, Host> {
     if (!to?.online) throw new TypeError('fetch failed');
     const token = /^Bearer (.+)$/.exec((init.headers as Record<string, string>).authorization ?? '')?.[1];
     try {
-      const body = to.sync.handle(u.pathname.split('/').pop() as never, JSON.parse(init.body as string), token);
+      const body = await to.sync.handle(u.pathname.split('/').pop() as never, JSON.parse(init.body as string), token);
       return new Response(JSON.stringify(body), { status: 200 });
     } catch (err) {
       return new Response(JSON.stringify({ error: (err as Error).message }), {

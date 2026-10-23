@@ -2,6 +2,7 @@
 // item each; every item carries a version vector (host id -> change counter) and a deleted flag (tombstone).
 // Host-to-host sync, pairing and the conflict UI build on this; nothing here talks to the network.
 import { randomUUID } from 'node:crypto';
+import { hostname } from 'node:os';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   ROUTES,
@@ -17,6 +18,7 @@ import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { HostSync } from './sync.ts';
+import { Transcripts } from './transcripts.ts';
 
 /** Host id -> how many changes that host made to the item. */
 export type Version = Record<string, number>;
@@ -58,6 +60,8 @@ export function categoryOf(key: string): SyncCategory | null {
     case 'project':
     case 'group':
       return 'projects';
+    case 'session':
+      return 'sessions';
     case 'theme':
       return 'themes';
     case 'plugin':
@@ -341,12 +345,26 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
       services.config.reload();
       ctx.bus.emit({ type: 'conflicts.changed' });
     },
+    serve: (action, body) => transcripts.serve(action, body),
+    onRound: () => {
+      transcripts.publishSessions();
+      void transcripts.run();
+    },
   });
+  const transcripts: Transcripts = new Transcripts(group, sync, {
+    sync: () => services.config.get().sync,
+    projects: () => services.config.get().projects,
+    sessions: () => services.sessions.list(),
+    hostName: hostname(),
+  });
+  const timers: ReturnType<typeof setInterval>[] = [];
   const actions = [
     ['challenge', ROUTES.groupChallenge],
     ['session', ROUTES.groupSession],
     ['pull', ROUTES.groupPull],
     ['push', ROUTES.groupPush],
+    ['manifest', ROUTES.groupManifest],
+    ['chunk', ROUTES.groupChunk],
   ] as const;
   return {
     module: {
@@ -381,13 +399,24 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
           requireUser(req.caller);
           return sync.peers();
         });
+        router.add(ROUTES.groupTranscripts, (req) => {
+          requireUser(req.caller);
+          return transcripts.progress();
+        });
       },
       start() {
         // A URL set later (phone setup) is published as soon as the config changes.
         ctx.bus.on((e) => e.type === 'config.changed' && sync.announce());
         sync.start();
+        // The list also follows renames and new activity between rounds.
+        const timer = setInterval(() => transcripts.publishSessions(), 60_000);
+        timer.unref();
+        timers.push(timer);
       },
-      stop: () => sync.stop(),
+      stop: () => {
+        sync.stop();
+        timers.forEach(clearInterval);
+      },
     },
     service: group,
   };
