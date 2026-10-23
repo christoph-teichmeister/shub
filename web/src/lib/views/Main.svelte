@@ -808,6 +808,7 @@
         ondragstart={dragSessionStart(s)}
         ondrop={(after) => dropSession(top, s, after)}
         onunpin={() => unpinSession(s)}
+        onrename={(name) => rename(s, name)}
       />
       {#if kids.length || agents.length}
         <button
@@ -863,6 +864,7 @@
         selected={c.id === active?.id}
         closing={app.closing[c.id]}
         onmenu={(at) => (menu = { session: c, ...at })}
+        onrename={(name) => rename(c, name)}
       />
     {:else}
       <WorktreeRow

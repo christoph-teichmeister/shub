@@ -17,8 +17,36 @@
     ondrop?: (after: boolean) => void;
     /** Shows a pin on a pinned session (dragged or pinned via the menu, it stays on top); clicking it lets the session sort by status again. */
     onunpin?: () => void;
+    /** Double-click renames in place; only called on a change. */
+    onrename?: (name: string) => void;
   }
-  let { session, href, selected = false, closing = false, onmenu, ondragstart, ondrop, onunpin }: Props = $props();
+  let {
+    session,
+    href,
+    selected = false,
+    closing = false,
+    onmenu,
+    ondragstart,
+    ondrop,
+    onunpin,
+    onrename,
+  }: Props = $props();
+  let renaming = $state(false);
+  let draft = $state('');
+  let input = $state<HTMLInputElement>();
+  $effect(() => {
+    if (renaming && input) {
+      draft = session.name;
+      input.focus();
+      input.select();
+    }
+  });
+  function commit() {
+    if (!renaming) return;
+    renaming = false;
+    const name = draft.trim();
+    if (name && name !== session.name) onrename?.(name);
+  }
   let over = $state<'before' | 'after' | null>(null);
   const fill = $derived(contextFill(session));
   const half = (e: DragEvent) => {
@@ -33,7 +61,7 @@
   class:closing
   inert={closing}
   role="presentation"
-  draggable={ondragstart ? 'true' : undefined}
+  draggable={ondragstart && !renaming ? 'true' : undefined}
   {ondragstart}
   ondragover={ondrop ? (e) => (e.preventDefault(), e.stopPropagation(), (over = half(e))) : undefined}
   ondragleave={() => (over = null)}
@@ -44,19 +72,38 @@
   class:over-after={over === 'after'}
   oncontextmenu={onmenu ? (e) => (e.preventDefault(), onmenu({ x: e.clientX, y: e.clientY })) : undefined}
 >
-  <a
-    class="link"
-    {href}
-    aria-current={selected ? 'page' : undefined}
-    title={[session.pendingCommands?.map((c) => c.command).join('\n') ?? waitTitle(session), fill?.title]
-      .filter(Boolean)
-      .join('\n') || undefined}
-  >
-    <StatusDot status={session.status} idle={idleWithAgents(session)} />
-    <span class="name">{session.name}</span>
-    <span class="status">{closing ? 'Closing' : statusLabel(session)}</span>
-  </a>
-  {#if onmenu && !closing}
+  {#if renaming}
+    <div class="link">
+      <StatusDot status={session.status} idle={idleWithAgents(session)} />
+      <label class="visually-hidden" for="rename-{session.id}">Session name</label>
+      <input
+        id="rename-{session.id}"
+        class="rename"
+        bind:this={input}
+        bind:value={draft}
+        onblur={commit}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') renaming = false;
+        }}
+      />
+    </div>
+  {:else}
+    <a
+      class="link"
+      {href}
+      ondblclick={onrename ? (e) => (e.preventDefault(), (renaming = true)) : undefined}
+      aria-current={selected ? 'page' : undefined}
+      title={[session.pendingCommands?.map((c) => c.command).join('\n') ?? waitTitle(session), fill?.title]
+        .filter(Boolean)
+        .join('\n') || undefined}
+    >
+      <StatusDot status={session.status} idle={idleWithAgents(session)} />
+      <span class="name">{session.name}</span>
+      <span class="status">{closing ? 'Closing' : statusLabel(session)}</span>
+    </a>
+  {/if}
+  {#if onmenu && !closing && !renaming}
     <span class="actions"
       ><IconButton
         label="Menu for {session.name}"
@@ -122,6 +169,17 @@
     padding: var(--space-1) var(--space-1-5) var(--space-1) var(--space-2-5);
     color: inherit;
     text-decoration: none;
+  }
+
+  .rename {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: var(--size-control-xs);
+    padding: 0 var(--space-1-5);
+    border-radius: var(--radius-xs);
+    border: var(--hairline) solid var(--primary);
+    background: var(--bg);
+    color: var(--fg);
   }
 
   .over-before {
