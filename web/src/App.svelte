@@ -76,7 +76,7 @@
   {@render settings()}
 {:else if route.name !== 'settings' && app.ready && !app.unreachable && app.projects.length === 0}
   <FirstRun firstRun />
-{:else if route.name === 'village'}
+{:else if route.name === 'village' && !ui.phone}
   <Village />
 {:else if ui.phone}
   <Phone />

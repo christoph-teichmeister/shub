@@ -511,6 +511,15 @@ test('phone overview answers a permission', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('the phone never shows the crab village', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { errors } = await mockApi(page, { '/api/sessions': [session] });
+  await page.goto('/#/village');
+  await expect(page.getByRole('heading', { name: 'Needs you · 1' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Crab village map' })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('phone runs a command Claude handed over after a second tap', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const other = { ...session, id: 's2', name: 'Other one' };
