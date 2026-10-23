@@ -103,12 +103,13 @@
     };
   });
 
-  // OSC 8 links (xterm's linkHandler) and WebLinksAddon can both fire for one click: open a URL once.
-  let lastOpen = { uri: '', at: 0 };
+  // OSC 8 links (xterm's linkHandler) and WebLinksAddon can both fire for one click: open one link per click.
+  // The two can report different strings for the same link (OSC 8 uri vs. matched text), so any open within a second counts.
+  let lastOpen = 0;
   const openLink = (_e: MouseEvent, uri: string) => {
     const now = Date.now();
-    if (uri === lastOpen.uri && now - lastOpen.at < 1000) return;
-    lastOpen = { uri, at: now };
+    if (now - lastOpen < 1000) return;
+    lastOpen = now;
     window.open(uri, '_blank', 'noopener');
   };
 
