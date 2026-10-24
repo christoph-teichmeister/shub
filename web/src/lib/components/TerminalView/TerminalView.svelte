@@ -276,6 +276,34 @@
       else paste(e.dataTransfer?.getData('text/plain') ?? '');
       t.focus();
     };
+    // A swipe is not a wheel: xterm shows tmux's alternate screen (no scrollback of its own) and Claude's fullscreen
+    // UI scrolls on mouse-wheel reports, so each line of finger travel becomes one wheel event, which xterm turns
+    // into that report. Dragging down shows older output, like a native list.
+    let swipe: { y: number; startY: number; rest: number; active: boolean } | null = null;
+    const onTouchStart = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY;
+      swipe = e.touches.length === 1 && y !== undefined ? { y, startY: y, rest: 0, active: false } : null;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const screen = host!.querySelector('.xterm-screen');
+      const touch = e.touches[0];
+      if (!swipe || e.touches.length !== 1 || !touch || !screen || !t.rows) return;
+      if (!swipe.active && Math.abs(touch.clientY - swipe.startY) < 8) return; // below that it is a tap
+      swipe.active = true;
+      e.preventDefault();
+      const cell = screen.clientHeight / t.rows;
+      swipe.rest += swipe.y - touch.clientY;
+      swipe.y = touch.clientY;
+      const lines = Math.min(10, Math.trunc(Math.abs(swipe.rest) / cell));
+      const deltaY = Math.sign(swipe.rest);
+      swipe.rest -= deltaY * lines * cell;
+      for (let i = 0; i < lines; i++) {
+        const wheel = { deltaY, deltaMode: WheelEvent.DOM_DELTA_LINE, clientX: touch.clientX, clientY: touch.clientY };
+        screen.dispatchEvent(new WheelEvent('wheel', { ...wheel, bubbles: true, cancelable: true }));
+      }
+    };
+    host!.addEventListener('touchstart', onTouchStart, { passive: true });
+    host!.addEventListener('touchmove', onTouchMove, { passive: false });
     host!.addEventListener('paste', onPaste, true);
     host!.addEventListener('dragover', onDragOver);
     host!.addEventListener('drop', onDrop);
@@ -406,5 +434,8 @@
     flex: 1 1 auto;
     min-width: 0;
     min-height: 0;
+
+    /* Swipes are turned into wheel events by the view; the browser must not pan or pull-to-refresh meanwhile. */
+    touch-action: none;
   }
 </style>
