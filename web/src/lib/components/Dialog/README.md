@@ -1,6 +1,6 @@
 # Dialog
 
-Modal on the native `<dialog>` (`showModal`): focus trap, Escape and backdrop click close it. The parent owns `open`.
+Modal on the native `<dialog>` (`showModal`): focus trap, Escape and backdrop click close it. The parent owns `open`. On a phone (under 700 px) it is a sheet from the bottom edge.
 
 | Prop          | Type                       | Notes                          |
 | ------------- | -------------------------- | ------------------------------ |

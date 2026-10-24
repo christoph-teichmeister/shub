@@ -107,6 +107,14 @@
     border-radius: var(--radius-md);
   }
 
+  /* Thumb size on a phone; `lg` is the phone size (headers, search, settings). */
+  @media (width <= 699px) {
+    .lg {
+      width: var(--size-touch);
+      height: var(--size-touch);
+    }
+  }
+
   .outline {
     border-color: var(--line);
     background: var(--bg);

@@ -1751,3 +1751,84 @@ test('notes: a save that lost against Claude shows the bar; Take theirs loads th
   await expect(editor).toHaveValue('claude wrote this');
   expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1);
 });
+
+test('phone offers push once, and Not now keeps it away', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  // Headless Chromium reports notifications as denied; a real phone starts at "default".
+  await page.addInitScript(() => Object.defineProperty(Notification, 'permission', { get: () => 'default' }));
+  const { errors } = await mockApi(page, { '/api/sessions': [session] });
+  await page.goto('/#/');
+  const offer = page.getByRole('region', { name: 'Push notifications' });
+  await expect(offer).toBeVisible();
+  await offer.getByRole('button', { name: 'Not now' }).click();
+  await expect(offer).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Needs you · 1' })).toBeVisible();
+  await expect(offer).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('phone toast sits at the top and the message field is 16 px, so iOS does not zoom', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { errors } = await mockApi(page, { '/api/sessions': [session] });
+  await page.goto('/#/p/ai-portal/s1');
+  const toastBox = page.getByRole('status').locator('.toast').first();
+  await expect(toastBox).toBeVisible();
+  expect((await toastBox.boundingBox())!.y).toBeLessThan(60);
+  const size = await page.getByLabel('Message to Claude').evaluate((el) => getComputedStyle(el).fontSize);
+  expect(size).toBe('16px');
+  expect(errors).toEqual([]);
+});
+
+test('phone permission bar is one line until tapped and keeps Always apart from Yes and No', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const asking = {
+    ...session,
+    pendingPermission: { tool: 'Bash', summary: 'pytest core/tests -k a_very_long_filter' },
+  };
+  const { errors, calls } = await mockApi(page, { '/api/sessions': [asking] });
+  await page.goto('/#/p/ai-portal/s1');
+  const line = page.getByRole('button', { name: /Allow Bash\?/ });
+  await expect(line).toHaveAttribute('aria-expanded', 'false');
+  await line.click();
+  await expect(line).toHaveAttribute('aria-expanded', 'true');
+  const group = page.getByRole('group', { name: 'Answer the permission question' });
+  await group.getByRole('button', { name: 'Always' }).click();
+  await expect.poll(() => calls.find((c) => c.path === '/api/sessions/s1/keys')?.body).toEqual({ keys: ['2'] });
+  expect(errors).toEqual([]);
+});
+
+test('phone quick keys hide with the toggle and stay hidden', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { errors } = await mockApi(page, { '/api/sessions': [session] });
+  await page.goto('/#/p/ai-portal/s1');
+  const keys = page.getByRole('group', { name: 'Quick keys' });
+  await expect(keys).toBeVisible();
+  await page.getByRole('button', { name: 'Toggle quick keys' }).click();
+  await expect(keys).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByLabel('Message to Claude')).toBeVisible();
+  await expect(keys).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('phone new session sheet searches every project once the list is long', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const more = Array.from({ length: 5 }, (_, i) => ({ ...project, id: `p${i}`, name: `proj-${i}`, order: i + 1 }));
+  const { errors, calls } = await mockApi(page, {
+    '/api/sessions': [],
+    '/api/projects': [project, dormant, ...more],
+  });
+  await page.goto('/#/');
+  await page.getByRole('button', { name: 'New session' }).click();
+  const sheet = page.getByRole('dialog', { name: 'New session in' });
+  await expect(sheet.getByRole('button', { name: 'street-tours' })).toHaveCount(0);
+  await sheet.getByLabel('Find a project').fill('street');
+  await sheet.getByRole('button', { name: 'street-tours' }).click();
+  await expect
+    .poll(() => calls.find((c) => c.method === 'POST' && c.path === '/api/sessions')?.body)
+    .toMatchObject({
+      projectId: 'street-tours',
+    });
+  expect(errors).toEqual([]);
+});

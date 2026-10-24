@@ -477,7 +477,7 @@
 
 <div class="page">
   <header class="topbar">
-    <a class="back" href={href()}>← Sessions</a>
+    <a class="back" href={href()}>← {ui.phone ? 'Back' : 'Sessions'}</a>
     <h1>Settings</h1>
     <label class="search">
       <Icon name="search" size="sm" />
@@ -1537,7 +1537,16 @@
     }
 
     .nav > a {
-      min-height: var(--size-control-lg);
+      min-height: var(--size-touch);
+    }
+
+    .layout:not(.picked) .nav > a::after {
+      content: '›';
+      color: var(--muted);
+    }
+
+    .layout:not(.picked) .nav > a:not(:has(.badge, .count, .new, .muted))::after {
+      margin-left: auto;
     }
 
     .layout:not(.picked) .nav > a.on {

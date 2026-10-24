@@ -67,6 +67,17 @@ Inline stroke SVG on a 16 px grid, `currentColor`, round caps (`components/Icon/
 
 Short, plain, sentence case ("New session", "Split view on", "Nothing needs you"). No trailing periods on buttons and labels, no exclamation marks. Name the thing, then the action ("Close BLM-412 export?"). Shortcuts are written `Alt K`.
 
+## Phone
+
+The phone layout (`views/Phone.svelte`, under 700 px) follows a few rules:
+
+- **Thumb size**: tap targets are `--size-touch` (44 px); `IconButton` size `lg` grows to it on a phone.
+- **Fields are 16 px**: `tokens.css` raises every text field to 16 px under 700 px, because iOS Safari zooms the page on focus below that.
+- **Bottom edge is for the thumb**: the composer, the permission bar and the sticky New session button live there; toasts go to the top, dialogs become bottom sheets. Nothing transient may cover them.
+- **Safe areas**: `viewport-fit=cover` plus `env(safe-area-inset-*)` on bars and the bottom row.
+- **Chrome stays small**: the permission question is one line until tapped, quick keys can be hidden (`shub.quickKeys` in `localStorage`), the terminal gets the rest.
+- **Push is offered once** on the overview (`shub.pushPrompt` in `localStorage` after "Not now").
+
 ## Crab Village
 
 The village (`#/village`, `views/Village/`) has a parchment-and-wood look of its own, the same in every theme.

@@ -61,6 +61,25 @@
     overflow: hidden;
   }
 
+  /* Phone: a sheet from the bottom edge, in thumb reach. */
+  @media (width <= 699px) {
+    .dialog {
+      width: 100%;
+      max-width: none;
+      margin: auto 0 0;
+      border-width: var(--hairline) 0 0;
+      border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    }
+
+    .dialog[open] {
+      max-height: calc(100dvh - var(--space-12));
+    }
+
+    .content {
+      padding: var(--space-5) var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom));
+    }
+  }
+
   .needs-you {
     border: var(--ring) solid var(--status-needs-you);
   }
