@@ -1892,3 +1892,16 @@ test('the phone terminal opens no keyboard: typing goes through the message fiel
   await expect(page.locator('.xterm-helper-textarea')).not.toHaveAttribute('inputmode', 'none');
   expect(errors).toEqual([]);
 });
+
+test('phone quick keys page up and down through the chat', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { errors, calls } = await mockApi(page, { '/api/sessions': [session] });
+  await page.goto('/#/p/ai-portal/s1');
+  await page.getByRole('button', { name: 'Page up' }).click();
+  await expect.poll(() => calls.find((c) => c.path === '/api/sessions/s1/keys')?.body).toEqual({ keys: ['PageUp'] });
+  await page.getByRole('button', { name: 'Page down' }).click();
+  await expect
+    .poll(() => calls.filter((c) => c.path === '/api/sessions/s1/keys').at(-1)?.body)
+    .toEqual({ keys: ['PageDown'] });
+  expect(errors).toEqual([]);
+});

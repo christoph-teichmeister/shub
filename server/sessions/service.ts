@@ -62,7 +62,7 @@ const WAIT_FAILS_NOTIFY = 3;
 
 const GLOBAL_ID = 'global';
 const LIVE: SessionStatus[] = ['new', 'working', 'needs-you', 'your-turn', 'waiting'];
-export const NAMED_KEYS = new Set(['Escape', 'C-c', 'Up', 'Down', 'Tab', 'Enter']);
+export const NAMED_KEYS = new Set(['Escape', 'C-c', 'Up', 'Down', 'PageUp', 'PageDown', 'Tab', 'Enter']);
 const LITERAL_MAX = 2000;
 const TEXT_PASTE_MAX = 1024 * 1024;
 export const FILE_PASTE_MAX = 500 * 1024 * 1024;
