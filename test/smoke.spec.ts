@@ -1854,3 +1854,30 @@ test('phone attaches a picture: it is pasted into the session and the field stay
   expect(paste?.body).toEqual({ type: 'image/png', bytes: 16 });
   expect(errors).toEqual([]);
 });
+
+test('a swipe in the phone terminal becomes mouse-wheel reports for the app inside', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { errors } = await mockApi(page, { '/api/sessions': [session] });
+  const sent: string[] = [];
+  // Claude's fullscreen UI: mouse tracking on (button events, SGR encoding).
+  await page.routeWebSocket('**/api/terminals/**', (ws) => {
+    ws.send('\u001b[?1000h\u001b[?1006h');
+    ws.onMessage((m) => sent.push(typeof m === 'string' ? m : m.toString()));
+  });
+  await page.goto('/#/p/ai-portal/s1');
+  const screen = page.locator('.xterm-screen');
+  await expect(screen).toBeVisible();
+  const box = (await screen.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', y: number) =>
+    cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+  const top = box.y + 40;
+  await touch('touchStart', top);
+  for (let i = 1; i <= 10; i++) await touch('touchMove', top + i * 20); // finger down: older output
+  await touch('touchEnd', 0);
+  // SGR wheel up is button 64.
+  await expect.poll(() => sent.filter((m) => m.startsWith('\u001b[<64;')).length).toBeGreaterThan(3);
+  expect(sent.some((m) => m.startsWith('\u001b[<65;'))).toBe(false);
+  expect(errors).toEqual([]);
+});
