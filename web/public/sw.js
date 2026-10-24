@@ -98,10 +98,21 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin || url.pathname.startsWith('/api/')) return;
   if (LOADER_FILES.includes(url.pathname)) return;
-  event.respondWith(serve(req, url));
+  event.respondWith(serve(event, req, url));
 });
 
-async function serve(req, url) {
+async function serve(event, req, url) {
+  // The page itself always comes fresh from the machine the app was installed from (hashed assets follow it);
+  // the cached bundle only answers when that machine is off or slow, so a phone can never stay on an old UI.
+  if (req.mode === 'navigate') {
+    try {
+      const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(4000) });
+      if (res.ok) {
+        event.waitUntil(checkUpdates([]).catch(() => {}));
+        return res;
+      }
+    } catch {}
+  }
   const running = await current();
   if (running) {
     // Every page route is the one index.html; /pair/<code> too.
