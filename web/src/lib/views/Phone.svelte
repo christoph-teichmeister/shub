@@ -193,6 +193,9 @@
     { label: 'Ctrl C', key: 'C-c' },
     { label: '↑', key: 'Up', aria: 'Arrow up' },
     { label: '↓', key: 'Down', aria: 'Arrow down' },
+    // Claude's fullscreen UI scrolls its chat on these, whatever the touch swipe does.
+    { label: 'PgUp', key: 'PageUp', aria: 'Page up' },
+    { label: 'PgDn', key: 'PageDown', aria: 'Page down' },
     { label: 'Tab', key: 'Tab' },
     { label: '/', key: '/', aria: 'Slash' },
   ];
