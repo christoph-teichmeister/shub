@@ -145,6 +145,25 @@
     }
   }
 
+  // Pictures: the picker (or camera) hands each file to the paste route, which saves it and types its path
+  // into the prompt, exactly like a paste on the desktop. The user adds a line and sends.
+  let fileInput = $state<HTMLInputElement>();
+  let attaching = $state(false);
+  async function attach(e: Event & { currentTarget: HTMLInputElement }) {
+    const files = [...(e.currentTarget.files ?? [])];
+    e.currentTarget.value = '';
+    if (!open || !files.length) return;
+    attaching = true;
+    try {
+      for (const body of files) await api('sessionPaste', { params: { id: open.id }, body });
+      toast(files.length === 1 ? 'Picture added to your message' : `${files.length} pictures added to your message`);
+    } catch (err) {
+      toastError(err);
+    } finally {
+      attaching = false;
+    }
+  }
+
   // New session sheet: pinned projects, plus a search over all of them once the list gets long.
   let pickQuery = $state('');
   const pickable = $derived.by(() => {
@@ -285,6 +304,23 @@
         aria-pressed={keysShown}
         title="Toggle quick keys"
         onclick={toggleKeys}><Icon name={keysShown ? 'chevron-down' : 'terminal'} /></button
+      >
+      <input
+        bind:this={fileInput}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        aria-label="Pictures to send"
+        onchange={attach}
+      />
+      <button
+        type="button"
+        class="keys-toggle"
+        aria-label="Attach a picture"
+        title="Attach a picture"
+        disabled={attaching}
+        onclick={() => fileInput?.click()}><Icon name="upload" /></button
       >
       <label class="visually-hidden" for="phone-msg">Message to Claude</label>
       <input
@@ -802,5 +838,9 @@
     border: var(--hairline) solid var(--line-strong);
     background: var(--raised);
     color: var(--fg-2);
+  }
+
+  .keys-toggle:disabled {
+    opacity: 0.5;
   }
 </style>

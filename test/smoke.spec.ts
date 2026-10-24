@@ -140,7 +140,13 @@ async function mockApi(page: Page, overrides: Record<string, Mock> = {}): Promis
     const url = new URL(r.request().url());
     const path = url.pathname;
     if (method === 'OPTIONS') return r.fulfill({ status: 204, headers: CORS });
-    const body = r.request().postDataJSON() as unknown;
+    // Uploads (pasted pictures) are binary: record their type and size instead of failing to parse them.
+    let body: unknown;
+    try {
+      body = r.request().postDataJSON();
+    } catch {
+      body = { type: r.request().headers()['content-type'], bytes: r.request().postDataBuffer()?.length };
+    }
     calls.push({ method, path, body, origin: url.origin });
     const table: Record<string, Mock> = { ...API, ...overrides };
     const key = `${method} ${path}` in table ? `${method} ${path}` : path;
@@ -1830,5 +1836,21 @@ test('phone new session sheet searches every project once the list is long', asy
     .toMatchObject({
       projectId: 'street-tours',
     });
+  expect(errors).toEqual([]);
+});
+
+test('phone attaches a picture: it is pasted into the session and the field stays for a message', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { errors, calls } = await mockApi(page, { '/api/sessions': [session] });
+  await page.goto('/#/p/ai-portal/s1');
+  await expect(page.getByRole('button', { name: 'Attach a picture' })).toBeVisible();
+  await page.getByLabel('Pictures to send', { exact: true }).setInputFiles({
+    name: 'shot.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('not really a png'),
+  });
+  await expect(page.getByText('Picture added to your message')).toBeVisible();
+  const paste = calls.find((c) => c.path === '/api/sessions/s1/paste');
+  expect(paste?.body).toEqual({ type: 'image/png', bytes: 16 });
   expect(errors).toEqual([]);
 });
