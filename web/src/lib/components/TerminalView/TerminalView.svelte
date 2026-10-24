@@ -159,6 +159,9 @@
       },
     });
     t.open(host!);
+    // Phone: the message field below is the place to type. Gboard's autocorrect rewrites half-typed words and xterm
+    // sends every rewrite as keystrokes, so words repeat; with no on-screen keyboard here a tap only selects.
+    if (compact) t.textarea?.setAttribute('inputmode', 'none');
     // WebGL draws box-drawing glyphs cell-exact, so Claude's tables connect; the DOM renderer leaves gaps.
     try {
       const gl = new WebglAddon();

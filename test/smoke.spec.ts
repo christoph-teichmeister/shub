@@ -1881,3 +1881,14 @@ test('a swipe in the phone terminal becomes mouse-wheel reports for the app insi
   expect(sent.some((m) => m.startsWith('\u001b[<65;'))).toBe(false);
   expect(errors).toEqual([]);
 });
+
+test('the phone terminal opens no keyboard: typing goes through the message field', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { errors } = await mockApi(page, { '/api/sessions': [session] });
+  await page.goto('/#/p/ai-portal/s1');
+  await expect(page.locator('.xterm-helper-textarea')).toHaveAttribute('inputmode', 'none');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/#/p/ai-portal/s1');
+  await expect(page.locator('.xterm-helper-textarea')).not.toHaveAttribute('inputmode', 'none');
+  expect(errors).toEqual([]);
+});
