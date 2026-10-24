@@ -338,6 +338,11 @@
 />
 
 <style>
+  /* Scrolling up past the top of the scrollback must not chain to the page (mobile pull-to-refresh reloads the PWA). */
+  .terminal :global(.xterm-viewport) {
+    overscroll-behavior: contain;
+  }
+
   .terminal {
     position: relative;
     flex: 1 1 auto;
