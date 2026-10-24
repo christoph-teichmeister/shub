@@ -1,6 +1,6 @@
 # Toast
 
-Stack of short messages, bottom right, announced politely. Call `toast(message, tone, ms, details)` from `stores/toasts.svelte.ts`; mount one `<Toast />` in the app.
+Stack of short messages, bottom right (top, full width, on a phone: the bottom is the message field), announced politely. Call `toast(message, tone, ms, details)` from `stores/toasts.svelte.ts`; mount one `<Toast />` in the app.
 
 | Prop        | Type           | Default            |
 | ----------- | -------------- | ------------------ |

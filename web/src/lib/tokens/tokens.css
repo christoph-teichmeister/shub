@@ -111,7 +111,8 @@
   --size-page-wide: 1120px;
   --size-login: 380px;
   --size-qr: 168px;
-  --size-phone-key: 56px;
+  --size-phone-key: 52px;
+  --size-touch: 44px;
   --size-rename: 150px;
   --size-tab-label: 220px;
   --size-tab-min: 72px;
@@ -241,4 +242,13 @@ a {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* iOS Safari zooms the page when a field under 16 px gets focus and never zooms back. */
+@media (width <= 699px) {
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
 }

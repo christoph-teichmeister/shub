@@ -9,7 +9,7 @@
     /** Defaults to the app toast store; pass items to render a static stack (styleguide). */
     items?: ToastItem[];
     ondismiss?: (id: number) => void;
-    /** Pinned to the bottom-right corner of the window. */
+    /** Pinned to the bottom-right corner of the window (the top of the screen on a phone). */
     fixed?: boolean;
   }
   let { items = toasts, ondismiss = dismissToast, fixed = true }: Props = $props();
@@ -48,6 +48,19 @@
     right: var(--space-4);
     bottom: var(--space-4);
     z-index: var(--z-toast);
+  }
+
+  /* Phone: under the status bar, full width. Bottom is where the message field and the quick keys are. */
+  @media (width <= 699px) {
+    .fixed {
+      inset: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-3) auto;
+      width: auto;
+      max-width: none;
+    }
+
+    .toast {
+      animation-name: slide-down;
+    }
   }
 
   .toast {
@@ -131,6 +144,13 @@
     from {
       opacity: 0;
       transform: translateX(110%);
+    }
+  }
+
+  @keyframes slide-down {
+    from {
+      opacity: 0;
+      transform: translateY(-110%);
     }
   }
 

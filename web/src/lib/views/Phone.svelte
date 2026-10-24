@@ -12,6 +12,7 @@
   } from '../../../../shared/api.ts';
   import Button from '../components/Button/Button.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
+  import TextField from '../components/TextField/TextField.svelte';
   import Icon from '../components/Icon/Icon.svelte';
   import IconButton from '../components/IconButton/IconButton.svelte';
   import ProjectIcon from '../components/ProjectIcon/ProjectIcon.svelte';
@@ -36,6 +37,8 @@
     ui,
   } from '../stores/state.svelte.ts';
   import { serviceAction, serviceInspect, serviceLogs } from '../stores/services.ts';
+  import { pushEnabled, pushSupported, subscribePush } from '../stores/push.ts';
+  import { toast, toastError } from '../stores/toasts.svelte.ts';
 
   const route = $derived(router.route);
   const open = $derived<Session | null>(
@@ -88,10 +91,72 @@
     const min = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
     return min < 60 ? `${min} min` : min < 1440 ? `${Math.round(min / 60)} h` : `${Math.round(min / 1440)} d`;
   };
-  const title = (s: Session) => `${projectOf(s)?.name ?? 'Global'} · ${s.name}`;
+  const projectName = (s: Session) => projectOf(s)?.name ?? 'Global Claude';
+
+  // Phone push is the point of the phone view: offer it once, where the user lands, not three screens deep.
+  const PUSH_HIDE = 'shub.pushPrompt';
+  let pushOffer = $state(false);
+  $effect(() => {
+    let hidden: string | null = null;
+    try {
+      hidden = localStorage.getItem(PUSH_HIDE);
+    } catch {
+      // storage blocked: offer again next time
+    }
+    if (hidden || !pushSupported() || Notification.permission === 'denied') return;
+    void pushEnabled().then((on) => (pushOffer = !on));
+  });
+  const hidePushOffer = () => {
+    pushOffer = false;
+    try {
+      localStorage.setItem(PUSH_HIDE, '1');
+    } catch {
+      // storage blocked: the offer comes back
+    }
+  };
+  async function turnOnPush() {
+    await subscribePush().then(() => {
+      pushOffer = false;
+      toast('Push is on: you get a ping when a session needs you');
+    }, toastError);
+  }
+
+  // The permission question: one line until tapped (the terminal shows the full command anyway).
+  let askOpen = $state(false);
+  $effect(() => {
+    void open?.pendingPermission?.summary;
+    askOpen = false;
+  });
+
+  // Quick keys cost a row; a phone keyboard has no Esc or arrows, so they start shown and the choice sticks.
+  const KEYS_SHOWN = 'shub.quickKeys';
+  let keysShown = $state(true);
+  try {
+    keysShown = localStorage.getItem(KEYS_SHOWN) !== '0';
+  } catch {
+    // storage blocked: shown
+  }
+  function toggleKeys() {
+    keysShown = !keysShown;
+    try {
+      localStorage.setItem(KEYS_SHOWN, keysShown ? '1' : '0');
+    } catch {
+      // not remembered
+    }
+  }
+
+  // New session sheet: pinned projects, plus a search over all of them once the list gets long.
+  let pickQuery = $state('');
+  const pickable = $derived.by(() => {
+    const q = pickQuery.trim().toLowerCase();
+    return q
+      ? app.projects.filter((p) => p.name.toLowerCase().includes(q))
+      : app.projects.filter((p) => p.visibility === 'pinned');
+  });
 
   async function newIn(projectId: string | null) {
     picking = false;
+    pickQuery = '';
     const s = await startSession({ projectId, kind: projectId ? 'claude' : 'global' });
     if (s) location.hash = sessionHref(s);
   }
@@ -185,23 +250,42 @@
 
     {#if open.pendingPermission}
       <div class="permission" role="group" aria-label="Answer the permission question">
-        <span class="ask">Allow: {open.pendingPermission.tool} · {open.pendingPermission.summary}</span>
+        <button
+          type="button"
+          class="ask-line"
+          class:open={askOpen}
+          aria-expanded={askOpen}
+          onclick={() => (askOpen = !askOpen)}
+        >
+          <span class="ask-tool">Allow {open.pendingPermission.tool}?</span>
+          <span class="ask-summary">{open.pendingPermission.summary}</span>
+        </button>
         <div class="big">
-          <button type="button" class="key yes" onclick={() => sendKeys(open.id, ['1'])}>1 Yes</button>
-          <button type="button" class="key" onclick={() => sendKeys(open.id, ['2'])}>2 Always</button>
-          <button type="button" class="key no" onclick={() => sendKeys(open.id, ['3'])}>3 No</button>
+          <button type="button" class="key yes" onclick={() => sendKeys(open.id, ['1'])}>Yes</button>
+          <button type="button" class="key no" onclick={() => sendKeys(open.id, ['3'])}>No</button>
+          <button type="button" class="key always" onclick={() => sendKeys(open.id, ['2'])}>Always</button>
         </div>
       </div>
     {/if}
 
-    <div class="quick" role="group" aria-label="Quick keys">
-      {#each QUICK as q (q.key)}
-        <button type="button" class="qk" aria-label={q.aria} onclick={() => sendKeys(open.id, [q.key])}
-          >{q.label}</button
-        >
-      {/each}
-    </div>
+    {#if keysShown}
+      <div class="quick" role="group" aria-label="Quick keys">
+        {#each QUICK as q (q.key)}
+          <button type="button" class="qk" aria-label={q.aria} onclick={() => sendKeys(open.id, [q.key])}
+            >{q.label}</button
+          >
+        {/each}
+      </div>
+    {/if}
     <form class="input" onsubmit={send}>
+      <button
+        type="button"
+        class="keys-toggle"
+        aria-label="Toggle quick keys"
+        aria-pressed={keysShown}
+        title="Toggle quick keys"
+        onclick={toggleKeys}><Icon name={keysShown ? 'chevron-down' : 'terminal'} /></button
+      >
       <label class="visually-hidden" for="phone-msg">Message to Claude</label>
       <input
         id="phone-msg"
@@ -235,6 +319,15 @@
       </p>
     {/if}
 
+    {#if pushOffer}
+      <section class="offer" aria-label="Push notifications">
+        <Icon name="bell" />
+        <p class="grow">Get a ping when a session needs you, even with shub closed.</p>
+        <Button variant="primary" onclick={turnOnPush}>Turn on</Button>
+        <Button variant="ghost" onclick={hidePushOffer}>Not now</Button>
+      </section>
+    {/if}
+
     {#each SECTIONS as sec (sec.status)}
       {@const list = visible.filter((s) => s.status === sec.status)}
       {#if list.length}
@@ -246,8 +339,10 @@
               <article class="card needs-card">
                 <div class="card-head">
                   {#if p}<ProjectIcon icon={p.resolvedIcon} name={p.name} />{:else}<Icon name="sparkle" />{/if}
-                  <span class="grow strong">{title(s)}</span>
-                  <span class="sub">{age(s.lastActivityAt)}</span>
+                  <span class="grow stack"
+                    ><span class="strong">{s.name}</span><span class="sub">{projectName(s)}</span></span
+                  >
+                  <span class="sub age">{age(s.lastActivityAt)}</span>
                 </div>
                 {#if s.pendingPermission}
                   <p class="ask">Allow: {s.pendingPermission.tool} · {s.pendingPermission.summary}?</p>
@@ -270,8 +365,10 @@
             {:else}
               <a class="card row" href={sessionHref(s)}>
                 <StatusDot status={s.status} idle={idleWithAgents(s)} />
-                <span class="grow">{title(s)}</span>
-                <span class="sub">{sec.status === 'working' ? age(s.lastActivityAt) : statusLabel(s)}</span>
+                <span class="grow stack"
+                  ><span class="row-name">{s.name}</span><span class="sub">{projectName(s)}</span></span
+                >
+                <span class="sub age">{sec.status === 'working' ? age(s.lastActivityAt) : statusLabel(s)}</span>
               </a>
             {/if}
           {/each}
@@ -305,12 +402,23 @@
   </div>
 {/if}
 
-<Dialog open={picking} title="New session in" onclose={() => (picking = false)}>
+<Dialog
+  open={picking}
+  title="New session in"
+  onclose={() => {
+    picking = false;
+    pickQuery = '';
+  }}
+>
   <div class="pick">
-    <Button block onclick={() => newIn(null)}>Global Claude</Button>
-    {#each app.projects.filter((p) => p.visibility === 'pinned') as p (p.id)}
+    {#if app.projects.length > 5}
+      <TextField label="Find a project" hideLabel placeholder="Find a project…" bind:value={pickQuery} />
+    {/if}
+    {#if !pickQuery.trim()}<Button block onclick={() => newIn(null)}>Global Claude</Button>{/if}
+    {#each pickable as p (p.id)}
       <Button block onclick={() => newIn(p.id)}>{p.name}</Button>
     {/each}
+    {#if pickQuery.trim() && !pickable.length}<p class="empty">No project matches.</p>{/if}
   </div>
 </Dialog>
 
@@ -318,13 +426,16 @@
   .panes {
     display: flex;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-1-5) var(--space-3);
     overflow-x: auto;
   }
 
   .panes a {
     flex: none;
-    padding: var(--space-1) var(--space-3);
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--size-control-md);
+    padding: 0 var(--space-3);
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
     color: var(--muted);
@@ -351,22 +462,23 @@
 
   .term-page {
     height: 100%;
+    height: 100dvh;
   }
 
   .overview {
     gap: var(--space-5);
-    padding: 0 var(--space-4) var(--space-6);
+    padding: 0 max(var(--space-4), env(safe-area-inset-right)) 0 max(var(--space-4), env(safe-area-inset-left));
   }
 
   .bar {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-3) var(--space-1);
+    padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-1) var(--space-3);
   }
 
   .term-page .bar {
-    padding: var(--space-2) var(--space-3);
+    padding: calc(var(--space-2) + env(safe-area-inset-top)) var(--space-3) var(--space-2);
     border-bottom: var(--hairline) solid var(--line);
   }
 
@@ -391,7 +503,38 @@
 
   .sub {
     font-size: var(--text-sm);
-    color: var(--muted);
+    color: var(--fg-2);
+  }
+
+  .age {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .stack {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .stack > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .offer {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-3-5);
+    border: var(--hairline) solid var(--line-strong);
+    border-radius: var(--radius-lg);
+    background: var(--panel);
+  }
+
+  .offer p {
+    margin: 0;
   }
 
   .needs {
@@ -406,7 +549,7 @@
 
   h2 {
     margin: 0;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-weight: var(--weight-semibold);
     letter-spacing: var(--tracking-label);
     text-transform: uppercase;
@@ -428,7 +571,11 @@
   .card.row {
     flex-direction: row;
     align-items: center;
-    min-height: var(--size-control-lg);
+    min-height: var(--size-touch);
+  }
+
+  .row-name {
+    font-weight: var(--weight-medium);
   }
 
   .child {
@@ -473,8 +620,16 @@
   }
 
   .open {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--size-touch);
     margin-left: auto;
-    padding: var(--space-2);
+    padding: 0 var(--space-3);
+    border: var(--hairline) solid var(--status-needs-you);
+    border-radius: var(--radius-md);
+    color: var(--status-needs-you-fg);
+    font-weight: var(--weight-medium);
+    text-decoration: none;
   }
 
   .empty {
@@ -482,8 +637,13 @@
     color: var(--muted);
   }
 
+  /* Always in thumb reach, however long the list gets. */
   .footer {
-    margin-top: auto;
+    position: sticky;
+    bottom: 0;
+    margin: auto calc(-1 * var(--space-4)) 0;
+    padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, var(--bg) var(--space-3));
   }
 
   .pick {
@@ -503,14 +663,51 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
-    padding: var(--space-3);
+    padding: var(--space-2) var(--space-3) var(--space-3);
     border-top: var(--ring) solid var(--status-needs-you);
     background: var(--status-needs-you-bg);
   }
 
+  /* One line until tapped: the terminal above already shows the whole command. */
+  .ask-line {
+    display: flex;
+    gap: var(--space-2);
+    min-height: var(--size-control-md);
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--status-needs-you-fg);
+    font: inherit;
+    font-family: var(--font-mono);
+    font-size: var(--text-md);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .ask-tool {
+    flex: none;
+    font-weight: var(--weight-semibold);
+  }
+
+  .ask-summary {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ask-line.open {
+    align-items: flex-start;
+  }
+
+  .ask-line.open .ask-summary {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
   .big {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: 1.4fr 1fr 0.9fr;
     gap: var(--space-2);
   }
 
@@ -536,6 +733,15 @@
     color: var(--danger);
   }
 
+  /* A standing grant: reachable, but never the thumb's easy target next to No. */
+  .key.always {
+    border-style: dashed;
+    background: none;
+    font-size: var(--text-md);
+    font-weight: var(--weight-regular);
+    color: var(--fg-2);
+  }
+
   .quick {
     display: flex;
     gap: var(--space-1-5);
@@ -547,8 +753,8 @@
 
   .qk {
     flex: 1 0 auto;
-    min-width: var(--size-control-lg);
-    height: var(--size-control-lg);
+    min-width: var(--size-touch);
+    height: var(--size-touch);
     padding: 0 var(--space-2-5);
     border: var(--hairline) solid var(--line-strong);
     border-radius: var(--radius-md);
@@ -562,14 +768,14 @@
   .input {
     display: flex;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-3) var(--space-3);
+    padding: var(--space-2) var(--space-3) calc(var(--space-3) + env(safe-area-inset-bottom));
     background: var(--panel);
   }
 
   .input input {
     flex: 1 1 auto;
     min-width: 0;
-    height: var(--size-control-lg);
+    height: var(--size-touch);
     padding: 0 var(--space-3);
     border: var(--hairline) solid var(--line-strong);
     border-radius: var(--radius-md);
@@ -577,9 +783,11 @@
     color: var(--fg);
   }
 
+  .keys-toggle,
   .send {
-    width: var(--size-control-lg);
-    height: var(--size-control-lg);
+    flex: none;
+    width: var(--size-touch);
+    height: var(--size-touch);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -588,5 +796,11 @@
     background: var(--primary);
     color: var(--primary-fg);
     cursor: pointer;
+  }
+
+  .keys-toggle {
+    border: var(--hairline) solid var(--line-strong);
+    background: var(--raised);
+    color: var(--fg-2);
   }
 </style>
