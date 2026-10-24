@@ -96,3 +96,5 @@ with its release's `SHA256SUMS` and `.sig` (fetched once from the GitHub release
 A phone app's loader (`web/public/sw.js`) takes another machine's web app only when that signature checks out against
 `release-keys.js`, which the build generates from `launcher/release-keys.pem`. Rotating a key therefore also needs a
 build that phone apps install from their own machine first.
+The loader opens the app network first from the machine it was installed from (4 s), and falls back to the cached bundle
+only when that machine is off, so a phone app does not run an old UI while its machine is reachable.
