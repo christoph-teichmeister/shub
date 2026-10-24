@@ -190,6 +190,12 @@ body,
   margin: 0;
 }
 
+/* Stops the mobile browser's pull-to-refresh from reloading the PWA when scrolling up a chat. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
 /* Every built-in theme is dark; scrollbar-color is inherited, so this themes all scrollbars (terminal included). */
 :root {
   color-scheme: dark;
