@@ -1120,10 +1120,8 @@
             <span class="avatar" aria-hidden="true">{(app.me?.name ?? 'You').slice(0, 1).toUpperCase()}</span>
             <span class="grow user-text">
               <span class="user-name">{app.me?.name ?? 'You'}</span>
-              <span class="user-sub"
-                >{app.connected ? 'Connected' : 'Offline, reconnecting'} · v{app.update?.current ??
-                  __APP_VERSION__}</span
-              >
+              <span class="user-sub">{app.connected ? 'Connected' : 'Offline, reconnecting'}</span>
+              <span class="user-sub">v{app.update?.current ?? __APP_VERSION__}</span>
             </span>
           </div>
           <a class="rail-item" href={href('settings')} title="Settings"
