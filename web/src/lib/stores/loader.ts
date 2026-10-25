@@ -20,6 +20,7 @@ export async function checkAppUpdate(origins: string[]): Promise<UpdateCheck> {
   const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : undefined;
   if (!reg?.active) return none;
   const worker = reg.active;
+  void reg.update().catch(() => {}); // the loader itself (sw.js) is checked as often as the bundle
   return new Promise((resolve) => {
     const channel = new MessageChannel();
     const timer = setTimeout(() => resolve(none), 120_000);
