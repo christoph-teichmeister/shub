@@ -13,7 +13,7 @@ import { refuseLevel } from '../auth/levels.ts';
 import { machineName } from '../notify/index.ts';
 import { allowList, refuse, type Allowed } from './guard.ts';
 import { HttpError, readBody, Router, sendJson, type Caller, type Request } from './router.ts';
-import { installUpgrades, onUpgrade } from './upgrade.ts';
+import { installUpgrades, keepAlive, onUpgrade } from './upgrade.ts';
 import { bundleOffer } from './bundle.ts';
 
 const SECURITY_HEADERS: Record<string, string> = {
@@ -107,11 +107,8 @@ function attachEventsSocket(ctx: Context, server: Server): void {
     wss.handleUpgrade(req, socket, head, (ws) => {
       ws.send(JSON.stringify({ type: 'hello', apiVersion: API_VERSION } satisfies ServerEvent));
       const off = ctx.bus.on((event) => mayRead(caller, event) && ws.send(JSON.stringify(event)));
-      const ping = setInterval(() => ws.ping(), 30_000);
-      ws.on('close', () => {
-        off();
-        clearInterval(ping);
-      });
+      keepAlive(ws);
+      ws.on('close', off);
     });
   });
   server.on('close', () => wss.close());

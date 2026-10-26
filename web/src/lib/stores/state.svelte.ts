@@ -23,6 +23,7 @@ import { api, ApiError, wsTarget } from './api.ts';
 import { href } from './router.svelte.ts';
 import { toast, toastError } from './toasts.svelte.ts';
 import { checkAppUpdate } from './loader.ts';
+import { onResume } from './resume.ts';
 
 export const app = $state({
   ready: false,
@@ -334,10 +335,12 @@ export function connectEvents(): () => void {
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let everOpen = false;
+  let gen = 0; // a resume while a connect is in flight must not leave two sockets
 
   const open = async () => {
+    const mine = ++gen;
     const { url, protocols } = await wsTarget('/api/events');
-    if (stopped) return;
+    if (stopped || mine !== gen) return;
     ws = new WebSocket(url, protocols);
     ws.onopen = () => {
       app.connected = true;
@@ -360,8 +363,18 @@ export function connectEvents(): () => void {
     };
   };
   void open();
+  // Back from sleep or offline: drop the (possibly dead) socket and connect now instead of waiting out the backoff.
+  const off = onResume(() => {
+    if (stopped || app.authRequired) return;
+    clearTimeout(timer);
+    if (ws) ws.onclose = null;
+    ws?.close();
+    delay = 1000;
+    void open();
+  });
   return () => {
     stopped = true;
+    off();
     clearTimeout(timer);
     ws?.close();
   };
