@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ChatMessage, Session } from '../../../../../shared/api.ts';
+  import type { ChatDelta, ChatMessage, Session } from '../../../../../shared/api.ts';
   import { api } from '../../stores/api.ts';
   import { app, sendKeys } from '../../stores/state.svelte.ts';
   import { toastError } from '../../stores/toasts.svelte.ts';
@@ -23,19 +23,38 @@
   let shown = $state(0);
   const onvisible = () => document.visibilityState === 'visible' && shown++;
 
-  // Refetch the tail on every nudge (session.messages: a hook, or the server seeing the transcript grow) and when /clear gives the session a new transcript.
-  // ponytail: the whole tail each time, no diffing; add ?after= once the 80 messages get heavy.
+  // On every nudge (session.messages: a hook, or the server seeing the transcript grow) fetch what is new after `offset`
+  // and merge it by id; a full load on the first call, when /clear gives the session a new transcript, or when the
+  // socket or tab comes back (nudges missed meanwhile are gone, the offset still catches up).
+  let offset = '';
+  let seen = '';
+  function merge(d: ChatDelta) {
+    if (d.reset) return d.messages;
+    const next = [...messages];
+    for (const m of d.messages) {
+      const i = next.findIndex((x) => x.id === m.id);
+      if (i < 0) next.push(m);
+      else if (m.role === 'tool' && next[i].role === 'tool')
+        next[i] = { ...next[i], status: m.status, result: m.result };
+      else next[i] = m;
+    }
+    return next.slice(-200);
+  }
   $effect(() => {
     void app.messagesVersion[session.id];
-    void session.claudeSessionId;
-    // Nudges missed while offline or in the background are gone: refetch when the socket is back or the tab is shown.
     void app.connected;
     void shown;
+    if (seen !== session.claudeSessionId) {
+      seen = session.claudeSessionId ?? '';
+      offset = '';
+    }
     let stale = false;
-    api<ChatMessage[]>('sessionMessages', { params: { id: session.id } }).then(
+    api<ChatDelta | ChatMessage[]>('sessionMessages', { params: { id: session.id }, query: { after: offset } }).then(
       (next) => {
         if (stale) return;
-        messages = next;
+        const d = Array.isArray(next) ? { messages: next, offset: 0, reset: true } : next;
+        offset = d.reset && Array.isArray(next) ? '' : String(d.offset);
+        messages = merge(d);
         loaded = true;
         if (stuck) void tick().then(() => list?.scrollTo({ top: list.scrollHeight, behavior: 'smooth' }));
       },
@@ -99,11 +118,14 @@
       {:else if m.role === 'assistant'}
         <div class="assistant"><Preview md={m.text} bare /></div>
       {:else}
-        <div class="tool" class:failed={m.status === 'error'}>
-          <span class="name">{m.name}</span>
-          <span class="summary">{m.summary}</span>
-          <span class="state">{STATUS[m.status]}</span>
-        </div>
+        <details class="tool" class:failed={m.status === 'error'}>
+          <summary>
+            <span class="name">{m.name}</span>
+            <span class="summary">{m.summary}</span>
+            <span class="state">{STATUS[m.status]}</span>
+          </summary>
+          {#if m.result}<pre class="result">{m.result}</pre>{/if}
+        </details>
       {/if}
     {:else}
       {#if loaded}<p class="empty">No messages yet. Write one below.</p>{/if}
@@ -161,14 +183,27 @@
   }
 
   .tool {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-2);
     padding: var(--space-1-5) var(--space-2-5);
     border: var(--hairline) solid var(--line);
     border-radius: var(--radius-md);
     background: var(--panel);
     font-size: var(--text-sm);
+  }
+
+  .tool summary {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    cursor: pointer;
+  }
+
+  .result {
+    max-height: 40dvh;
+    margin: var(--space-2) 0 0;
+    overflow: auto;
+    color: var(--fg-2);
+    font-family: var(--font-mono);
+    white-space: pre-wrap;
   }
 
   .name {
