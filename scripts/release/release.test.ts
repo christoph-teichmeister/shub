@@ -80,13 +80,15 @@ test('signing writes SHA256SUMS and a signature the launcher accepts, only with 
 test('the bundle manifest lists every web file but the loader, and a phone accepts it once SHA256SUMS is signed', async () => {
   const dist = mkdtempSync(join(tmpdir(), 'shub-dist-'));
   mkdirSync(join(dist, 'assets'));
+  mkdirSync(join(dist, 'fonts'));
+  writeFileSync(join(dist, 'fonts', 'a.woff2'), 'font');
   writeFileSync(join(dist, 'index.html'), '<!doctype html>');
   writeFileSync(join(dist, 'assets', 'app.js'), 'console.log(1)');
   writeFileSync(join(dist, 'sw.js'), 'loader');
   writeFileSync(join(dist, 'release-keys.js'), 'keys');
   const manifest = bundleManifest(dist, '2026.10.4');
   const parsed = JSON.parse(manifest);
-  assert.deepEqual(Object.keys(parsed.files), ['/assets/app.js', '/index.html']);
+  assert.deepEqual(Object.keys(parsed.files), ['/assets/app.js', '/fonts/a.woff2', '/index.html']);
   assert.equal(parsed.files['/index.html'], createHash('sha256').update('<!doctype html>').digest('hex'));
 
   const dir = mkdtempSync(join(tmpdir(), 'shub-sign-'));

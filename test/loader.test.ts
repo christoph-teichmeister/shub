@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 // @ts-expect-error plain JS module shared with the service worker
 import { compareVersions, parseSums, pickNewest, verifyOffer } from '../web/public/loader.js';
@@ -50,4 +51,24 @@ test('the newest bundle above the current one wins', () => {
   assert.equal(pickNewest([at('a', '2026.10.4'), at('b', '2026.10.5-beta.1')], '2026.10.3')?.origin, 'b');
   assert.equal(pickNewest([at('a', '2026.10.3')], '2026.10.3'), null);
   assert.equal(pickNewest([at('a', '2026.10.1')], undefined)?.origin, 'a');
+});
+
+test('canReloadNow: unsent text always waits, terminal use waits unless hidden', async () => {
+  const { canReloadNow } = await import('../web/src/lib/stores/loader.ts');
+  const idle = { unsentText: false, hidden: false, terminalIdleMs: 60_000 };
+  assert.equal(canReloadNow(idle), true);
+  assert.equal(canReloadNow({ ...idle, unsentText: true }), false);
+  assert.equal(canReloadNow({ ...idle, unsentText: true, hidden: true }), false);
+  assert.equal(canReloadNow({ ...idle, terminalIdleMs: 2000 }), false);
+  assert.equal(canReloadNow({ ...idle, terminalIdleMs: 2000, hidden: true }), true);
+});
+
+test('every self-hosted font that fonts.css or index.html names exists in web/public/fonts', () => {
+  const css = readFileSync('web/src/lib/tokens/fonts.css', 'utf8');
+  const html = readFileSync('web/index.html', 'utf8');
+  const urls = [...css.matchAll(/url\(['"]?([^'")]+)['"]?\)/g), ...html.matchAll(/rel="preload" href="([^"]+)"/g)].map(
+    (m) => m[1],
+  );
+  assert.ok(urls.length > 0);
+  for (const u of urls) assert.ok(existsSync('web/public' + u.replace(/^.*?(\/fonts\/)/, '$1')), u);
 });

@@ -8,6 +8,7 @@
   import { allImagePaths, imagePathsAt, NOTE_PATH } from './imagePaths.ts';
   import type { TerminalControl } from '../../../../../shared/api.ts';
   import { api, wsTarget } from '../../stores/api.ts';
+  import { markTerminalUse } from '../../stores/loader.ts';
   import { app, terminalSettings } from '../../stores/state.svelte.ts';
   import { noteFile } from '../../stores/noteFile.svelte.ts';
   import { toastError } from '../../stores/toasts.svelte.ts';
@@ -129,6 +130,7 @@
   };
 
   const paste = (body: Blob | string) => {
+    markTerminalUse();
     if (body instanceof Blob || body) void api('sessionPaste', { params: { id: sessionId }, body }).catch(toastError);
   };
 
@@ -192,6 +194,8 @@
     let gen = 0; // a resume while a connect is in flight must not leave two sockets
     const send = (data: string | Uint8Array) => ws?.readyState === WebSocket.OPEN && ws.send(data);
     let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+    // Anything the user types, as opposed to resize and control frames: it holds back an update reload.
+    const typed = (data: string | Uint8Array) => (markTerminalUse(), send(data));
     const sendResizeNow = () => {
       const msg: TerminalControl = { type: 'resize', cols: t.cols, rows: t.rows };
       send('\u0000' + JSON.stringify(msg));
@@ -242,7 +246,7 @@
       void connect();
     });
 
-    t.onData((d) => send(d));
+    t.onData(typed);
     t.onBinary((d) => send(Uint8Array.from(d, (c) => c.charCodeAt(0))));
     t.onResize(sendResize);
     // Select to copy (not for the Ctrl+A highlight, which is only a cue).
@@ -287,7 +291,7 @@
           return false;
         }
         if (allSelected && plain && (e.key === 'Backspace' || e.key === 'Delete')) {
-          send('\u0005\u0015');
+          typed('\u0005\u0015');
           allSelected = false;
           t.clearSelection();
           return false;
@@ -298,7 +302,7 @@
         }
       }
       if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.key in wordKeys) {
-        if (e.type === 'keydown') send(wordKeys[e.key]);
+        if (e.type === 'keydown') typed(wordKeys[e.key]);
         return false;
       }
       return !((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v');
