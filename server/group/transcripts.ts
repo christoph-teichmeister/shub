@@ -98,7 +98,14 @@ export class Transcripts {
   /** Put this host's Claude sessions into the group; an item another host made is never overwritten. */
   publishSessions(): void {
     const projects = this.#deps.projects();
-    for (const s of this.#deps.sessions()) {
+    const live = this.#deps.sessions();
+    // Ours that are gone (closed or exited) stop saying they run, or the other hosts refuse to resume them.
+    for (const i of this.#group.list()) {
+      const b = i.body as SessionItem;
+      if (i.deleted || !i.key.startsWith('session:') || b.hostId !== this.#group.hostId || !b.running) continue;
+      if (!live.some((s) => s.claudeSessionId === b.claudeSessionId)) this.#group.put(i.key, { ...b, running: false });
+    }
+    for (const s of live) {
       const project = projects.find((p) => p.id === s.projectId);
       if (s.kind !== 'claude' || !s.claudeSessionId || !project) continue;
       const rel = relative(project.path, s.cwd);
@@ -115,8 +122,8 @@ export class Transcripts {
         hostId: this.#group.hostId,
         host: this.#deps.hostName,
         running: s.status !== 'paused' && s.status !== 'exited',
-        size:
-          statSync(join(this.#dir(project.path), `${s.claudeSessionId}.jsonl`), { throwIfNoEntry: false })?.size ?? 0,
+        // Claude keeps the transcript in the folder of the session's own cwd, a subfolder's included.
+        size: statSync(join(this.#dir(s.cwd), `${s.claudeSessionId}.jsonl`), { throwIfNoEntry: false })?.size ?? 0,
       };
       if (JSON.stringify(have) !== JSON.stringify(body)) this.#group.put(key, body);
     }
@@ -134,8 +141,12 @@ export class Transcripts {
       try {
         const w = watch(dir, (_event, name) => {
           if (!name?.endsWith('.jsonl')) return;
-          clearTimeout(this.#debounce);
-          this.#debounce = setTimeout(() => this.publishSessions(), WATCH_DELAY_MS);
+          // Throttle, not debounce: a transcript that grows all the time must still publish every second.
+          if (this.#debounce) return;
+          this.#debounce = setTimeout(() => {
+            this.#debounce = undefined;
+            this.publishSessions();
+          }, WATCH_DELAY_MS);
           this.#debounce.unref();
         });
         w.on('error', () => this.#watchers.delete(dir));
@@ -148,6 +159,7 @@ export class Transcripts {
 
   unwatch(): void {
     clearTimeout(this.#debounce);
+    this.#debounce = undefined;
     this.#watchers.forEach((w) => w.close());
     this.#watchers.clear();
   }

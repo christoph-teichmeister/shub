@@ -76,15 +76,26 @@
   // Conversations other hosts of the group ran, merged into this list with their host as a badge. The sync only
   // lists them (the machine chips below switch to another machine's own live sessions).
   let others = $state<OldSession[]>([]);
+  const projectIds = $derived(app.projects.map((p) => p.id).join(','));
+  let visibleTick = $state(0);
   $effect(() => {
-    const projects = app.projects.map((p) => p.id);
-    void Promise.all(projects.map((id) => api<OldSession[]>('oldSessions', { params: { id } }).catch(() => []))).then(
+    const onShow = () => document.visibilityState === 'visible' && visibleTick++;
+    document.addEventListener('visibilitychange', onShow);
+    return () => document.removeEventListener('visibilitychange', onShow);
+  });
+  $effect(() => {
+    void visibleTick; // refetch when the phone comes back from the background
+    const ids = projectIds ? projectIds.split(',') : [];
+    let stale = false;
+    void Promise.all(ids.map((id) => api<OldSession[]>('oldSessions', { params: { id } }).catch(() => []))).then(
       (lists) =>
+        stale ||
         (others = lists
           .flat()
           .filter((o) => o.host && o.resumable !== false)
           .slice(0, 20)),
     );
+    return () => (stale = true);
   });
   async function resumeOther(o: OldSession) {
     const s = await startSession({
@@ -92,7 +103,7 @@
       kind: 'claude',
       name: o.firstPrompt.slice(0, 40),
       resumeClaudeSessionId: o.claudeSessionId,
-      fork: !!o.running, // running there: only a fork is safe from the phone
+      fork: true, // always safe from the phone; taking a conversation over is the desktop overlay's explicit button
     });
     if (s) location.hash = sessionHref(s);
   }

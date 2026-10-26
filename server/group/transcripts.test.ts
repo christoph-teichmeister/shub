@@ -245,3 +245,17 @@ test('resuming on another host is refused while the owner runs it or our copy is
   await a.sync.flush();
   assert.equal(remoteSessions(b.group)[0]?.host, 'a');
 });
+
+test('a session that is gone from its owner is published as not running', async () => {
+  const { a, b } = await pair();
+  b.sessions = [
+    { kind: 'claude', claudeSessionId: ID, projectId: 'app', cwd: b.path, name: 'X', status: 'working' } as Session,
+  ];
+  b.transcripts.publishSessions();
+  await b.sync.flush();
+  assert.equal(remoteSessions(a.group)[0].running, true);
+  b.sessions = [];
+  b.transcripts.publishSessions();
+  await b.sync.flush();
+  assert.equal(remoteSessions(a.group)[0].running, false);
+});

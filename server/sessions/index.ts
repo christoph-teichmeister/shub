@@ -29,6 +29,8 @@ function parseStart(body: Partial<StartSessionRequest>): StartSessionRequest {
   if (!KINDS.includes(body.kind as SessionKind) || !fields.every(optionalString)) {
     throw new HttpError(400, 'invalid session request');
   }
+  if (![body.fork, body.takeOver].every((v) => v === undefined || typeof v === 'boolean'))
+    throw new HttpError(400, 'invalid session request');
   if (body.buttonId && body.prompt) throw new HttpError(400, 'give either buttonId or prompt');
   if (body.kind === 'shell' && !body.parentId && !body.cwd && !body.projectId) {
     throw new HttpError(400, 'shells need a parentId, a cwd or a project');
@@ -51,6 +53,7 @@ async function startRoute(
   res: ServerResponse,
 ) {
   const request = parseStart(body as Partial<StartSessionRequest>);
+  if (request.takeOver && !isUser(caller)) throw new HttpError(403, 'only the user takes a conversation over');
   const project = request.projectId ? services.config.project(request.projectId) : undefined;
   const button = request.buttonId ? project?.buttons.find((b) => b.id === request.buttonId) : undefined;
   // Without a parent, a cwd must lie inside one of the project's worktrees (the main checkout included).
