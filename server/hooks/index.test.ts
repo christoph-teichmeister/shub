@@ -55,7 +55,7 @@ test('the status line sets the window Claude Code reports', async () => {
   } as unknown as Services;
   let handler!: (req: Request) => Promise<unknown>;
   const router = { add: (_spec: string, h: typeof handler) => (handler = h) } as unknown as Router;
-  create({} as Context, services).module.routes!(router);
+  create({ bus: { emit() {} } } as unknown as Context, services).module.routes!(router);
   const line = (payload: object) =>
     handler({
       caller: { id: 'session:s1' },
@@ -114,7 +114,7 @@ test('a hook reports the permission mode Claude runs in (for "inherit")', async 
   } as unknown as Services;
   let handler!: (req: Request) => Promise<unknown>;
   const router = { add: (_spec: string, h: typeof handler) => (handler = h) } as unknown as Router;
-  create({} as Context, services).module.routes!(router);
+  create({ bus: { emit() {} } } as unknown as Context, services).module.routes!(router);
   const hook = (event: string, payload: object) =>
     handler({ caller: { id: 'session:s1' }, params: { event }, json: async () => payload } as unknown as Request);
   await hook('UserPromptSubmit', { permission_mode: 'auto' });
@@ -139,7 +139,7 @@ test('the guard denies changes to a protected main checkout and stays quiet othe
   const router = {
     add: (spec: string, h: (req: Request) => Promise<unknown>) => (handlers[spec] = h),
   } as unknown as Router;
-  create({} as Context, services).module.routes!(router);
+  create({ bus: { emit() {} } } as unknown as Context, services).module.routes!(router);
   const ask = (command: string, caller = 'session:s1') =>
     handlers['POST /api/guard']!({
       caller: { id: caller },
@@ -169,7 +169,7 @@ test('the first prompt names a "Session N" session, later prompts and given name
   } as unknown as Services;
   let handler!: (req: Request) => Promise<unknown>;
   const router = { add: (_spec: string, h: typeof handler) => (handler = h) } as unknown as Router;
-  create({} as Context, services).module.routes!(router);
+  create({ bus: { emit() {} } } as unknown as Context, services).module.routes!(router);
   const hook = (event: string, payload: object) =>
     handler({ caller: { id: 'session:s1' }, params: { event }, json: async () => payload } as unknown as Request);
   await hook('UserPromptSubmit', { prompt: 'system note', source: 'system' });
@@ -177,4 +177,36 @@ test('the first prompt names a "Session N" session, later prompts and given name
   await hook('UserPromptSubmit', { prompt: 'fix the login redirect after logout please now' });
   await hook('UserPromptSubmit', { prompt: 'second prompt' });
   assert.deepEqual(renames, ['fix the login redirect after logout please now']);
+});
+
+test('a hook nudges the chat view once per burst, and not for a subagent', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const events: unknown[] = [];
+  const services = {
+    sessions: {
+      get: () => ({ id: 's1', status: 'working', claudeSessionId: null }),
+      setPermissionMode: () => {},
+      keepBackground: () => {},
+      setStatus: () => {},
+      started: () => {},
+    },
+    notify: { yourTurn: () => {}, needsYou: () => {} },
+  } as unknown as Services;
+  let handler!: (req: Request) => Promise<unknown>;
+  const router = { add: (_spec: string, h: typeof handler) => (handler = h) } as unknown as Router;
+  create({ bus: { emit: (e: unknown) => events.push(e) } } as unknown as Context, services).module.routes!(router);
+  const hook = (event: string, payload: object) =>
+    handler({ caller: { id: 'session:s1' }, params: { event }, json: async () => payload } as unknown as Request);
+  await hook('UserPromptSubmit', { agent_id: 'sub' });
+  await hook('PostToolUse', { agent_id: 'sub' });
+  t.mock.timers.tick(2000);
+  assert.deepEqual(events, []);
+  await hook('UserPromptSubmit', {});
+  await hook('PostToolUse', { tool_name: 'Bash' });
+  await hook('PostToolUse', { tool_name: 'Bash' });
+  t.mock.timers.tick(2000);
+  assert.deepEqual(events, [{ type: 'session.messages', sessionId: 's1' }]);
+  await hook('Stop', {});
+  t.mock.timers.tick(2000);
+  assert.equal(events.length, 2);
 });

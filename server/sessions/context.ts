@@ -17,7 +17,7 @@ const WINDOW_1M = 1_000_000;
 
 const windowOf = (modelId: string): number => (modelId.includes('[1m]') ? WINDOW_1M : WINDOW);
 
-function read(file: string, from: number): string {
+export function read(file: string, from: number): string {
   const size = statSync(file).size;
   const start = Math.max(0, size - from);
   const buf = Buffer.alloc(size - start);

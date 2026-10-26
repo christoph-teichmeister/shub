@@ -745,6 +745,7 @@ export const ROUTES = {
   sessionCommand: 'POST /api/sessions/:id/command', // { index, action: 'run' | 'dismiss' } pendingCommands
   sessionKeys: 'POST /api/sessions/:id/keys', // { keys: "1" | "Escape" | ... } phone quick keys
   sessionPaste: 'POST /api/sessions/:id/paste', // text or multipart image -> path inserted
+  sessionMessages: 'GET /api/sessions/:id/messages', // -> ChatMessage[]: the last messages of the Claude transcript (phone chat view)
   sessionLink: 'POST /api/sessions/:id/links', // SessionLink
   notes: 'GET /api/sessions/:id/notes', // -> { path, text, rev }: the session's shared Markdown draft (a pane shares its session's), user only
   notesSave: 'PUT /api/sessions/:id/notes', // { text, rev } -> { rev }; 409 when the file changed since `rev` (Claude edits it too)
@@ -806,6 +807,8 @@ export type ServerEvent =
   /** statusSince missing from servers before it existed. */
   | { type: 'session.status'; sessionId: string; status: SessionStatus; statusSince?: string }
   | { type: 'session.closed'; sessionId: string }
+  /** The transcript has new lines: refetch GET /api/sessions/:id/messages. */
+  | { type: 'session.messages'; sessionId: string }
   | { type: 'projects.changed' }
   | { type: 'config.changed' }
   | { type: 'approval.created'; approval: Approval }
@@ -826,6 +829,12 @@ export type ServerEvent =
       /** entryId: the sidebar section entry whose action was clicked. */
       context: { sessionId?: string; projectId?: string; entryId?: string };
     };
+
+/** One line of the phone chat view. A tool message is updated in place (same id) when its result arrives. */
+export type ChatMessage =
+  | { id: string; role: 'user'; text: string }
+  | { id: string; role: 'assistant'; text: string }
+  | { id: string; role: 'tool'; name: string; summary: string; status: 'running' | 'ok' | 'error' };
 
 /** resize: client to server. size: server to a `follow` client (query `follow=1`, `seed=1` replays recent output first). */
 export type TerminalControl = { type: 'resize' | 'size'; cols: number; rows: number };

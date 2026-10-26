@@ -25,6 +25,8 @@ import {
 /** Events after which the transcript has a new usage line or compact boundary. */
 const CONTEXT_EVENTS = new Set<string>(['Stop', 'PostToolUse', 'SessionStart']);
 const CONTEXT_DELAY_MS = 1000;
+/** Events after which the transcript has new lines the phone chat view shows. */
+const CHAT_EVENTS = new Set<string>([...CONTEXT_EVENTS, 'UserPromptSubmit']);
 
 /** The fill of a transcript under Claude's own folder; a session cannot point shub at other files. */
 function readContext(path: unknown, knownWindow?: number) {
@@ -115,6 +117,7 @@ function limit(raw: unknown): UsageLimit | undefined {
 export function create(ctx: Context, services: Services): { module: ShubModule } {
   // The limits belong to the account, not a session: keep the newest report of any session.
   let usage: Usage = {};
+  const nudges = new Map<string, ReturnType<typeof setTimeout>>();
   return {
     module: {
       name: 'hooks',
@@ -182,6 +185,19 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
               // /clear starts an empty transcript: no reply yet, so no fill.
               if (context || payload.source === 'clear') services.sessions.setContext(session.id, context);
             }, CONTEXT_DELAY_MS);
+          }
+          if (CHAT_EVENTS.has(req.params.event) && !payload.agent_id) {
+            // A nudge, not the lines: the view refetches. Same fixed delay, the transcript is written a moment later.
+            // One pending nudge per session: events inside the delay share it.
+            if (!nudges.has(session.id)) {
+              nudges.set(
+                session.id,
+                setTimeout(() => {
+                  nudges.delete(session.id);
+                  ctx.bus.emit({ type: 'session.messages', sessionId: session.id });
+                }, CONTEXT_DELAY_MS),
+              );
+            }
           }
           if (req.params.event === 'SessionStart') {
             const claudeSessionId = newClaudeSessionId(session.claudeSessionId, payload);

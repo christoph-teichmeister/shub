@@ -1,7 +1,8 @@
 <script lang="ts">
   import { parseDraft, type Span } from '../../draft.ts';
 
-  let { md }: { md: string } = $props();
+  /** `bare`: no region, padding or own scrolling, for Markdown inside another scroller (the chat view). */
+  let { md, bare = false }: { md: string; bare?: boolean } = $props();
 </script>
 
 {#snippet text(parts: Span[])}
@@ -16,7 +17,7 @@
     >{/each}
 {/snippet}
 
-<div class="preview" role="region" aria-label="Preview">
+<div class="preview" class:bare role={bare ? undefined : 'region'} aria-label={bare ? undefined : 'Preview'}>
   {#each parseDraft(md) as b, i (i)}
     {#if b.kind === 'heading'}
       <svelte:element this={`h${b.level}`}>{@render text(b.text)}</svelte:element>
@@ -53,6 +54,17 @@
     font-size: var(--text-base);
     line-height: 1.6;
     overflow-wrap: anywhere;
+  }
+
+  .preview.bare {
+    flex: none;
+    padding: 0;
+    overflow: visible;
+    font-size: var(--text-base);
+  }
+
+  .preview.bare > :last-child {
+    margin-bottom: 0;
   }
 
   .preview :is(h1, h2, h3, h4, h5, h6) {

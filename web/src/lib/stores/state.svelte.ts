@@ -61,6 +61,8 @@ export const app = $state({
   devicesVersion: 0,
   /** Bumped per session on services.changed so views can refetch. */
   servicesVersion: {} as Record<string, number>,
+  /** Bumped per session on session.messages so the chat view refetches. */
+  messagesVersion: {} as Record<string, number>,
   /** When this client saw a session's turn end (big: one of its worktrees got merged), for the village's confetti. */
   cheers: {} as Record<string, { at: number; big: boolean }>,
   /** Sessions on their way out: tab and sidebar row fade and say "Closing" until they are dropped. */
@@ -329,6 +331,9 @@ export function handleEvent(e: ServerEvent): void {
       return upsert(app.approvals, e.approval);
     case 'services.changed':
       app.servicesVersion[e.sessionId] = (app.servicesVersion[e.sessionId] ?? 0) + 1;
+      return;
+    case 'session.messages':
+      app.messagesVersion[e.sessionId] = (app.messagesVersion[e.sessionId] ?? 0) + 1;
       return;
     case 'usage.updated':
       app.usage = e.usage;
