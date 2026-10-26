@@ -109,6 +109,8 @@ export interface Sessions {
   setClaudeSessionId(id: string, claudeSessionId: string): void;
   /** A hook reported the mode Claude runs in (needed for "inherit", or after Shift+Tab). */
   setPermissionMode(id: string, mode: PermissionMode): void;
+  /** Stop the process, keep the session; `compact` false skips the /compact that would still write the transcript. */
+  pause(id: string, actor: string, compact?: boolean): Session;
   rename(id: string, name: string, actor: string): Session;
   reorder(positions: Record<string, number | null>, tabs?: boolean): Session[];
   /** Name a session after its first prompt: its first words now, a model-written title a moment later. */

@@ -18,7 +18,7 @@ import { encodeCwd } from '../sessions/old.ts';
 import { claudeArgs } from '../sessions/launch.ts';
 import { GroupStore } from './index.ts';
 import { HostSync } from './sync.ts';
-import { Transcripts, claimSession, remoteSessions, resumeGuard } from './transcripts.ts';
+import { Transcripts, claimSession, remoteSessions, resumeGuard, takenOver } from './transcripts.ts';
 
 const ID = '11111111-2222-3333-4444-555555555555';
 const MB = 1024 * 1024;
@@ -258,4 +258,24 @@ test('a session that is gone from its owner is published as not running', async 
   b.transcripts.publishSessions();
   await b.sync.flush();
   assert.equal(remoteSessions(a.group)[0].running, false);
+});
+
+test('a session another host took over is reported to its old owner, paused or not-ours ones are not', async () => {
+  const { a, b } = await pair();
+  const mine = {
+    kind: 'claude',
+    claudeSessionId: ID,
+    projectId: 'app',
+    cwd: b.path,
+    name: 'X',
+    status: 'working',
+  } as Session;
+  b.sessions = [mine];
+  b.transcripts.publishSessions();
+  await b.sync.flush();
+  assert.deepEqual(takenOver(b.group, b.sessions), []); // still ours
+  claimSession(a.group, ID, 'a');
+  await a.sync.flush();
+  assert.deepEqual(takenOver(b.group, b.sessions), [mine]);
+  assert.deepEqual(takenOver(b.group, [{ ...mine, status: 'paused' }]), []);
 });
