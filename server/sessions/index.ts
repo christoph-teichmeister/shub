@@ -7,7 +7,7 @@ import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
-import { chatMessages } from './chat.ts';
+import { chatMessages, followTranscript } from './chat.ts';
 import { viewableImage } from './image.ts';
 import { buttonPrompt, isSimpleInput } from './launch.ts';
 import { noteFile, noteUrl } from './markdown.ts';
@@ -92,7 +92,7 @@ async function startRoute(
   sendJson(res, 202, { approval });
 }
 
-function routes(sessions: SessionsService, services: Services, router: Router, stateDir: string): void {
+function routes(sessions: SessionsService, services: Services, router: Router, ctx: Context): void {
   router.add(ROUTES.sessions, (req) => {
     requireRight(req.caller, 'read');
     return sessions.list();
@@ -229,6 +229,7 @@ function routes(sessions: SessionsService, services: Services, router: Router, s
       if (file) transcripts.set(s.claudeSessionId, file);
     }
     try {
+      if (file) followTranscript(file, () => ctx.bus.emit({ type: 'session.messages', sessionId: s.id }));
       return file ? chatMessages(file) : [];
     } catch {
       return []; // removed since it was found
@@ -245,7 +246,7 @@ function routes(sessions: SessionsService, services: Services, router: Router, s
   });
   router.add(ROUTES.image, (req, res) => {
     requireRight(req.caller, 'read');
-    const image = viewableImage(req.query.get('path') ?? '', stateDir);
+    const image = viewableImage(req.query.get('path') ?? '', ctx.paths.stateDir);
     if (!image) throw new HttpError(404, 'no image shub may show');
     res.writeHead(200, { 'content-type': image.type, 'cache-control': 'no-store' });
     createReadStream(image.file).pipe(res);
@@ -273,7 +274,7 @@ export function create(
   return {
     module: {
       name: 'sessions',
-      routes: (router) => routes(sessions, services, router, ctx.paths.stateDir),
+      routes: (router) => routes(sessions, services, router, ctx),
       attach: (server) => attachTerminals(server, sessions),
       start: () => sessions.startup(),
       stop: () => sessions.stop(),

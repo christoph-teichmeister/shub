@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseChat } from './chat.ts';
+import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { followTranscript, parseChat } from './chat.ts';
 
 const jsonl = (...lines: object[]) => lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
 const user = (uuid: string, content: unknown, extra = {}) => ({ type: 'user', uuid, message: { content }, ...extra });
@@ -9,6 +13,22 @@ const assistant = (uuid: string, block: object, extra = {}) => ({
   uuid,
   message: { content: [block] },
   ...extra,
+});
+
+test('followTranscript nudges once per burst of appends and lets go after the idle time', async () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'chat-')), 't.jsonl');
+  writeFileSync(file, '');
+  let calls = 0;
+  followTranscript(file, () => calls++, 30, 200);
+  followTranscript(file, () => calls++, 30, 200); // same file: no second watcher
+  appendFileSync(file, 'a\n');
+  appendFileSync(file, 'b\n');
+  await sleep(120);
+  assert.equal(calls, 1);
+  await sleep(300); // idle: watcher closed
+  appendFileSync(file, 'c\n');
+  await sleep(120);
+  assert.equal(calls, 1);
 });
 
 test('parseChat keeps a prompt that merely starts with "<"', () => {
