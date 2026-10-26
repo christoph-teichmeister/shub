@@ -35,6 +35,13 @@
   let reconnecting = $state(false);
   let scale = $state(1);
 
+  // Follower: the terminal has the desktop's size; shrink it to fit (not below half size, the rest scrolls off).
+  function rescale() {
+    const box = host?.querySelector('.xterm') as HTMLElement | null;
+    if (!box || !host) return;
+    scale = Math.max(0.5, Math.min(1, host.clientWidth / box.offsetWidth, host.clientHeight / box.offsetHeight));
+  }
+
   /** Font and cursor options from Settings > Terminal. */
   function look() {
     const s = terminalSettings();
@@ -214,7 +221,7 @@
           const msg = JSON.parse(m.data.slice(1)) as TerminalControl;
           if (msg.type === 'size') {
             t.resize(msg.cols, msg.rows);
-            rescale();
+            requestAnimationFrame(rescale); // xterm updates its DOM size after resize
           }
         } else t.write(typeof m.data === 'string' ? m.data : new Uint8Array(m.data as ArrayBuffer));
       };
@@ -328,7 +335,7 @@
       if (!swipe.active && Math.abs(touch.clientY - swipe.startY) < 8) return; // below that it is a tap
       swipe.active = true;
       e.preventDefault();
-      const cell = screen.clientHeight / t.rows;
+      const cell = (screen.clientHeight / t.rows) * scale; // finger pixels, the follower is scaled down
       swipe.rest += swipe.y - touch.clientY;
       swipe.y = touch.clientY;
       const lines = Math.min(10, Math.trunc(Math.abs(swipe.rest) / cell));
@@ -351,12 +358,6 @@
       if (follow) rescale();
       else fit?.fit();
     };
-    // Follower: the terminal has the desktop's size; shrink it to fit (not below half size, the rest scrolls off).
-    function rescale() {
-      const box = host?.querySelector('.xterm') as HTMLElement | null;
-      if (!box || !host) return;
-      scale = Math.max(0.5, Math.min(1, host.clientWidth / box.offsetWidth, host.clientHeight / box.offsetHeight));
-    }
     const observer = new ResizeObserver(() => requestAnimationFrame(refit));
     observer.observe(host!);
     void document.fonts?.ready.then(refit);
@@ -384,7 +385,9 @@
     const options = look();
     if (!term) return;
     Object.assign(term.options, options);
-    if (!follow && host?.offsetWidth && host.offsetHeight) fit?.fit(); // cell size changed: new cols/rows
+    if (!follow && host?.offsetWidth && host.offsetHeight)
+      fit?.fit(); // cell size changed: new cols/rows
+    else if (follow) requestAnimationFrame(rescale);
   });
 
   $effect(() => {

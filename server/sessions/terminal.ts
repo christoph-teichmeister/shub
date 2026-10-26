@@ -45,8 +45,21 @@ export function attachTerminals(server: Server, sessions: SessionsService): void
         .map(Number);
       return { cols: size(String(cols), 120), rows: size(String(rows), 32) };
     };
+    const asked = { cols: size(query.get('cols'), 120), rows: size(query.get('rows'), 32) };
     wss.handleUpgrade(req, socket, head, (ws) => {
       keepAlive(ws);
+      let start = asked;
+      if (follow) {
+        try {
+          start = windowSize();
+        } catch {
+          // session died since has(): attach below fails and closes the socket
+        }
+      }
+      const sizeMsg = (c: number, r: number) =>
+        '\u0000' + JSON.stringify({ type: 'size', cols: c, rows: r } satisfies TerminalControl);
+      // The follower's xterm must have the window's size before tmux paints or the seed arrives.
+      if (follow) ws.send(sizeMsg(start.cols, start.rows));
       if (seed) {
         try {
           const text = sessions.tmux.run(['capture-pane', '-p', '-e', '-S', '-2000', '-t', `=${tmuxName(id)}:`]);
@@ -57,7 +70,7 @@ export function attachTerminals(server: Server, sessions: SessionsService): void
       }
       const pty = spawn('tmux', attachArgs(sessions.tmux.socket, tmuxName(id), follow), {
         name: 'xterm-256color',
-        ...(follow ? windowSize() : { cols: size(query.get('cols'), 120), rows: size(query.get('rows'), 32) }),
+        ...start,
         cwd: session.cwd,
         env: { ...process.env, TERM: 'xterm-256color' } as Record<string, string>,
       });
@@ -65,14 +78,14 @@ export function attachTerminals(server: Server, sessions: SessionsService): void
       pty.onExit(() => ws.close());
       // A follower is told the window's size (and mirrors it in its xterm) instead of sizing it; the desktop may resize later.
       if (follow) {
-        let last = '';
+        let last = `${start.cols}x${start.rows}`;
         const track = setInterval(() => {
           try {
             const { cols, rows } = windowSize();
             if (`${cols}x${rows}` === last) return;
             last = `${cols}x${rows}`;
             pty.resize(cols, rows);
-            ws.send('\u0000' + JSON.stringify({ type: 'size', cols, rows } satisfies TerminalControl));
+            ws.send(sizeMsg(cols, rows));
           } catch {
             // session gone: the pty exit closes the socket
           }
@@ -82,13 +95,23 @@ export function attachTerminals(server: Server, sessions: SessionsService): void
       // Phones below control watch only: their keystrokes are dropped, resizes still apply.
       const typing = !caller.level || caller.level === 'control';
       ws.on('message', (data, isBinary) => {
-        const text = (data as Buffer).toString('utf8'); // default binaryType 'nodebuffer'
-        if (!isBinary && text.startsWith('\u0000')) return follow || control(text.slice(1), pty);
-        if (typing) pty.write(text);
+        inbound((data as Buffer).toString('utf8'), isBinary, { follow, typing }, pty); // default binaryType 'nodebuffer'
       });
       ws.on('close', () => pty.kill());
     });
   });
+}
+
+/** One client message: control frames resize (a follower never does), everything else is typed unless the caller only watches. */
+export function inbound(
+  text: string,
+  isBinary: boolean,
+  mode: { follow: boolean; typing: boolean },
+  pty: { resize(cols: number, rows: number): void; write(data: string): void },
+): void {
+  if (!isBinary && text.startsWith('\u0000')) {
+    if (!mode.follow) control(text.slice(1), pty);
+  } else if (mode.typing) pty.write(text);
 }
 
 function control(json: string, pty: { resize(cols: number, rows: number): void }): void {

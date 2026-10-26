@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import type { WebSocket } from 'ws';
 import { keepAlive } from '../api/upgrade.ts';
-import { attachArgs, parseFollow } from './terminal.ts';
+import { attachArgs, inbound, parseFollow } from './terminal.ts';
 
 test('only a follow client attaches with ignore-size', () => {
   assert.deepEqual(attachArgs('s', 'n', false), ['-L', 's', 'attach-session', '-t', '=n']);
@@ -32,4 +32,36 @@ test('keepAlive terminates a socket that missed a pong', async () => {
   assert.equal(ws.pings, 1);
   assert.equal(ws.dead, true);
   ws.emit('close');
+});
+
+test('keepAlive keeps a socket that answers with pong', async () => {
+  const ws: EventEmitter & { dead: boolean; ping(): void; terminate(): void } = Object.assign(new EventEmitter(), {
+    dead: false,
+    ping() {
+      setImmediate(() => ws.emit('pong'));
+    },
+    terminate() {
+      this.dead = true;
+    },
+  });
+  keepAlive(ws as unknown as WebSocket, 10);
+  await new Promise((r) => setTimeout(r, 55));
+  assert.equal(ws.dead, false);
+  ws.emit('close');
+  assert.equal(ws.listenerCount('pong'), 1); // only the handler; the timer is cleared by close
+});
+
+test('inbound: a follower ignores resizes, a watcher cannot type', () => {
+  const calls: string[] = [];
+  const pty = {
+    resize: (c: number, r: number) => calls.push(`resize ${c}x${r}`),
+    write: (d: string) => calls.push(`write ${d}`),
+  };
+  const resize = '\u0000' + JSON.stringify({ type: 'resize', cols: 50, rows: 20 });
+  inbound(resize, false, { follow: true, typing: true }, pty);
+  inbound(resize, false, { follow: false, typing: false }, pty);
+  inbound('x', false, { follow: false, typing: false }, pty);
+  assert.deepEqual(calls, ['resize 50x20']);
+  inbound('y', false, { follow: true, typing: true }, pty);
+  assert.deepEqual(calls, ['resize 50x20', 'write y']);
 });
