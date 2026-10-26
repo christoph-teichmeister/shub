@@ -157,6 +157,8 @@ async function mockApi(page: Page, overrides: Record<string, Mock> = {}): Promis
     if (method !== 'GET') return r.fulfill({ json: { ok: true }, headers: CORS });
     // The phone overview asks every project for its other hosts' sessions: none by default.
     if (/^\/api\/projects\/[^/]+\/old-sessions$/.test(path)) return r.fulfill({ json: [], headers: CORS });
+    // The phone chat view loads the conversation of the open session: empty by default.
+    if (/^\/api\/sessions\/[^/]+\/messages$/.test(path)) return r.fulfill({ json: [], headers: CORS });
     return r.fulfill({ status: 404, json: { error: `no mock for ${path}` }, headers: CORS });
   });
   await page.routeWebSocket('**/api/events', (ws) => ws.send(JSON.stringify({ type: 'hello', apiVersion: 1 })));
@@ -593,6 +595,7 @@ test('phone overview answers a permission', async ({ page }) => {
   await page.getByRole('button', { name: 'Yes', exact: true }).click();
   await expect.poll(() => calls.find((c) => c.path === '/api/sessions/s1/keys')?.body).toEqual({ keys: ['1'] });
   await page.getByRole('link', { name: 'Open', exact: true }).click();
+  await page.getByRole('button', { name: 'Show terminal' }).click(); // Claude sessions open as a chat on the phone
   await expect(page.getByRole('group', { name: 'Quick keys' })).toBeVisible();
   await page.getByLabel('Message to Claude').fill('go on');
   await page.getByLabel('Message to Claude').press('Enter');
@@ -1864,6 +1867,7 @@ test('a swipe in the phone terminal becomes mouse-wheel reports for the app insi
     ws.onMessage((m) => sent.push(typeof m === 'string' ? m : m.toString()));
   });
   await page.goto('/#/p/ai-portal/s1');
+  await page.getByRole('button', { name: 'Show terminal' }).click(); // Claude sessions open as a chat on the phone
   const screen = page.locator('.xterm-screen');
   await expect(screen).toBeVisible();
   const box = (await screen.boundingBox())!;
@@ -1885,6 +1889,7 @@ test('the phone terminal opens no keyboard: typing goes through the message fiel
   await page.setViewportSize({ width: 390, height: 844 });
   const { errors } = await mockApi(page, { '/api/sessions': [session] });
   await page.goto('/#/p/ai-portal/s1');
+  await page.getByRole('button', { name: 'Show terminal' }).click(); // Claude sessions open as a chat on the phone
   await expect(page.locator('.xterm-helper-textarea')).toHaveAttribute('inputmode', 'none');
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/#/p/ai-portal/s1');

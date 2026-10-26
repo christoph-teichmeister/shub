@@ -218,7 +218,6 @@
     border-radius: var(--radius-md);
     background: var(--bg);
     color: var(--fg);
-    font: inherit;
     resize: none;
     field-sizing: content;
   }
