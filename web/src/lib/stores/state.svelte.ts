@@ -22,7 +22,7 @@ import { applyTheme, findTheme } from '../tokens/tokens.ts';
 import { api, ApiError, wsTarget } from './api.ts';
 import { href } from './router.svelte.ts';
 import { toast, toastError } from './toasts.svelte.ts';
-import { canReloadNow, checkAppUpdate, idleState } from './loader.ts';
+import { canReloadNow, checkAppUpdate, idleState, markTerminalUse } from './loader.ts';
 import { onResume } from './resume.ts';
 
 export const app = $state({
@@ -141,8 +141,10 @@ export async function closeSession(id: string): Promise<void> {
 }
 
 /** Sends tmux keys: named keys (Escape, C-c, Up, Down, Tab, Enter) or literal text. */
-export const sendKeys = (id: string, keys: string[]) =>
-  api('sessionKeys', { params: { id }, body: { keys } }).catch(toastError);
+export const sendKeys = (id: string, keys: string[]) => (
+  markTerminalUse(),
+  api('sessionKeys', { params: { id }, body: { keys } }).catch(toastError)
+);
 
 /** Sends /compact; the sidebar menu and the village offer it from COMPACT_AT, on your turn. */
 export const compact = (s: Session) => void sendKeys(s.id, ['/compact', 'Enter']);
@@ -205,29 +207,44 @@ export const loadApprovals = async () => (app.approvals = (await guard(api<Appro
 export const loadConflicts = async () =>
   (app.conflicts = (await guard(api<GroupConflict[]>('groupConflicts'))) ?? app.conflicts);
 export const loadPlugins = async () => (app.plugins = (await guard(api<PluginInfo[]>('plugins'))) ?? app.plugins);
-let reloadWaiting = false;
+let pendingVersion: string | undefined;
 /** Reloads into a new app once that cannot lose input (see canReloadNow); says so once while it waits. */
 export function reloadForUpdate(version: string): void {
-  if (reloadWaiting) return;
-  reloadWaiting = true;
+  if (version === loadedVersion) return; // the loader announces its own activation too: nothing new to load
+  const waiting = pendingVersion;
+  pendingVersion = version; // a newer one while waiting replaces it; the pending check reads this
+  if (waiting) return;
   let told = false;
+  let timer: ReturnType<typeof setInterval>;
+  const arm = () => {
+    timer = setInterval(tryNow, 5000);
+    document.addEventListener('visibilitychange', tryNow);
+  };
   const tryNow = () => {
     if (!canReloadNow(idleState())) {
-      if (!told) toast(`shub ${version} is ready. It loads when you stop typing or leave the app.`, 'neutral', 15_000);
+      if (!told)
+        toast(`shub ${pendingVersion} is ready. It loads when you stop typing or leave the app.`, 'neutral', 15_000);
       told = true;
       return;
     }
     clearInterval(timer);
     document.removeEventListener('visibilitychange', tryNow);
     // Curtain first, so the reload reads as "updating" instead of a flicker; the new page fades it out.
-    app.reloadingTo = version;
+    app.reloadingTo = pendingVersion ?? version;
     try {
-      sessionStorage.setItem('shub-updated', version);
+      sessionStorage.setItem('shub-updated', app.reloadingTo);
     } catch {}
-    setTimeout(() => location.reload(), 900);
+    setTimeout(() => {
+      // A hidden page's timers freeze, so this can fire late: look again before throwing input away.
+      if (canReloadNow(idleState())) return location.reload();
+      app.reloadingTo = null;
+      try {
+        sessionStorage.removeItem('shub-updated');
+      } catch {}
+      arm();
+    }, 900);
   };
-  const timer = setInterval(tryNow, 5000);
-  document.addEventListener('visibilitychange', tryNow);
+  arm();
   tryNow();
 }
 
@@ -238,7 +255,7 @@ export async function loadUpdate(): Promise<void> {
   app.update = (await guard(api<UpdateStatus>('updates'))) ?? app.update;
   const current = app.update?.current;
   loadedVersion ??= current;
-  if (current && current !== loadedVersion && !app.reloadingTo) {
+  if (current && current !== loadedVersion && current !== pendingVersion && !app.reloadingTo) {
     // The app may run from the loader's cached bundle: let it fetch the new one before reloading.
     void checkAppUpdate([]).then(() => reloadForUpdate(current));
   }
