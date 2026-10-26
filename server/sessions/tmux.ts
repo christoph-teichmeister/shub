@@ -6,7 +6,7 @@ import { HttpError } from '../api/router.ts';
 // -f is only read when the server starts, which is exactly when these must apply (history-limit only
 // affects panes created after it is set).
 const CONF = `set -g window-size latest
-set -g mouse off
+set -g mouse on
 set -g history-limit 50000
 set -s escape-time 0
 set -g status off
