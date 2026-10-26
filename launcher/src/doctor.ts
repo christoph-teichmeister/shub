@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { accessSync, constants, existsSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { delimiter, join } from 'node:path';
+import { service } from './service.ts';
 
 export interface Finding {
   name: string;
@@ -21,6 +22,8 @@ export interface DoctorDeps {
   dockerSocket: string;
   port: number;
   portState(port: number): Promise<'free' | 'shub' | 'busy'>;
+  /** The node binary shub's systemd unit starts, when there is one. */
+  serviceNode?(): string | null;
 }
 
 const atLeast = (have: [number, number], need: [number, number]): boolean =>
@@ -34,6 +37,7 @@ export async function doctor(d: DoctorDeps): Promise<Finding[]> {
   const claude = d.which('claude');
   const docker = d.exists(d.dockerSocket);
   const port = await d.portState(d.port);
+  const unitNode = d.serviceNode?.() ?? null;
   return [
     {
       name: 'Node',
@@ -72,6 +76,16 @@ export async function doctor(d: DoctorDeps): Promise<Finding[]> {
             ? `shub already answers on 127.0.0.1:${d.port}`
             : `127.0.0.1:${d.port} is used by another program: stop it or set SHUB_PORT`,
     },
+    // nvm deletes the old node on an upgrade; a unit that still starts it cannot restart and cannot update.
+    ...(unitNode && !d.exists(unitNode)
+      ? [
+          {
+            name: 'Service',
+            ok: false,
+            detail: `shub.service starts ${unitNode}, which is gone (nvm upgrade?): npm i -g @christoph-teichmeister/shub, then shub update`,
+          },
+        ]
+      : []),
   ];
 }
 
@@ -116,5 +130,6 @@ export function realDoctorDeps(env: NodeJS.ProcessEnv = process.env, port: numbe
     dockerSocket: env.DOCKER_SOCKET ?? '/var/run/docker.sock',
     port,
     portState,
+    serviceNode: () => service(process.platform, env).unitNode(),
   };
 }

@@ -40,3 +40,17 @@ test('says what is missing', async () => {
     'Port: 127.0.0.1:4780 is used by another program: stop it or set SHUB_PORT',
   ]);
 });
+
+test('a service unit whose node is gone is a failure with the way out', async () => {
+  const gone = await failing({
+    serviceNode: () => '/home/me/.nvm/versions/node/v24.20.0/bin/node',
+    exists: (p) => !p.includes('v24.20.0'),
+  });
+  assert.equal(gone.length, 1);
+  assert.match(
+    gone[0],
+    /^Service: shub\.service starts \/home\/me\/\.nvm\/versions\/node\/v24\.20\.0\/bin\/node, which is gone/,
+  );
+  assert.deepEqual(await failing({ serviceNode: () => '/usr/bin/node' }), [], 'a node that exists is fine');
+  assert.deepEqual(await failing({ serviceNode: () => null }), [], 'no unit, no finding');
+});
