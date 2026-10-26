@@ -1,7 +1,7 @@
 // Session records in sqlite plus their tmux sessions. One tmux session `shub-<id>` per shub session.
 import { randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, hostname } from 'node:os';
 import { extname, join } from 'node:path';
 import type {
   ClientKind,
@@ -35,7 +35,7 @@ import {
 } from './launch.ts';
 import { claudeDir, encodeCwd, findTranscript, listOldSessions, summarizeTranscript } from './old.ts';
 import { Tmux } from './tmux.ts';
-import { remoteSessions } from '../group/transcripts.ts';
+import { claimSession, remoteSessions, resumeGuard } from '../group/transcripts.ts';
 
 const MIGRATIONS = [
   `CREATE TABLE sessions (
@@ -296,10 +296,20 @@ export class SessionsService implements Sessions {
     if (!statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) throw new HttpError(400, `no such folder: ${cwd}`);
     const resumeId = request.kind === 'claude' ? request.resumeClaudeSessionId : undefined;
     const resumed = resumeId ? this.#resumable(cwd, resumeId) : undefined;
-    // What another host ran forks: the original stays untouched there, whatever the client asked.
-    const fork =
-      !!resumeId &&
-      (!!request.fork || remoteSessions(this.#services.group).some((r) => r.claudeSessionId === resumeId));
+    // What another host owns is resumed in place only when its owner is done with it and our copy is whole, or the
+    // user takes it over; a fork always works and leaves the original alone.
+    const remote = !!resumeId && remoteSessions(this.#services.group).some((r) => r.claudeSessionId === resumeId);
+    if (resumeId && remote && !request.fork) {
+      const file = join(claudeDir(), 'projects', encodeCwd(cwd), `${resumeId}.jsonl`);
+      const refused = resumeGuard(
+        this.#services.group,
+        resumeId,
+        statSync(file, { throwIfNoEntry: false })?.size ?? 0,
+        request.takeOver,
+      );
+      if (refused) throw new HttpError(409, refused);
+    }
+    const fork = !!request.fork;
     const slug = project ? slugify(project.id) : GLOBAL_ID;
     const prefix = request.kind === 'shell' ? `${slug}-sh` : `${slug}-`;
     const n = request.kind === 'global' ? 1 : this.#nextNumber(prefix);
@@ -354,6 +364,7 @@ export class SessionsService implements Sessions {
       this.#db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
       throw err;
     }
+    if (resumeId && remote && !fork) claimSession(this.#services.group, resumeId, hostname());
     const session = this.get(id)!;
     this.#ctx.bus.emit({ type: 'session.started', session, from: request.from });
     this.#services.permissions.log({ actor: startedBy, action: 'session.start', detail: `${id}: ${session.name}` });
@@ -848,7 +859,7 @@ export class SessionsService implements Sessions {
     const copied = new Set(old.map((o) => o.claudeSessionId));
     for (const o of old) {
       const r = remote.find((x) => x.claudeSessionId === o.claudeSessionId);
-      if (r) Object.assign(o, { host: r.host, resumable: usable });
+      if (r) Object.assign(o, { host: r.host, running: r.running, resumable: usable });
     }
     for (const r of remote)
       if (!copied.has(r.claudeSessionId))
@@ -859,6 +870,7 @@ export class SessionsService implements Sessions {
           turns: 0,
           lastAt: r.lastAt,
           host: r.host,
+          running: r.running,
           resumable: false,
         });
     return old.sort((a, b) => b.lastAt.localeCompare(a.lastAt));

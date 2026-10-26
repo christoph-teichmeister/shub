@@ -275,10 +275,10 @@ test('start can reopen an old conversation with --resume; /clear moves the id', 
     const fresh = '2b0e4c2a-6a39-4d55-9f7e-0c6a1d2c3b4a';
     svc.setClaudeSessionId(s.id, fresh);
     assert.equal(svc.get(s.id)?.claudeSessionId, fresh);
-    // A conversation another host ran forks, whatever the client asked; and it is listed with its host.
+    // A conversation another host owns is listed with its host and refused while it runs there; a fork or take-over goes.
     const theirs = '3b0e4c2a-6a39-4d55-9f7e-0c6a1d2c3b4a';
     writeFileSync(join(dir, `${theirs}.jsonl`), JSON.stringify({ type: 'user', message: { content: 'from laptop' } }));
-    services.group.put(`session:${theirs}`, {
+    const item = {
       claudeSessionId: theirs,
       projectId: 'p1',
       rel: '',
@@ -286,10 +286,17 @@ test('start can reopen an old conversation with --resume; /clear moves the id', 
       lastAt: '2026-10-23T10:00:00.000Z',
       hostId: 'other',
       host: 'laptop',
-    });
+    };
+    services.group.put(`session:${theirs}`, { ...item, running: true });
     assert.equal(svc.oldSessions('p1').find((o) => o.claudeSessionId === theirs)?.host, 'laptop');
+    await assert.rejects(
+      svc.start({ kind: 'claude', projectId: 'p1', resumeClaudeSessionId: theirs }, 'chris'),
+      /running on laptop/,
+    );
+    services.group.put(`session:${theirs}`, { ...item, running: false });
     await svc.start({ kind: 'claude', projectId: 'p1', resumeClaudeSessionId: theirs }, 'chris');
-    assert.equal(launches.at(-1)?.fork, true);
+    assert.equal(launches.at(-1)?.fork, false);
+    assert.equal((services.group.get(`session:${theirs}`)!.body as { hostId: string }).hostId, services.group.hostId);
   } finally {
     if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = before;

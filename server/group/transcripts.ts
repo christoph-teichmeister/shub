@@ -3,6 +3,7 @@
 // Only the folder of a synced project travels: the copy lands in the folder Claude keeps for the project's path on
 // THIS host. The file is not rewritten: `claude --resume` finds it by that folder name, and the old path in its
 // entries is harmless (checked with claude 2.1.309: new entries just carry the new cwd).
+import { statSync, watch, type FSWatcher } from 'node:fs';
 import { appendFile, copyFile, mkdir, open, readdir, rename, rm, stat } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { promisify } from 'node:util';
@@ -15,6 +16,7 @@ import { syncOn, type GroupStore } from './index.ts';
 const compress = promisify(zstdCompress);
 const decompress = promisify(zstdDecompress);
 const CHUNK = 4 * 1024 * 1024;
+const WATCH_DELAY_MS = 1000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The body of a `session:<claude id>` item. `rel` is the session's folder below its project, "" for the project itself. */
@@ -26,6 +28,35 @@ export interface SessionItem {
   lastAt: string;
   hostId: string;
   host: string;
+  /** The owner's Claude process is up (not paused or exited). Missing in items of older hosts. */
+  running?: boolean;
+  /** Bytes of the owner's transcript: the offset a copy elsewhere has to reach before a resume is safe. */
+  size?: number;
+}
+
+/**
+ * Why `claudeSessionId` may not be resumed in place on this host, if the group says so: its owner runs it, or this
+ * host's copy of the transcript is behind the owner's. `localSize` is this host's copy (0 when none). `takeOver`
+ * skips the check: the user knows the owner is done with it.
+ */
+export function resumeGuard(
+  group: GroupStore,
+  claudeSessionId: string,
+  localSize: number,
+  takeOver = false,
+): string | undefined {
+  const owner = remoteSessions(group).find((r) => r.claudeSessionId === claudeSessionId);
+  if (!owner || takeOver) return undefined;
+  if (owner.running) return `that conversation is running on ${owner.host}: fork it, or take it over`;
+  if (localSize < (owner.size ?? 0))
+    return `the copy here is behind ${owner.host} (${localSize} of ${owner.size} bytes): wait for the sync, fork, or take over`;
+}
+
+/** The user took the conversation over: this host owns it from now on, the old owner's item is replaced on sync. */
+export function claimSession(group: GroupStore, claudeSessionId: string, host: string): void {
+  const key = `session:${claudeSessionId}`;
+  const have = group.get(key)?.body as SessionItem | null | undefined;
+  if (have && have.hostId !== group.hostId) group.put(key, { ...have, hostId: group.hostId, host, running: true });
 }
 
 /** What the transcript sync needs from the host link; HostSync is one. */
@@ -48,6 +79,9 @@ export class Transcripts {
   #link: Link;
   #deps: TranscriptDeps;
   #progress = { running: false, done: 0, total: 0 };
+  #again = false;
+  #watchers = new Map<string, FSWatcher>();
+  #debounce?: ReturnType<typeof setTimeout>;
 
   constructor(group: GroupStore, link: Link, deps: TranscriptDeps) {
     this.#group = group;
@@ -64,7 +98,14 @@ export class Transcripts {
   /** Put this host's Claude sessions into the group; an item another host made is never overwritten. */
   publishSessions(): void {
     const projects = this.#deps.projects();
-    for (const s of this.#deps.sessions()) {
+    const live = this.#deps.sessions();
+    // Ours that are gone (closed or exited) stop saying they run, or the other hosts refuse to resume them.
+    for (const i of this.#group.list()) {
+      const b = i.body as SessionItem;
+      if (i.deleted || !i.key.startsWith('session:') || b.hostId !== this.#group.hostId || !b.running) continue;
+      if (!live.some((s) => s.claudeSessionId === b.claudeSessionId)) this.#group.put(i.key, { ...b, running: false });
+    }
+    for (const s of live) {
       const project = projects.find((p) => p.id === s.projectId);
       if (s.kind !== 'claude' || !s.claudeSessionId || !project) continue;
       const rel = relative(project.path, s.cwd);
@@ -80,9 +121,47 @@ export class Transcripts {
         lastAt: s.lastActivityAt,
         hostId: this.#group.hostId,
         host: this.#deps.hostName,
+        running: s.status !== 'paused' && s.status !== 'exited',
+        // Claude keeps the transcript in the folder of the session's own cwd, a subfolder's included.
+        size: statSync(join(this.#dir(s.cwd), `${s.claudeSessionId}.jsonl`), { throwIfNoEntry: false })?.size ?? 0,
       };
       if (JSON.stringify(have) !== JSON.stringify(body)) this.#group.put(key, body);
     }
+  }
+
+  /**
+   * Near-live sync: a transcript only grows, so when one of ours does, the new size goes into the session item and
+   * the normal push carries it to the peers, which then fetch just the new byte range (see run). Idempotent: call
+   * it again after projects changed. The 5-minute round stays the safety net.
+   */
+  watch(): void {
+    for (const p of this.#deps.projects()) {
+      const dir = this.#dir(p.path);
+      if (this.#watchers.has(dir)) continue;
+      try {
+        const w = watch(dir, (_event, name) => {
+          if (!name?.endsWith('.jsonl')) return;
+          // Throttle, not debounce: a transcript that grows all the time must still publish every second.
+          if (this.#debounce) return;
+          this.#debounce = setTimeout(() => {
+            this.#debounce = undefined;
+            this.publishSessions();
+          }, WATCH_DELAY_MS);
+          this.#debounce.unref();
+        });
+        w.on('error', () => this.#watchers.delete(dir));
+        this.#watchers.set(dir, w);
+      } catch {
+        // no folder yet: the next call tries again
+      }
+    }
+  }
+
+  unwatch(): void {
+    clearTimeout(this.#debounce);
+    this.#debounce = undefined;
+    this.#watchers.forEach((w) => w.close());
+    this.#watchers.clear();
   }
 
   // ---------- serving the other hosts ----------
@@ -130,7 +209,8 @@ export class Transcripts {
 
   /** Copy what is new or grown from every reachable host. One run at a time; an interrupted one resumes next time. */
   async run(): Promise<void> {
-    if (this.#progress.running || !syncOn(this.#deps.sync(), 'transcripts')) return;
+    if (!syncOn(this.#deps.sync(), 'transcripts')) return;
+    if (this.#progress.running) return void (this.#again = true); // a nudge during a run: go once more after it
     this.#progress = { running: true, done: 0, total: 0 };
     try {
       for (const peer of this.#link.peers().filter((p) => p.url)) {
@@ -143,6 +223,10 @@ export class Transcripts {
       }
     } finally {
       this.#progress.running = false;
+    }
+    if (this.#again) {
+      this.#again = false;
+      await this.run();
     }
   }
 

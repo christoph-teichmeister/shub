@@ -6,6 +6,7 @@
   import {
     API_VERSION,
     type ChildWorktree,
+    type OldSession,
     type ServiceContainer,
     type Session,
     type SessionStatus,
@@ -69,6 +70,41 @@
   async function openChild(w: ChildWorktree) {
     const request = childStart(w);
     const s = request && (await startSession(request));
+    if (s) location.hash = sessionHref(s);
+  }
+
+  // Conversations other hosts of the group ran, merged into this list with their host as a badge. The sync only
+  // lists them (the machine chips below switch to another machine's own live sessions).
+  let others = $state<OldSession[]>([]);
+  const projectIds = $derived(app.projects.map((p) => p.id).join(','));
+  let visibleTick = $state(0);
+  $effect(() => {
+    const onShow = () => document.visibilityState === 'visible' && visibleTick++;
+    document.addEventListener('visibilitychange', onShow);
+    return () => document.removeEventListener('visibilitychange', onShow);
+  });
+  $effect(() => {
+    void visibleTick; // refetch when the phone comes back from the background
+    const ids = projectIds ? projectIds.split(',') : [];
+    let stale = false;
+    void Promise.all(ids.map((id) => api<OldSession[]>('oldSessions', { params: { id } }).catch(() => []))).then(
+      (lists) =>
+        stale ||
+        (others = lists
+          .flat()
+          .filter((o) => o.host && o.resumable !== false)
+          .slice(0, 20)),
+    );
+    return () => (stale = true);
+  });
+  async function resumeOther(o: OldSession) {
+    const s = await startSession({
+      projectId: o.projectId,
+      kind: 'claude',
+      name: o.firstPrompt.slice(0, 40),
+      resumeClaudeSessionId: o.claudeSessionId,
+      fork: true, // always safe from the phone; taking a conversation over is the desktop overlay's explicit button
+    });
     if (s) location.hash = sessionHref(s);
   }
 
@@ -414,6 +450,21 @@
         </section>
       {/if}
     {/each}
+    {#if others.length}
+      <section class="section" aria-labelledby="h-others">
+        <h2 id="h-others">On other hosts · {others.length}</h2>
+        {#each others as o (o.claudeSessionId)}
+          <button class="card row child" onclick={() => resumeOther(o)}>
+            <span class="grow stack"
+              ><span class="row-name">{o.firstPrompt.slice(0, 60)}</span><span class="sub"
+                >{app.projects.find((p) => p.id === o.projectId)?.name} · {age(o.lastAt)}</span
+              ></span
+            >
+            <span class="sub">{o.host}{o.running ? ' · running' : ''} · {o.running ? 'Fork' : 'Resume'}</span>
+          </button>
+        {/each}
+      </section>
+    {/if}
     {#if dormant.length}
       <section class="section" aria-labelledby="h-worktrees">
         <h2 id="h-worktrees">Worktrees · {dormant.length}</h2>

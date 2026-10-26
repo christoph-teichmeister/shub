@@ -379,6 +379,11 @@ export interface StartSessionRequest {
   resumeClaudeSessionId?: string;
   /** With resumeClaudeSessionId: continue in a new conversation (`--fork-session`); the original stays untouched. */
   fork?: boolean;
+  /**
+   * With resumeClaudeSessionId of another host's conversation, no fork: continue it here and become its owner. Without
+   * it such a resume is refused with 409 while the owner runs it or this host's transcript is behind the owner's.
+   */
+  takeOver?: boolean;
   /** The terminal it was started from ("Start Claude here", `shub claude`): a tab showing it jumps to the new one. */
   from?: string;
 }
@@ -437,6 +442,8 @@ export interface OldSession {
   lastAt: string;
   /** Ran on this other host; resuming it forks. */
   host?: string;
+  /** Its owner runs it right now: resuming here is refused unless taken over. */
+  running?: boolean;
   /** False while the transcript or the project folder is missing on this host: shown dimmed. */
   resumable?: boolean;
 }
