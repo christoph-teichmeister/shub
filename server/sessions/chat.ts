@@ -4,13 +4,13 @@
 // prompt (a string, or text blocks) or `tool_result` blocks; `assistant` lines carry one `text`, `thinking` or
 // `tool_use` block. Subagent lines have `isSidechain`, injected context `isMeta`; prompts that start with "<" are
 // command wrappers (`<command-name>`, `<local-command-stdout>`); a prompt like "<div> breaks" is real.
-import { watch, type FSWatcher } from 'node:fs';
-import type { ChatMessage } from '../../shared/api.ts';
-import { read } from './context.ts';
+import { closeSync, openSync, readSync, statSync, watch, type FSWatcher } from 'node:fs';
+import type { ChatDelta, ChatMessage } from '../../shared/api.ts';
 
 const TAIL = 512 * 1024;
 const LIMIT = 80;
 const SUMMARY_MAX = 120;
+const RESULT_MAX = 2000;
 /** Wrapper tags Claude Code puts around commands and injected context; any other prompt starting with "<" is real. */
 const WRAPPER =
   /^<(command-name|command-message|command-args|local-command-stdout|local-command-stderr|system-reminder)\b/;
@@ -25,8 +25,20 @@ function summary(input: Record<string, unknown> | undefined): string {
   return '';
 }
 
-/** Messages of the transcript lines in `jsonl` (oldest first, at most `limit`); a tool call shows its result's status. */
-export function parseChat(jsonl: string, limit = LIMIT): ChatMessage[] {
+/** A tool result's text: a string, or the text blocks of an array. */
+function resultText(content: unknown): string {
+  const text = Array.isArray(content)
+    ? content.map((c) => (typeof c?.text === 'string' ? c.text : '')).join('\n')
+    : content;
+  return typeof text === 'string' ? text.trim().slice(0, RESULT_MAX) : '';
+}
+
+/**
+ * Messages of the transcript lines in `jsonl` (oldest first, at most `limit`); a tool call shows its result's status
+ * and text. With `patches`, a result whose call is not in `jsonl` (an earlier chunk) comes out as a nameless tool
+ * message for the client to merge into the call it already has.
+ */
+export function parseChat(jsonl: string, limit = LIMIT, patches = false): ChatMessage[] {
   const out: ChatMessage[] = [];
   const tools = new Map<string, Extract<ChatMessage, { role: 'tool' }>>();
   for (const line of jsonl.split('\n')) {
@@ -57,15 +69,38 @@ export function parseChat(jsonl: string, limit = LIMIT): ChatMessage[] {
         out.push(tool);
       } else if (b.type === 'tool_result') {
         const tool = tools.get(b.tool_use_id);
-        if (tool) tool.status = b.is_error ? 'error' : 'ok';
+        const status = b.is_error ? 'error' : 'ok';
+        const result = resultText(b.content);
+        if (tool) Object.assign(tool, { status, result });
+        else if (patches) out.push({ id: b.tool_use_id, role: 'tool', name: '', summary: '', status, result });
       }
     });
   }
   return out.slice(-limit);
 }
 
-/** The last messages of a transcript file; only its tail is read. */
-export const chatMessages = (file: string): ChatMessage[] => parseChat(read(file, TAIL));
+/**
+ * The chat of a transcript file by byte offset. Without `after` (or when it is past the end, or more than the tail
+ * behind) it is the last messages (`reset`); otherwise only those of the lines complete since `after`. `offset` is
+ * where the next call continues: after the last complete line.
+ */
+export function chatSince(file: string, after?: number): ChatDelta {
+  const size = statSync(file).size;
+  const full = after === undefined || after > size || size - after > TAIL;
+  const start = full ? Math.max(0, size - TAIL) : after;
+  const buf = Buffer.alloc(size - start);
+  const fd = openSync(file, 'r');
+  try {
+    readSync(fd, buf, 0, buf.length, start);
+  } finally {
+    closeSync(fd);
+  }
+  // A tail starts mid-line: skip to the first newline. An unfinished last line waits for the next call.
+  const from = full && start > 0 ? buf.indexOf(10) + 1 : 0;
+  const to = buf.lastIndexOf(10) + 1;
+  const text = to > from ? buf.toString('utf8', from, to) : '';
+  return { messages: parseChat(text, full ? LIMIT : Infinity, !full), offset: start + Math.max(from, to), reset: full };
+}
 
 const following = new Map<string, { idle: NodeJS.Timeout; stop: () => void }>();
 

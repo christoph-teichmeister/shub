@@ -745,7 +745,7 @@ export const ROUTES = {
   sessionCommand: 'POST /api/sessions/:id/command', // { index, action: 'run' | 'dismiss' } pendingCommands
   sessionKeys: 'POST /api/sessions/:id/keys', // { keys: "1" | "Escape" | ... } phone quick keys
   sessionPaste: 'POST /api/sessions/:id/paste', // text or multipart image -> path inserted
-  sessionMessages: 'GET /api/sessions/:id/messages', // -> ChatMessage[]: the last messages of the Claude transcript (phone chat view)
+  sessionMessages: 'GET /api/sessions/:id/messages', // -> ChatMessage[]: the last messages of the Claude transcript (phone chat view); with ?after=<offset> (empty: first call) -> ChatDelta
   sessionLink: 'POST /api/sessions/:id/links', // SessionLink
   notes: 'GET /api/sessions/:id/notes', // -> { path, text, rev }: the session's shared Markdown draft (a pane shares its session's), user only
   notesSave: 'PUT /api/sessions/:id/notes', // { text, rev } -> { rev }; 409 when the file changed since `rev` (Claude edits it too)
@@ -834,7 +834,13 @@ export type ServerEvent =
 export type ChatMessage =
   | { id: string; role: 'user'; text: string }
   | { id: string; role: 'assistant'; text: string }
-  | { id: string; role: 'tool'; name: string; summary: string; status: 'running' | 'ok' | 'error' };
+  | { id: string; role: 'tool'; name: string; summary: string; status: 'running' | 'ok' | 'error'; result?: string };
+
+/**
+ * Answer to `sessionMessages?after=`: the messages since byte `offset` of the transcript, to merge by id (a tool message
+ * with an empty name only updates status and result of the call the client has); `reset`: replace the list instead.
+ */
+export type ChatDelta = { messages: ChatMessage[]; offset: number; reset: boolean };
 
 /** resize: client to server. size: server to a `follow` client (query `follow=1`, `seed=1` replays recent output first). */
 export type TerminalControl = { type: 'resize' | 'size'; cols: number; rows: number };

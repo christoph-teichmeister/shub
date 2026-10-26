@@ -4,7 +4,7 @@ import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { followTranscript, parseChat } from './chat.ts';
+import { chatSince, followTranscript, parseChat } from './chat.ts';
 
 const jsonl = (...lines: object[]) => lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
 const user = (uuid: string, content: unknown, extra = {}) => ({ type: 'user', uuid, message: { content }, ...extra });
@@ -95,5 +95,32 @@ test('parseChat ignores a half-written last line and keeps only the newest messa
   assert.deepEqual(
     out.map((m) => m.id),
     ['u3:0', 'u4:0'],
+  );
+});
+
+test('chatSince reads only new complete lines, patches earlier tool calls and falls back to a full load', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'chat-')), 't.jsonl');
+  const call = assistant('a1', { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } });
+  writeFileSync(file, jsonl(user('u1', 'hi'), call));
+  const first = chatSince(file);
+  assert.deepEqual(
+    first.messages.map((m) => m.id),
+    ['u1:0', 't1'],
+  );
+  assert.equal(first.reset, true);
+  // The result arrives, plus a half-written line that must wait.
+  const result = user('u2', [{ type: 'tool_result', tool_use_id: 't1', content: [{ type: 'text', text: 'out' }] }]);
+  appendFileSync(file, jsonl(result) + '{"type":"assis');
+  const delta = chatSince(file, first.offset);
+  assert.equal(delta.reset, false);
+  assert.deepEqual(delta.messages, [{ id: 't1', role: 'tool', name: '', summary: '', status: 'ok', result: 'out' }]);
+  assert.equal(chatSince(file, delta.offset).messages.length, 0);
+  // Truncated (offset past the end): full load.
+  writeFileSync(file, jsonl(user('u3', 'new')));
+  const again = chatSince(file, delta.offset);
+  assert.equal(again.reset, true);
+  assert.deepEqual(
+    again.messages.map((m) => m.id),
+    ['u3:0'],
   );
 });

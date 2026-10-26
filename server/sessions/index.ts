@@ -7,7 +7,7 @@ import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
-import { chatMessages, followTranscript } from './chat.ts';
+import { chatSince, followTranscript } from './chat.ts';
 import { viewableImage } from './image.ts';
 import { buttonPrompt, isSimpleInput } from './launch.ts';
 import { noteFile, noteUrl } from './markdown.ts';
@@ -230,7 +230,10 @@ function routes(sessions: SessionsService, services: Services, router: Router, c
     }
     try {
       if (file) followTranscript(file, () => ctx.bus.emit({ type: 'session.messages', sessionId: s.id }));
-      return file ? chatMessages(file) : [];
+      if (!file) return [];
+      const after = req.query.get('after');
+      if (after === null) return chatSince(file).messages;
+      return chatSince(file, after === '' || isNaN(Number(after)) ? undefined : Number(after));
     } catch {
       return []; // removed since it was found
     }
