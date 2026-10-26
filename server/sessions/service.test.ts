@@ -532,3 +532,16 @@ test('pausing or waiting a full idle session compacts it first; a pause follows 
   assert.equal(svc.get(s.id)?.status, 'paused', 'compacted: paused');
   svc.close(s.id, 'chris');
 });
+
+test('a pause still follows when the fill drops before the compact turn ends', async () => {
+  const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  svc.setStatus(s.id, 'your-turn');
+  svc.setContext(s.id, { tokens: 170_000, window: 200_000 });
+  svc.pause(s.id, 'chris');
+  svc.setStatus(s.id, 'working'); // /compact runs
+  svc.setContext(s.id, { tokens: 20_000, window: 200_000 });
+  assert.notEqual(svc.get(s.id)?.status, 'paused', 'compact turn not over yet');
+  svc.setStatus(s.id, 'your-turn'); // its Stop hook
+  assert.equal(svc.get(s.id)?.status, 'paused', 'paused once the turn ended');
+  svc.close(s.id, 'chris');
+});
