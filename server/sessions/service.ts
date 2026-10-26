@@ -664,11 +664,11 @@ export class SessionsService implements Sessions {
     this.#emitUpdated(id);
   }
 
-  pause(id: string, actor: string): Session {
+  pause(id: string, actor: string, compact = true): Session {
     const session = this.require(id);
     if (session.kind === 'shell') throw new HttpError(400, 'shells cannot be paused');
     // Full and idle: compact first, so the resume later does not carry 160k+ tokens; the pause follows.
-    if (session.kind === 'claude' && this.#compactParking(id, true)) return session;
+    if (compact && session.kind === 'claude' && this.#compactParking(id, true)) return session;
     this.#compacting.delete(id);
     this.#tmux.kill(tmuxName(id));
     this.#restorable.delete(id);

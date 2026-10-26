@@ -221,8 +221,11 @@
                   >{h.old.host ? 'Fork' : 'Resume'}</Button
                 >
                 {#if h.old.host}
-                  <Button size="sm" disabled={h.old.resumable === false} onclick={() => resume(h, true)}
-                    >Take over</Button
+                  <Button
+                    size="sm"
+                    title="Moves the conversation here and stops it on {h.old.host}"
+                    disabled={h.old.resumable === false}
+                    onclick={() => resume(h, true)}>Take over</Button
                   >
                 {/if}
               {:else}

@@ -59,6 +59,18 @@ export function claimSession(group: GroupStore, claudeSessionId: string, host: s
   if (have && have.hostId !== group.hostId) group.put(key, { ...have, hostId: group.hostId, host, running: true });
 }
 
+/** Our running Claude sessions whose conversation another host has claimed since: only one process may write it. */
+export function takenOver(group: GroupStore, sessions: Session[]): Session[] {
+  const gone = new Set(remoteSessions(group).map((r) => r.claudeSessionId));
+  return sessions.filter(
+    (s) =>
+      s.kind === 'claude' &&
+      s.claudeSessionId &&
+      gone.has(s.claudeSessionId) &&
+      !['paused', 'exited'].includes(s.status),
+  );
+}
+
 /** What the transcript sync needs from the host link; HostSync is one. */
 interface Link {
   peers(): HostPeer[];

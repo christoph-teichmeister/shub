@@ -19,7 +19,7 @@ import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { HostSync } from './sync.ts';
-import { Transcripts } from './transcripts.ts';
+import { Transcripts, takenOver } from './transcripts.ts';
 
 /** Host id -> how many changes that host made to the item. */
 export type Version = Record<string, number>;
@@ -346,6 +346,9 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
       services.config.reload();
       services.auth.applyGroup();
       ctx.bus.emit({ type: 'conflicts.changed' });
+      // Another host took a conversation over: stop our process, or two Claudes write one transcript.
+      for (const s of takenOver(group, services.sessions.list()))
+        services.sessions.pause(s.id, 'group:take-over', false);
       void transcripts.run(); // a session item may say a transcript grew: fetch the new bytes now, not in 5 minutes
     },
     serve: (action, body) => transcripts.serve(action, body),
