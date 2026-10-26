@@ -174,6 +174,10 @@ async function main(argv: string[]): Promise<void> {
             : `shub ${result.current} is up to date (${channel}).`,
         );
       }
+      // An nvm upgrade leaves the unit starting a node that is gone: point it at this one before the restart below.
+      if (service().refresh({ node: process.execPath, launcher: self, home, env })) {
+        console.log(`Pointed ${service().file} at ${process.execPath}.`);
+      }
       const result = await update(deps(home), { to: str(f.to), channel });
       if (result && !result.ok) process.exitCode = 1;
       return;

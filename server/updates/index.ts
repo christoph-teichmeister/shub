@@ -106,10 +106,13 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
       result = JSON.parse((await run(process.execPath, args, { env, timeout: 60_000 })).stdout);
     } catch (err) {
       const stderr = (err as { stderr?: string }).stderr?.trim();
-      error = (stderr || (err as Error).message)
-        .split('\n')
-        .at(-1)!
-        .replace(/^shub: /, '');
+      error =
+        (err as NodeJS.ErrnoException).code === 'ENOENT'
+          ? `node is gone at ${process.execPath} (nvm upgrade?): run "npm i -g @christoph-teichmeister/shub && shub update" in a terminal, then restart shub`
+          : (stderr || (err as Error).message)
+              .split('\n')
+              .at(-1)!
+              .replace(/^shub: /, '');
     }
     db()
       .prepare('INSERT OR REPLACE INTO update_check VALUES (1, ?, ?, ?, ?, ?, ?)')

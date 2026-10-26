@@ -109,6 +109,13 @@ export interface Service {
    * ExecStart runs `shub start` (the launcher) for this home; one that starts a git checkout never does.
    */
   active(home: string): boolean;
+  /** The node binary our systemd unit starts, or null (no unit, not ours, or launchd). */
+  unitNode(): string | null;
+  /**
+   * Points our systemd unit's ExecStart at `o`'s node and launcher when it starts others (nvm replaced the node it was
+   * installed with). Only that line changes and nothing restarts; true when it rewrote the file.
+   */
+  refresh(o: ServiceOptions): boolean;
   restart(): void;
 }
 
@@ -167,6 +174,19 @@ export function service(
       return darwin
         ? succeeds(run, 'launchctl', ['print', `${target}/${LABEL}`])
         : succeeds(run, 'systemctl', ['--user', 'is-active', '--quiet', UNIT]);
+    },
+    unitNode() {
+      const unit = text();
+      return !darwin && unit && ours() ? (/^ExecStart="([^"]+)"/m.exec(unit)?.[1] ?? null) : null;
+    },
+    refresh(o) {
+      const unit = text();
+      if (darwin || !unit || !ours()) return false;
+      const next = unit.replace(/^ExecStart=.*$/m, `ExecStart="${o.node}" "${o.launcher}" start`);
+      if (next === unit) return false;
+      writeFileSync(file, next);
+      run('systemctl', ['--user', 'daemon-reload']);
+      return true;
     },
     restart() {
       if (darwin) run('launchctl', ['kickstart', '-k', `${target}/${LABEL}`]);

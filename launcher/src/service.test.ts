@@ -88,3 +88,38 @@ test('install on macOS: LaunchAgents plist, launchctl bootstrap', () => {
   s.restart();
   assert.deepEqual(calls, [`launchctl kickstart -k gui/${uid}/com.github.christoph-teichmeister.shub`]);
 });
+
+test('refresh points our unit at a new node and launcher without touching the rest or restarting', () => {
+  const root = mkdtempSync(join(tmpdir(), 'shub-service-'));
+  const calls: string[] = [];
+  const s = service(
+    'linux',
+    { XDG_CONFIG_HOME: root, HOME: root },
+    (cmd, args) => void calls.push([cmd, ...args].join(' ')),
+  );
+  assert.equal(s.unitNode(), null, 'no unit');
+  assert.equal(s.refresh(opts), false, 'no unit, nothing to rewrite');
+  s.install(opts);
+  assert.equal(s.unitNode(), '/usr/bin/node');
+  calls.length = 0;
+  assert.equal(s.refresh(opts), false, 'already current');
+  assert.deepEqual(calls, []);
+  const moved = { ...opts, node: '/new/bin/node', launcher: '/new/lib/shub.js', env: { PATH: '/elsewhere' } };
+  assert.equal(s.refresh(moved), true);
+  const unit = readFileSync(s.file, 'utf8');
+  assert.match(unit, /^ExecStart="\/new\/bin\/node" "\/new\/lib\/shub\.js" start$/m);
+  assert.match(unit, /^Environment="PATH=\/usr\/local\/bin:\/usr\/bin"$/m, 'the environment stays as installed');
+  assert.equal(s.unitNode(), '/new/bin/node');
+  assert.deepEqual(calls, ['systemctl --user daemon-reload'], 'reload only, no restart');
+});
+
+test('refresh leaves a unit that shub did not write alone', () => {
+  const root = mkdtempSync(join(tmpdir(), 'shub-service-'));
+  const s = service('linux', { XDG_CONFIG_HOME: root, HOME: root }, () => {});
+  mkdirSync(dirname(s.file), { recursive: true });
+  const own = '[Service]\nExecStart="/old/node" "/old/shub.js" start\n';
+  writeFileSync(s.file, own);
+  assert.equal(s.unitNode(), null);
+  assert.equal(s.refresh(opts), false);
+  assert.equal(readFileSync(s.file, 'utf8'), own);
+});
