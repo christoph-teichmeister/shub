@@ -346,6 +346,7 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
       services.config.reload();
       services.auth.applyGroup();
       ctx.bus.emit({ type: 'conflicts.changed' });
+      void transcripts.run(); // a session item may say a transcript grew: fetch the new bytes now, not in 5 minutes
     },
     serve: (action, body) => transcripts.serve(action, body),
     onRound: () => {
@@ -424,13 +425,18 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
         // A URL set later (phone setup) is published as soon as the config changes.
         ctx.bus.on((e) => e.type === 'config.changed' && sync.announce());
         sync.start();
+        transcripts.watch();
         // The list also follows renames and new activity between rounds.
-        const timer = setInterval(() => transcripts.publishSessions(), 60_000);
+        const timer = setInterval(() => {
+          transcripts.publishSessions();
+          transcripts.watch();
+        }, 60_000);
         timer.unref();
         timers.push(timer);
       },
       stop: () => {
         sync.stop();
+        transcripts.unwatch();
         timers.forEach(clearInterval);
       },
     },

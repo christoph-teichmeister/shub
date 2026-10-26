@@ -6,6 +6,7 @@
   import {
     API_VERSION,
     type ChildWorktree,
+    type OldSession,
     type ServiceContainer,
     type Session,
     type SessionStatus,
@@ -69,6 +70,30 @@
   async function openChild(w: ChildWorktree) {
     const request = childStart(w);
     const s = request && (await startSession(request));
+    if (s) location.hash = sessionHref(s);
+  }
+
+  // Conversations other hosts of the group ran, merged into this list with their host as a badge. The sync only
+  // lists them (the machine chips below switch to another machine's own live sessions).
+  let others = $state<OldSession[]>([]);
+  $effect(() => {
+    const projects = app.projects.map((p) => p.id);
+    void Promise.all(projects.map((id) => api<OldSession[]>('oldSessions', { params: { id } }).catch(() => []))).then(
+      (lists) =>
+        (others = lists
+          .flat()
+          .filter((o) => o.host && o.resumable !== false)
+          .slice(0, 20)),
+    );
+  });
+  async function resumeOther(o: OldSession) {
+    const s = await startSession({
+      projectId: o.projectId,
+      kind: 'claude',
+      name: o.firstPrompt.slice(0, 40),
+      resumeClaudeSessionId: o.claudeSessionId,
+      fork: !!o.running, // running there: only a fork is safe from the phone
+    });
     if (s) location.hash = sessionHref(s);
   }
 
@@ -414,6 +439,21 @@
         </section>
       {/if}
     {/each}
+    {#if others.length}
+      <section class="section" aria-labelledby="h-others">
+        <h2 id="h-others">On other hosts · {others.length}</h2>
+        {#each others as o (o.claudeSessionId)}
+          <button class="card row child" onclick={() => resumeOther(o)}>
+            <span class="grow stack"
+              ><span class="row-name">{o.firstPrompt.slice(0, 60)}</span><span class="sub"
+                >{app.projects.find((p) => p.id === o.projectId)?.name} · {age(o.lastAt)}</span
+              ></span
+            >
+            <span class="sub">{o.host}{o.running ? ' · running' : ''} · {o.running ? 'Fork' : 'Resume'}</span>
+          </button>
+        {/each}
+      </section>
+    {/if}
     {#if dormant.length}
       <section class="section" aria-labelledby="h-worktrees">
         <h2 id="h-worktrees">Worktrees · {dormant.length}</h2>

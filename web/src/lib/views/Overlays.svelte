@@ -97,14 +97,15 @@
     if (s) location.hash = sessionHref(s);
   }
 
-  async function resume(h: Extract<Hit, { kind: 'old' }>) {
+  async function resume(h: Extract<Hit, { kind: 'old' }>, takeOver = false) {
     close();
     const s = await startSession({
       projectId: h.project.id,
       kind: 'claude',
       name: h.old.firstPrompt.slice(0, 40),
       resumeClaudeSessionId: h.old.claudeSessionId,
-      fork: !!h.old.host,
+      fork: !!h.old.host && !takeOver,
+      takeOver,
     });
     if (s) location.hash = sessionHref(s);
   }
@@ -212,13 +213,18 @@
                   >
                   <span class="sub"
                     >{h.old.lastAt.slice(0, 10)} · {h.old.host
-                      ? `from ${h.old.host}${h.old.resumable === false ? ', not on this machine yet' : ''}`
+                      ? `from ${h.old.host}${h.old.running ? ', running there' : ''}${h.old.resumable === false ? ', not on this machine yet' : ''}`
                       : `${h.old.turns} turns`}</span
                   >
                 </span>
                 <Button size="sm" disabled={h.old.resumable === false} onclick={() => resume(h)}
                   >{h.old.host ? 'Fork' : 'Resume'}</Button
                 >
+                {#if h.old.host}
+                  <Button size="sm" disabled={h.old.resumable === false} onclick={() => resume(h, true)}
+                    >Take over</Button
+                  >
+                {/if}
               {:else}
                 <ProjectIcon icon={h.project.resolvedIcon} name={h.project.name} />
                 <span class="text">

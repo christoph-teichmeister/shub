@@ -18,7 +18,7 @@ import { encodeCwd } from '../sessions/old.ts';
 import { claudeArgs } from '../sessions/launch.ts';
 import { GroupStore } from './index.ts';
 import { HostSync } from './sync.ts';
-import { Transcripts, remoteSessions } from './transcripts.ts';
+import { Transcripts, claimSession, remoteSessions, resumeGuard } from './transcripts.ts';
 
 const ID = '11111111-2222-3333-4444-555555555555';
 const MB = 1024 * 1024;
@@ -201,4 +201,47 @@ test('resuming a session of another host forks: the original stays', () => {
   } as const;
   assert.ok(claudeArgs({ ...spec, fork: true }).includes('--fork-session'));
   assert.ok(!claudeArgs(spec).includes('--fork-session'));
+});
+
+test('the session item carries running and the transcript size, and a push brings the new bytes', async () => {
+  const { a, b, chunks } = await pair();
+  const file = join(b.dir, `${ID}.jsonl`);
+  writeFileSync(file, '{"n":1}\n');
+  b.sessions = [
+    { kind: 'claude', claudeSessionId: ID, projectId: 'app', cwd: b.path, name: 'X', status: 'working' } as Session,
+  ];
+  b.transcripts.publishSessions();
+  await b.sync.flush();
+  assert.deepEqual([remoteSessions(a.group)[0].running, remoteSessions(a.group)[0].size], [true, 8]);
+  await a.transcripts.run();
+  const first = chunks();
+  appendFileSync(file, '{"n":2}\n');
+  b.transcripts.publishSessions();
+  await b.sync.flush();
+  assert.equal(remoteSessions(a.group)[0].size, 16);
+  await a.transcripts.run();
+  assert.equal(chunks() - first, 1); // one chunk from offset 8, no full recopy
+  assert.equal(readFileSync(join(a.dir, `${ID}.jsonl`), 'utf8'), '{"n":1}\n{"n":2}\n');
+});
+
+test('resuming on another host is refused while the owner runs it or our copy is behind, unless taken over', async () => {
+  const { a, b } = await pair();
+  writeFileSync(join(b.dir, `${ID}.jsonl`), '{"n":1}\n');
+  const publish = (status: string) => {
+    b.sessions = [{ kind: 'claude', claudeSessionId: ID, projectId: 'app', cwd: b.path, name: 'X', status } as Session];
+    b.transcripts.publishSessions();
+    return b.sync.flush();
+  };
+  assert.equal(resumeGuard(a.group, ID, 0), undefined); // unknown session: nothing to guard
+  await publish('working');
+  assert.match(resumeGuard(a.group, ID, 8)!, /running on b/);
+  assert.equal(resumeGuard(a.group, ID, 8, true), undefined);
+  await publish('paused');
+  assert.match(resumeGuard(a.group, ID, 3)!, /behind b \(3 of 8 bytes\)/);
+  assert.equal(resumeGuard(a.group, ID, 8), undefined);
+  // taking over moves the ownership: a's item now names a, and b's next publish does not take it back
+  claimSession(a.group, ID, 'a');
+  assert.equal(remoteSessions(a.group).length, 0);
+  await a.sync.flush();
+  assert.equal(remoteSessions(b.group)[0]?.host, 'a');
 });
