@@ -1909,3 +1909,44 @@ test('phone quick keys page up and down through the chat', async ({ page }) => {
     .toEqual({ keys: ['PageDown'] });
   expect(errors).toEqual([]);
 });
+
+type Marked = { alive?: boolean };
+const announceUpdate = () =>
+  navigator.serviceWorker.dispatchEvent(
+    new MessageEvent('message', { data: { type: 'app-updated', version: '2099.1.0' } }),
+  );
+
+test('update reload waits for unsent text, then reloads once it is safe', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/#/');
+  await expect(page.getByRole('navigation', { name: 'Projects' })).toBeVisible();
+  // A draft in a focused field makes the reload unsafe; the marker disappears if the page reloads.
+  await page.evaluate(() => {
+    (window as Marked).alive = true;
+    const input = document.body.appendChild(document.createElement('input'));
+    input.value = 'unsent draft';
+    input.focus();
+  });
+  await page.evaluate(announceUpdate);
+  await expect(page.getByText('shub 2099.1.0 is ready. It loads when you stop typing or leave the app.')).toHaveCount(
+    1,
+  );
+  await page.waitForTimeout(1500); // longer than the 900 ms curtain delay
+  expect(await page.evaluate(() => (window as Marked).alive)).toBe(true);
+
+  // Draft gone: the next check (here the visibilitychange trigger) reloads.
+  await page.evaluate(() => {
+    document.querySelector('input')?.remove();
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect.poll(() => page.evaluate(() => (window as Marked).alive)).toBeUndefined();
+});
+
+test('update reload happens right away when nothing is unsent', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/#/');
+  await expect(page.getByRole('navigation', { name: 'Projects' })).toBeVisible();
+  await page.evaluate(() => ((window as Marked).alive = true));
+  await page.evaluate(announceUpdate);
+  await expect.poll(() => page.evaluate(() => (window as Marked).alive)).toBeUndefined();
+});
