@@ -1,5 +1,6 @@
 <script lang="ts">
   // Phone layout (viewport < 700 px), same routes as the desktop: #/ is the overview, #/p/<id>/<session> a terminal.
+  import ChatView from '../components/ChatView/ChatView.svelte';
   import CommandChip from '../components/CommandChip/CommandChip.svelte';
   import MachineSwitcher from '../components/MachineSwitcher/MachineSwitcher.svelte';
   import { fleet } from '../stores/machines.svelte.ts';
@@ -107,6 +108,9 @@
     });
     if (s) location.hash = sessionHref(s);
   }
+  // Claude sessions open as a chat, the live terminal stays one tap away (and is the only view of a shell).
+  let terminalIds = $state<Record<string, boolean>>({});
+  const chat = $derived(!!open && open.kind !== 'shell' && open.status !== 'paused' && !terminalIds[open.id]);
 
   let picking = $state(false);
   let showServices = $state(false);
@@ -248,6 +252,15 @@
           >{p?.name ?? 'Global Claude'} · {statusLabel(open)}</span
         >
       </div>
+      {#if open.kind !== 'shell' && open.status !== 'paused'}
+        <IconButton
+          label={chat ? 'Show terminal' : 'Show chat'}
+          icon={chat ? 'terminal' : 'message'}
+          size="lg"
+          variant="outline"
+          onclick={() => (terminalIds[open.id] = chat)}
+        />
+      {/if}
       {#if open.kind === 'claude'}
         <IconButton
           label="Services"
@@ -286,91 +299,104 @@
     {#key open.id}
       {#if open.status === 'paused'}
         <PausedPanel session={open} />
-      {:else}
+      {:else if !chat}
         <TerminalView sessionId={open.id} accent={p?.accent} label={open.name} compact follow />
       {/if}
     {/key}
 
-    <CommandChip
-      session={open}
-      phone
-      onterminal={async (cwd) => {
-        const shell = await startSession({
-          projectId: open.projectId,
-          kind: 'shell',
-          parentId: panes[0]?.id ?? open.id,
-          cwd,
-        });
-        if (shell) location.hash = sessionHref(shell);
-        return shell?.id;
-      }}
-    />
+    {#snippet prompts()}
+      <CommandChip
+        session={open}
+        phone
+        onterminal={async (cwd) => {
+          const shell = await startSession({
+            projectId: open.projectId,
+            kind: 'shell',
+            parentId: panes[0]?.id ?? open.id,
+            cwd,
+          });
+          if (shell) location.hash = sessionHref(shell);
+          return shell?.id;
+        }}
+      />
 
-    {#if open.pendingPermission}
-      <div class="permission" role="group" aria-label="Answer the permission question">
+      {#if open.pendingPermission}
+        <div class="permission" role="group" aria-label="Answer the permission question">
+          <button
+            type="button"
+            class="ask-line"
+            class:open={askOpen}
+            aria-expanded={askOpen}
+            onclick={() => (askOpen = !askOpen)}
+          >
+            <span class="ask-tool">Allow {open.pendingPermission.tool}?</span>
+            <span class="ask-summary">{open.pendingPermission.summary}</span>
+          </button>
+          <div class="big">
+            <button type="button" class="key yes" onclick={() => sendKeys(open.id, ['1'])}>Yes</button>
+            <button type="button" class="key no" onclick={() => sendKeys(open.id, ['3'])}>No</button>
+            <button type="button" class="key always" onclick={() => sendKeys(open.id, ['2'])}>Always</button>
+          </div>
+        </div>
+      {/if}
+
+      {#if keysShown}
+        <div class="quick" role="group" aria-label="Quick keys">
+          {#each QUICK as q (q.key)}
+            <button type="button" class="qk" aria-label={q.aria} onclick={() => sendKeys(open.id, [q.key])}
+              >{q.label}</button
+            >
+          {/each}
+        </div>
+      {/if}
+    {/snippet}
+
+    {#if chat}
+      {#key open.id}
+        <ChatView session={open}>{@render prompts()}</ChatView>
+      {/key}
+    {:else}
+      {@render prompts()}
+    {/if}
+
+    {#if !chat}
+      <form class="input" onsubmit={send}>
         <button
           type="button"
-          class="ask-line"
-          class:open={askOpen}
-          aria-expanded={askOpen}
-          onclick={() => (askOpen = !askOpen)}
+          class="keys-toggle"
+          aria-label="Toggle quick keys"
+          aria-pressed={keysShown}
+          title="Toggle quick keys"
+          onclick={toggleKeys}><Icon name={keysShown ? 'chevron-down' : 'terminal'} /></button
         >
-          <span class="ask-tool">Allow {open.pendingPermission.tool}?</span>
-          <span class="ask-summary">{open.pendingPermission.summary}</span>
-        </button>
-        <div class="big">
-          <button type="button" class="key yes" onclick={() => sendKeys(open.id, ['1'])}>Yes</button>
-          <button type="button" class="key no" onclick={() => sendKeys(open.id, ['3'])}>No</button>
-          <button type="button" class="key always" onclick={() => sendKeys(open.id, ['2'])}>Always</button>
-        </div>
-      </div>
+        <input
+          bind:this={fileInput}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          aria-label="Pictures to send"
+          onchange={attach}
+        />
+        <button
+          type="button"
+          class="keys-toggle"
+          aria-label="Attach a picture"
+          title="Attach a picture"
+          disabled={attaching}
+          onclick={() => fileInput?.click()}><Icon name="upload" /></button
+        >
+        <label class="visually-hidden" for="phone-msg">Message to Claude</label>
+        <input
+          id="phone-msg"
+          bind:value={message}
+          placeholder="Message to Claude…"
+          autocomplete="off"
+          enterkeyhint="send"
+        />
+        <button type="submit" class="send" aria-label="Send"><Icon name="send" /></button>
+      </form>
     {/if}
-
-    {#if keysShown}
-      <div class="quick" role="group" aria-label="Quick keys">
-        {#each QUICK as q (q.key)}
-          <button type="button" class="qk" aria-label={q.aria} onclick={() => sendKeys(open.id, [q.key])}
-            >{q.label}</button
-          >
-        {/each}
-      </div>
-    {/if}
-    <form class="input" onsubmit={send}>
-      <button
-        type="button"
-        class="keys-toggle"
-        aria-label="Toggle quick keys"
-        aria-pressed={keysShown}
-        title="Toggle quick keys"
-        onclick={toggleKeys}><Icon name={keysShown ? 'chevron-down' : 'terminal'} /></button
-      >
-      <input
-        bind:this={fileInput}
-        type="file"
-        accept="image/*"
-        multiple
-        hidden
-        aria-label="Pictures to send"
-        onchange={attach}
-      />
-      <button
-        type="button"
-        class="keys-toggle"
-        aria-label="Attach a picture"
-        title="Attach a picture"
-        disabled={attaching}
-        onclick={() => fileInput?.click()}><Icon name="upload" /></button
-      >
-      <label class="visually-hidden" for="phone-msg">Message to Claude</label>
-      <input
-        id="phone-msg"
-        bind:value={message}
-        placeholder="Message to Claude…"
-        autocomplete="off"
-        enterkeyhint="send"
-      />
-      <button type="submit" class="send" aria-label="Send"><Icon name="send" /></button>
-    </form>
   </div>
 {:else}
   <div class="overview">

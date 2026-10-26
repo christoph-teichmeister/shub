@@ -7,9 +7,11 @@ import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
+import { chatMessages } from './chat.ts';
 import { viewableImage } from './image.ts';
 import { buttonPrompt, isSimpleInput } from './launch.ts';
 import { noteFile, noteUrl } from './markdown.ts';
+import { findTranscript } from './old.ts';
 import { FILE_PASTE_MAX, NAMED_KEYS, SessionsService, type SessionsOptions } from './service.ts';
 import { attachTerminals } from './terminal.ts';
 
@@ -214,6 +216,12 @@ function routes(sessions: SessionsService, services: Services, router: Router, s
     }
     const name = decodeURIComponent(String(req.raw.headers['x-filename'] ?? ''));
     return { path: sessions.pasteFile(req.params.id, type, await req.body(FILE_PASTE_MAX), name) };
+  });
+  router.add(ROUTES.sessionMessages, (req) => {
+    requireRight(req.caller, 'read');
+    const s = sessions.require(req.params.id);
+    const found = s.claudeSessionId ? findTranscript(s.claudeSessionId, s.cwd) : null;
+    return found ? chatMessages(found.file) : [];
   });
   router.add(ROUTES.sessionLink, async (req) => {
     const decision = services.permissions.decide(req.caller, { kind: 'session.link', sessionId: req.params.id });
