@@ -23,7 +23,7 @@
   let shown = $state(0);
   const onvisible = () => document.visibilityState === 'visible' && shown++;
 
-  // Refetch the tail on every nudge (session.messages) and when /clear gives the session a new transcript.
+  // Refetch the tail on every nudge (session.messages: a hook, or the server seeing the transcript grow) and when /clear gives the session a new transcript.
   // ponytail: the whole tail each time, no diffing; add ?after= once the 80 messages get heavy.
   $effect(() => {
     void app.messagesVersion[session.id];
@@ -37,7 +37,7 @@
         if (stale) return;
         messages = next;
         loaded = true;
-        if (stuck) void tick().then(() => list?.scrollTo({ top: list.scrollHeight }));
+        if (stuck) void tick().then(() => list?.scrollTo({ top: list.scrollHeight, behavior: 'smooth' }));
       },
       () => (loaded = true),
     );

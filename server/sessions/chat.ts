@@ -4,6 +4,7 @@
 // prompt (a string, or text blocks) or `tool_result` blocks; `assistant` lines carry one `text`, `thinking` or
 // `tool_use` block. Subagent lines have `isSidechain`, injected context `isMeta`; prompts that start with "<" are
 // command wrappers (`<command-name>`, `<local-command-stdout>`); a prompt like "<div> breaks" is real.
+import { watch, type FSWatcher } from 'node:fs';
 import type { ChatMessage } from '../../shared/api.ts';
 import { read } from './context.ts';
 
@@ -65,3 +66,42 @@ export function parseChat(jsonl: string, limit = LIMIT): ChatMessage[] {
 
 /** The last messages of a transcript file; only its tail is read. */
 export const chatMessages = (file: string): ChatMessage[] => parseChat(read(file, TAIL));
+
+const following = new Map<string, { idle: NodeJS.Timeout; stop: () => void }>();
+
+/**
+ * Calls `onChange` (at most once per `throttleMs`) while `file` grows, so the chat sees each block as Claude writes it,
+ * not only after the next hook. Every call keeps the watch alive; it closes after `idleMs` without one (the phone
+ * refetches on each change, so an open chat keeps it going and a closed one lets it lapse).
+ * ponytail: Claude writes a transcript line per finished block, not per token; true token streaming is not in the data.
+ */
+export function followTranscript(file: string, onChange: () => void, throttleMs = 250, idleMs = 5 * 60_000): void {
+  const known = following.get(file);
+  if (known) {
+    known.idle.refresh();
+    return;
+  }
+  let timer: NodeJS.Timeout | undefined;
+  let watcher: FSWatcher;
+  try {
+    watcher = watch(file, () => {
+      timer ??= setTimeout(() => {
+        timer = undefined;
+        onChange();
+      }, throttleMs);
+    });
+  } catch {
+    return; // file gone: the next fetch tries again
+  }
+  const entry = {
+    idle: setTimeout(() => entry.stop(), idleMs).unref(),
+    stop: () => {
+      clearTimeout(entry.idle);
+      clearTimeout(timer);
+      watcher.close();
+      following.delete(file);
+    },
+  };
+  watcher.on('error', entry.stop);
+  following.set(file, entry);
+}
