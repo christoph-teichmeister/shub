@@ -340,6 +340,27 @@
         </div>
       {/if}
 
+      {#if chat}
+        <div class="chat-tools">
+          <button
+            type="button"
+            class="keys-toggle"
+            aria-label="Toggle quick keys"
+            aria-pressed={keysShown}
+            title="Toggle quick keys"
+            onclick={toggleKeys}><Icon name={keysShown ? 'chevron-down' : 'terminal'} /></button
+          >
+          <button
+            type="button"
+            class="keys-toggle"
+            aria-label="Attach a picture"
+            title="Attach a picture"
+            disabled={attaching}
+            onclick={() => fileInput?.click()}><Icon name="upload" /></button
+          >
+        </div>
+      {/if}
+
       {#if keysShown}
         <div class="quick" role="group" aria-label="Quick keys">
           {#each QUICK as q (q.key)}
@@ -359,6 +380,16 @@
       {@render prompts()}
     {/if}
 
+    <input
+      bind:this={fileInput}
+      type="file"
+      accept="image/*"
+      multiple
+      hidden
+      aria-label="Pictures to send"
+      onchange={attach}
+    />
+
     {#if !chat}
       <form class="input" onsubmit={send}>
         <button
@@ -369,15 +400,6 @@
           title="Toggle quick keys"
           onclick={toggleKeys}><Icon name={keysShown ? 'chevron-down' : 'terminal'} /></button
         >
-        <input
-          bind:this={fileInput}
-          type="file"
-          accept="image/*"
-          multiple
-          hidden
-          aria-label="Pictures to send"
-          onchange={attach}
-        />
         <button
           type="button"
           class="keys-toggle"
@@ -918,6 +940,13 @@
     border: var(--hairline) solid var(--line-strong);
     background: var(--raised);
     color: var(--fg-2);
+  }
+
+  .chat-tools {
+    display: flex;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    background: var(--panel);
   }
 
   .keys-toggle:disabled {

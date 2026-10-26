@@ -117,6 +117,7 @@ function limit(raw: unknown): UsageLimit | undefined {
 export function create(ctx: Context, services: Services): { module: ShubModule } {
   // The limits belong to the account, not a session: keep the newest report of any session.
   let usage: Usage = {};
+  const nudges = new Map<string, ReturnType<typeof setTimeout>>();
   return {
     module: {
       name: 'hooks',
@@ -187,7 +188,16 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
           }
           if (CHAT_EVENTS.has(req.params.event) && !payload.agent_id) {
             // A nudge, not the lines: the view refetches. Same fixed delay, the transcript is written a moment later.
-            setTimeout(() => ctx.bus.emit({ type: 'session.messages', sessionId: session.id }), CONTEXT_DELAY_MS);
+            // One pending nudge per session: events inside the delay share it.
+            if (!nudges.has(session.id)) {
+              nudges.set(
+                session.id,
+                setTimeout(() => {
+                  nudges.delete(session.id);
+                  ctx.bus.emit({ type: 'session.messages', sessionId: session.id });
+                }, CONTEXT_DELAY_MS),
+              );
+            }
           }
           if (req.params.event === 'SessionStart') {
             const claudeSessionId = newClaudeSessionId(session.claudeSessionId, payload);

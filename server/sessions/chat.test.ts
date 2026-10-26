@@ -11,6 +11,26 @@ const assistant = (uuid: string, block: object, extra = {}) => ({
   ...extra,
 });
 
+test('parseChat keeps a prompt that merely starts with "<"', () => {
+  const out = parseChat(jsonl(user('u1', '<b>x</b> please'), user('u2', '<system-reminder>x</system-reminder>')));
+  assert.deepEqual(out, [{ id: 'u1:0', role: 'user', text: '<b>x</b> please' }]);
+});
+
+test('parseChat survives a cut first line, an orphan result and a repeated tool id', () => {
+  const out = parseChat(
+    '{"type":"assistant","message":{"content":[{"type":"tex\n' +
+      jsonl(
+        user('u0', [{ type: 'tool_result', tool_use_id: 'gone', content: 'x', is_error: true }]),
+        assistant('a1', { type: 'tool_use', id: 't1', name: 'Bash', input: {} }),
+        assistant('a2', { type: 'tool_use', id: 't1', name: 'Bash', input: {} }),
+      ),
+  );
+  assert.deepEqual(
+    out.map((m) => m.id),
+    ['t1'],
+  );
+});
+
 test('parseChat keeps prompts and replies, and drops thinking, subagents, meta and command wrappers', () => {
   const out = parseChat(
     jsonl(

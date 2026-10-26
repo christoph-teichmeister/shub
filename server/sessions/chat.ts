@@ -3,13 +3,16 @@
 // Transcript facts (Claude Code, checked on real transcripts): one line per content block. `user` lines carry the
 // prompt (a string, or text blocks) or `tool_result` blocks; `assistant` lines carry one `text`, `thinking` or
 // `tool_use` block. Subagent lines have `isSidechain`, injected context `isMeta`; prompts that start with "<" are
-// command wrappers (`<command-name>`, `<local-command-stdout>`).
+// command wrappers (`<command-name>`, `<local-command-stdout>`); a prompt like "<div> breaks" is real.
 import type { ChatMessage } from '../../shared/api.ts';
 import { read } from './context.ts';
 
 const TAIL = 512 * 1024;
 const LIMIT = 80;
 const SUMMARY_MAX = 120;
+/** Wrapper tags Claude Code puts around commands and injected context; any other prompt starting with "<" is real. */
+const WRAPPER =
+  /^<(command-name|command-message|command-args|local-command-stdout|local-command-stderr|system-reminder)\b/;
 /** The tool input that says best what a call does, first one present wins. */
 const SUMMARY_FIELDS = ['file_path', 'command', 'pattern', 'path', 'url', 'query', 'skill', 'description'];
 
@@ -40,8 +43,8 @@ export function parseChat(jsonl: string, limit = LIMIT): ChatMessage[] {
       const id = `${entry.uuid}:${i}`;
       if (b.type === 'text' && typeof b.text === 'string') {
         const text = b.text.trim();
-        if (text && !(entry.type === 'user' && text.startsWith('<'))) out.push({ id, role: entry.type, text });
-      } else if (b.type === 'tool_use' && entry.type === 'assistant') {
+        if (text && !(entry.type === 'user' && WRAPPER.test(text))) out.push({ id, role: entry.type, text });
+      } else if (b.type === 'tool_use' && entry.type === 'assistant' && !tools.has(b.id ?? id)) {
         const tool = {
           id: b.id ?? id,
           role: 'tool',

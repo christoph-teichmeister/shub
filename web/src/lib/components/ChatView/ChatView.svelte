@@ -20,11 +20,17 @@
   let list = $state<HTMLElement>();
   let stuck = true;
 
+  let shown = $state(0);
+  const onvisible = () => document.visibilityState === 'visible' && shown++;
+
   // Refetch the tail on every nudge (session.messages) and when /clear gives the session a new transcript.
   // ponytail: the whole tail each time, no diffing; add ?after= once the 80 messages get heavy.
   $effect(() => {
     void app.messagesVersion[session.id];
     void session.claudeSessionId;
+    // Nudges missed while offline or in the background are gone: refetch when the socket is back or the tab is shown.
+    void app.connected;
+    void shown;
     let stale = false;
     api<ChatMessage[]>('sessionMessages', { params: { id: session.id } }).then(
       (next) => {
@@ -82,6 +88,8 @@
 
   const STATUS = { running: 'running', ok: 'done', error: 'failed' } as const;
 </script>
+
+<svelte:document onvisibilitychange={onvisible} />
 
 <div class="chat">
   <div class="list" bind:this={list} {onscroll} role="log" aria-label="Conversation">

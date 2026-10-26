@@ -1,5 +1,5 @@
 // Sessions module: HTTP routes, terminal WebSockets and startup restore around SessionsService.
-import { createReadStream } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import { ROUTES, type SessionKind, type SessionLink, type StartSessionRequest } from '../../shared/api.ts';
 import { HttpError, requireRight, requireUser, sendJson, type Caller, type Router } from '../api/router.ts';
@@ -217,11 +217,22 @@ function routes(sessions: SessionsService, services: Services, router: Router, s
     const name = decodeURIComponent(String(req.raw.headers['x-filename'] ?? ''));
     return { path: sessions.pasteFile(req.params.id, type, await req.body(FILE_PASTE_MAX), name) };
   });
+  const transcripts = new Map<string, string>();
   router.add(ROUTES.sessionMessages, (req) => {
     requireRight(req.caller, 'read');
     const s = sessions.require(req.params.id);
-    const found = s.claudeSessionId ? findTranscript(s.claudeSessionId, s.cwd) : null;
-    return found ? chatMessages(found.file) : [];
+    if (!s.claudeSessionId) return [];
+    // The scan for a transcript outside the session's cwd reads whole files: do it once per conversation.
+    let file = transcripts.get(s.claudeSessionId);
+    if (!file || !existsSync(file)) {
+      file = findTranscript(s.claudeSessionId, s.cwd)?.file;
+      if (file) transcripts.set(s.claudeSessionId, file);
+    }
+    try {
+      return file ? chatMessages(file) : [];
+    } catch {
+      return []; // removed since it was found
+    }
   });
   router.add(ROUTES.sessionLink, async (req) => {
     const decision = services.permissions.decide(req.caller, { kind: 'session.link', sessionId: req.params.id });
