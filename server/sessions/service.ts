@@ -575,6 +575,15 @@ export class SessionsService implements Sessions {
       );
     this.#ctx.bus.emit({ type: 'session.status', sessionId: id, status, statusSince: since });
     this.#emitUpdated(id);
+    // The compact turn ended after the fill had already dropped: the pending pause follows now.
+    if (
+      this.#compacting.get(id) &&
+      ['waiting', 'your-turn'].includes(status) &&
+      (session.context?.tokens ?? 0) < COMPACT_AT
+    ) {
+      this.#compacting.delete(id);
+      this.pause(id, 'shub:auto-compact');
+    }
   }
 
   keepBackground(id: string, ms: number): void {
@@ -599,7 +608,12 @@ export class SessionsService implements Sessions {
     this.#db.prepare('UPDATE sessions SET context = ? WHERE id = ?').run(context && JSON.stringify(context), id);
     this.#emitUpdated(id);
     const wasPaused = this.#compacting.get(id);
-    if (wasPaused !== undefined && (context?.tokens ?? 0) < COMPACT_AT) {
+    // Status still "working": the compact turn has not reported its Stop yet; setStatus pauses then.
+    if (
+      wasPaused !== undefined &&
+      (context?.tokens ?? 0) < COMPACT_AT &&
+      !(wasPaused && session.status === 'working')
+    ) {
       this.#compacting.delete(id);
       // The user may have taken the session over meanwhile.
       if (wasPaused && ['waiting', 'your-turn'].includes(session.status)) this.pause(id, 'shub:auto-compact');
