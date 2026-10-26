@@ -34,9 +34,9 @@ async function install({ origin, manifest }) {
   return meta;
 }
 
-/** Reloads the open app windows so they show what was just installed, without the user restarting anything. */
-function reloadWindows(clients) {
-  for (const client of clients) client.navigate(client.url).catch(() => {});
+/** Tells the open app windows what was just installed; each reloads when its user is not mid-typing (stores/state). */
+function announceUpdate(clients, version) {
+  for (const client of clients) client.postMessage({ type: 'app-updated', version });
 }
 
 let checking = null;
@@ -60,7 +60,7 @@ function checkUpdates(origins) {
     const best = pickNewest(candidates, running?.version);
     if (!best) return { updated: false, version: running?.version ?? null, log };
     const meta = await install(best);
-    if (running) reloadWindows(await self.clients.matchAll({ type: 'window' })); // an upgrade, not the first install
+    if (running) announceUpdate(await self.clients.matchAll({ type: 'window' }), meta.version); // an upgrade, not the first install
     return { updated: true, version: meta.version, from: best.origin, log };
   })().finally(() => (checking = null));
   return checking;
@@ -87,10 +87,10 @@ self.addEventListener('activate', (event) => {
         ),
       )
       .then(async () => {
-        // Windows an older loader controlled now run behind this one: reload them. A first visit has none.
+        // Windows an older loader controlled now run behind this one: tell them. A first visit has none.
         const old = await self.clients.matchAll({ type: 'window' });
         await self.clients.claim();
-        reloadWindows(old);
+        announceUpdate(old, (await current())?.version);
       }),
   );
 });

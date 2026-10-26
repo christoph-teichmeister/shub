@@ -132,9 +132,6 @@ async function mockApi(page: Page, overrides: Record<string, Mock> = {}): Promis
   const calls: Call[] = [];
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) =>
-    r.fulfill({ status: 200, contentType: 'text/css', body: '' }),
-  );
   await page.route('**/api/**', (r) => {
     const method = r.request().method();
     const url = new URL(r.request().url());

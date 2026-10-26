@@ -26,7 +26,7 @@ How the web app looks and how its components are built. Live reference: open `#/
 
 ### Type
 
-UI: IBM Plex Sans (`--font-ui`); wordmark, paths, ports, terminal: JetBrains Mono (`--font-mono`). Sizes `--text-3xs` 8 … `--text-base` 14 (body) … `--text-xl` 18 (headings). Weights 400/500/600 for UI, 700/800 for the wordmark. Section labels: `--text-xs`, 600, uppercase, `--tracking-label`, `muted`.
+UI: IBM Plex Sans (`--font-ui`); wordmark, paths, ports, terminal: JetBrains Mono (`--font-mono`). Sizes `--text-3xs` 8 … `--text-base` 14 (body) … `--text-xl` 18 (headings). Weights 400/500/600 for UI, 700/800 for the wordmark. Section labels: `--text-xs`, 600, uppercase, `--tracking-label`, `muted`. Fonts are self-hosted woff2 (latin + latin-ext) in `web/public/fonts`, declared in `tokens/fonts.css`; no Google Fonts.
 
 ### Motion
 

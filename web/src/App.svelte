@@ -6,7 +6,15 @@
   import { checkAppUpdate } from './lib/stores/loader.ts';
   import { fleet, loadMachines } from './lib/stores/machines.svelte.ts';
   import { go, router } from './lib/stores/router.svelte.ts';
-  import { app, connectEvents, loadAll, loadChildren, needsYouCount, ui } from './lib/stores/state.svelte.ts';
+  import {
+    app,
+    connectEvents,
+    loadAll,
+    loadChildren,
+    needsYouCount,
+    reloadForUpdate,
+    ui,
+  } from './lib/stores/state.svelte.ts';
   import AppSettings from './lib/views/AppSettings.svelte';
   import FirstRun from './lib/views/FirstRun.svelte';
   import Login from './lib/views/Login.svelte';
@@ -30,11 +38,11 @@
     if (machine || session) history.replaceState(null, '', location.pathname + location.hash);
     // The loader looks at every machine for a newer app; a new one reloads the page behind the update curtain.
     const checkApp = () =>
-      checkAppUpdate(fleet.list.map((m) => m.origin)).then((r) => {
-        if (!r.updated || !r.version || app.reloadingTo) return;
-        app.reloadingTo = r.version;
-        setTimeout(() => location.reload(), 900);
-      });
+      checkAppUpdate(fleet.list.map((m) => m.origin)).then((r) => r.updated && r.version && reloadForUpdate(r.version));
+    // The loader also announces an install it made on its own (another tab's check, a page navigation).
+    const onLoader = (e: MessageEvent) =>
+      e.data?.type === 'app-updated' && e.data.version && reloadForUpdate(e.data.version);
+    navigator.serviceWorker?.addEventListener('message', onLoader);
     void loadMachines().then(checkApp);
     const appTimer = setInterval(() => void checkApp(), 30 * 60_000);
     // Child worktrees: busy ends when a headless run goes quiet, merged needs a fetch now and then.
@@ -46,7 +54,12 @@
       if (s) go(...(s.projectId ? ['p', s.projectId, s.id] : ['g']));
     });
     const stopEvents = connectEvents();
-    return () => (clearInterval(appTimer), clearInterval(childTimer), stopEvents());
+    return () => (
+      clearInterval(appTimer),
+      clearInterval(childTimer),
+      stopEvents(),
+      navigator.serviceWorker?.removeEventListener('message', onLoader)
+    );
   });
 
   $effect(() => {

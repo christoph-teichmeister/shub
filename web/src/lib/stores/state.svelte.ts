@@ -22,7 +22,7 @@ import { applyTheme, findTheme } from '../tokens/tokens.ts';
 import { api, ApiError, wsTarget } from './api.ts';
 import { href } from './router.svelte.ts';
 import { toast, toastError } from './toasts.svelte.ts';
-import { checkAppUpdate } from './loader.ts';
+import { canReloadNow, checkAppUpdate, idleState } from './loader.ts';
 import { onResume } from './resume.ts';
 
 export const app = $state({
@@ -205,6 +205,32 @@ export const loadApprovals = async () => (app.approvals = (await guard(api<Appro
 export const loadConflicts = async () =>
   (app.conflicts = (await guard(api<GroupConflict[]>('groupConflicts'))) ?? app.conflicts);
 export const loadPlugins = async () => (app.plugins = (await guard(api<PluginInfo[]>('plugins'))) ?? app.plugins);
+let reloadWaiting = false;
+/** Reloads into a new app once that cannot lose input (see canReloadNow); says so once while it waits. */
+export function reloadForUpdate(version: string): void {
+  if (reloadWaiting) return;
+  reloadWaiting = true;
+  let told = false;
+  const tryNow = () => {
+    if (!canReloadNow(idleState())) {
+      if (!told) toast(`shub ${version} is ready. It loads when you stop typing or leave the app.`, 'neutral', 15_000);
+      told = true;
+      return;
+    }
+    clearInterval(timer);
+    document.removeEventListener('visibilitychange', tryNow);
+    // Curtain first, so the reload reads as "updating" instead of a flicker; the new page fades it out.
+    app.reloadingTo = version;
+    try {
+      sessionStorage.setItem('shub-updated', version);
+    } catch {}
+    setTimeout(() => location.reload(), 900);
+  };
+  const timer = setInterval(tryNow, 5000);
+  document.addEventListener('visibilitychange', tryNow);
+  tryNow();
+}
+
 /** The server version this page's code came with; another one means an update ran, so reload to get its frontend. */
 let loadedVersion: string | undefined;
 let announced: string | undefined;
@@ -213,13 +239,8 @@ export async function loadUpdate(): Promise<void> {
   const current = app.update?.current;
   loadedVersion ??= current;
   if (current && current !== loadedVersion && !app.reloadingTo) {
-    // Curtain first, so the reload reads as "updating" instead of a flicker; the new page fades it out.
-    app.reloadingTo = current;
-    try {
-      sessionStorage.setItem('shub-updated', current);
-    } catch {}
     // The app may run from the loader's cached bundle: let it fetch the new one before reloading.
-    void checkAppUpdate([]).then(() => setTimeout(() => location.reload(), 900));
+    void checkAppUpdate([]).then(() => reloadForUpdate(current));
   }
   const latest = app.update?.mode === 'ask' ? app.update.latest : undefined;
   if (latest && latest !== announced)

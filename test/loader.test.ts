@@ -51,3 +51,13 @@ test('the newest bundle above the current one wins', () => {
   assert.equal(pickNewest([at('a', '2026.10.3')], '2026.10.3'), null);
   assert.equal(pickNewest([at('a', '2026.10.1')], undefined)?.origin, 'a');
 });
+
+test('canReloadNow: unsent text always waits, terminal use waits unless hidden', async () => {
+  const { canReloadNow } = await import('../web/src/lib/stores/loader.ts');
+  const idle = { unsentText: false, hidden: false, terminalIdleMs: 60_000 };
+  assert.equal(canReloadNow(idle), true);
+  assert.equal(canReloadNow({ ...idle, unsentText: true }), false);
+  assert.equal(canReloadNow({ ...idle, unsentText: true, hidden: true }), false);
+  assert.equal(canReloadNow({ ...idle, terminalIdleMs: 2000 }), false);
+  assert.equal(canReloadNow({ ...idle, terminalIdleMs: 2000, hidden: true }), true);
+});

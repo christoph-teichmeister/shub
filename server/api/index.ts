@@ -19,7 +19,7 @@ import { bundleOffer } from './bundle.ts';
 const SECURITY_HEADERS: Record<string, string> = {
   'content-security-policy':
     "default-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https: ws: wss:; " +
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; " +
+    "style-src 'self' 'unsafe-inline'; font-src 'self'; " +
     "frame-ancestors 'none'",
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'same-origin',

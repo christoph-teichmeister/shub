@@ -8,6 +8,7 @@
   import { allImagePaths, imagePathsAt, NOTE_PATH } from './imagePaths.ts';
   import type { TerminalControl } from '../../../../../shared/api.ts';
   import { api, wsTarget } from '../../stores/api.ts';
+  import { markTerminalUse } from '../../stores/loader.ts';
   import { app, terminalSettings } from '../../stores/state.svelte.ts';
   import { noteFile } from '../../stores/noteFile.svelte.ts';
   import { toastError } from '../../stores/toasts.svelte.ts';
@@ -242,7 +243,7 @@
       void connect();
     });
 
-    t.onData((d) => send(d));
+    t.onData((d) => (markTerminalUse(), send(d)));
     t.onBinary((d) => send(Uint8Array.from(d, (c) => c.charCodeAt(0))));
     t.onResize(sendResize);
     // Select to copy (not for the Ctrl+A highlight, which is only a cue).
