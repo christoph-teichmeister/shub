@@ -11,6 +11,7 @@
   import { app, terminalSettings } from '../../stores/state.svelte.ts';
   import { noteFile } from '../../stores/noteFile.svelte.ts';
   import { toastError } from '../../stores/toasts.svelte.ts';
+  import { onResume } from '../../stores/resume.ts';
   import { readToken } from '../../tokens/tokens.ts';
 
   interface Props {
@@ -22,13 +23,17 @@
     label?: string;
     /** One px smaller font for split panes. */
     compact?: boolean;
+    /** Phone: never size the shared tmux window. The terminal takes the window's size from the server and is scaled to fit. */
+    follow?: boolean;
   }
-  let { sessionId, accent, focused = false, label = 'Terminal', compact = false }: Props = $props();
+  let { sessionId, accent, focused = false, label = 'Terminal', compact = false, follow = false }: Props = $props();
 
   const booting = $derived(app.sessions.find((x) => x.id === sessionId)?.booting);
   let host = $state<HTMLDivElement>();
   let term = $state<Terminal>();
   let fit: FitAddon | undefined;
+  let reconnecting = $state(false);
+  let scale = $state(1);
 
   /** Font and cursor options from Settings > Terminal. */
   function look() {
@@ -175,31 +180,60 @@
     let ws: WebSocket | undefined;
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
+    let delay = 1000;
     let opened = false;
+    let gen = 0; // a resume while a connect is in flight must not leave two sockets
     const send = (data: string | Uint8Array) => ws?.readyState === WebSocket.OPEN && ws.send(data);
-    const sendResize = () => {
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+    const sendResizeNow = () => {
       const msg: TerminalControl = { type: 'resize', cols: t.cols, rows: t.rows };
       send('\u0000' + JSON.stringify(msg));
     };
+    // Debounced: dragging a split fires many fits, tmux should reflow once.
+    const sendResize = () => {
+      clearTimeout(resizeTimer);
+      if (!follow) resizeTimer = setTimeout(sendResizeNow, 150);
+    };
     const connect = async () => {
-      const { url, protocols } = await wsTarget(`/api/terminals/${encodeURIComponent(sessionId)}`);
-      if (closed) return;
+      const mine = ++gen;
+      // Re-attach (seed=1): the server sends recent output before the live repaint.
+      const query = new URLSearchParams({ ...(follow && { follow: '1' }), ...(opened && { seed: '1' }) });
+      const { url, protocols } = await wsTarget(`/api/terminals/${encodeURIComponent(sessionId)}?${query}`);
+      if (closed || mine !== gen) return;
       ws = new WebSocket(url, protocols);
       ws.binaryType = 'arraybuffer';
       ws.onopen = () => {
-        if (opened) t.reset(); // tmux repaints the screen on re-attach
+        if (opened) t.reset(); // the seed and tmux's repaint refill it
         opened = true;
-        sendResize();
+        delay = 1000;
+        reconnecting = false;
+        if (!follow) sendResizeNow();
       };
       ws.onmessage = (m) => {
-        if (typeof m.data !== 'string') t.write(new Uint8Array(m.data as ArrayBuffer));
-        else if (!m.data.startsWith('\u0000')) t.write(m.data);
+        if (typeof m.data === 'string' && m.data.startsWith('\u0000')) {
+          const msg = JSON.parse(m.data.slice(1)) as TerminalControl;
+          if (msg.type === 'size') {
+            t.resize(msg.cols, msg.rows);
+            rescale();
+          }
+        } else t.write(typeof m.data === 'string' ? m.data : new Uint8Array(m.data as ArrayBuffer));
       };
       ws.onclose = () => {
-        if (!closed) retry = setTimeout(() => void connect(), 2000);
+        if (closed) return;
+        reconnecting = true;
+        retry = setTimeout(() => void connect(), delay);
+        delay = Math.min(delay * 2, 30_000);
       };
     };
     void connect();
+    // Back from sleep: a socket can look open and be dead, so reconnect now instead of waiting for the backoff.
+    const off = onResume(() => {
+      clearTimeout(retry);
+      if (ws) ws.onclose = null;
+      ws?.close();
+      delay = 1000;
+      void connect();
+    });
 
     t.onData((d) => send(d));
     t.onBinary((d) => send(Uint8Array.from(d, (c) => c.charCodeAt(0))));
@@ -313,15 +347,25 @@
 
     const refit = () => {
       // A queued frame or fonts.ready can land after teardown, when host is already null.
-      if (!closed && host?.offsetWidth && host.offsetHeight) fit?.fit();
+      if (closed || !host?.offsetWidth || !host.offsetHeight) return;
+      if (follow) rescale();
+      else fit?.fit();
     };
+    // Follower: the terminal has the desktop's size; shrink it to fit (not below half size, the rest scrolls off).
+    function rescale() {
+      const box = host?.querySelector('.xterm') as HTMLElement | null;
+      if (!box || !host) return;
+      scale = Math.max(0.5, Math.min(1, host.clientWidth / box.offsetWidth, host.clientHeight / box.offsetHeight));
+    }
     const observer = new ResizeObserver(() => requestAnimationFrame(refit));
     observer.observe(host!);
     void document.fonts?.ready.then(refit);
 
     return () => {
       closed = true;
+      off();
       clearTimeout(retry);
+      clearTimeout(resizeTimer);
       observer.disconnect();
       ws?.close();
       t.dispose();
@@ -340,7 +384,7 @@
     const options = look();
     if (!term) return;
     Object.assign(term.options, options);
-    if (host?.offsetWidth && host.offsetHeight) fit?.fit(); // cell size changed: new cols/rows
+    if (!follow && host?.offsetWidth && host.offsetHeight) fit?.fit(); // cell size changed: new cols/rows
   });
 
   $effect(() => {
@@ -349,7 +393,10 @@
 </script>
 
 <section class="terminal" aria-label={label}>
-  <div class="host" bind:this={host}></div>
+  <div class="host" class:follow bind:this={host} style:--scale={scale}></div>
+  {#if reconnecting}
+    <div class="reconnecting" role="status">Reconnecting…</div>
+  {/if}
   {#if booting}
     <div class="boot" role="status">
       <span class="prompt">claude<span class="cursor">_</span></span>
@@ -431,6 +478,28 @@
     50% {
       opacity: 0.4;
     }
+  }
+
+  .reconnecting {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-4);
+    z-index: var(--z-raised);
+    padding: var(--space-0-5) var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--raised);
+    color: var(--muted);
+    font-size: var(--text-xs);
+  }
+
+  .host.follow {
+    overflow: hidden;
+  }
+
+  .host.follow :global(.xterm) {
+    width: max-content;
+    transform: scale(var(--scale));
+    transform-origin: top left;
   }
 
   .host {

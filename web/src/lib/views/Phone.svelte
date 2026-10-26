@@ -251,7 +251,7 @@
       {#if open.status === 'paused'}
         <PausedPanel session={open} />
       {:else}
-        <TerminalView sessionId={open.id} accent={p?.accent} label={open.name} compact />
+        <TerminalView sessionId={open.id} accent={p?.accent} label={open.name} compact follow />
       {/if}
     {/key}
 

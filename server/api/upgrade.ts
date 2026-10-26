@@ -13,6 +13,7 @@
 // destroy it. Unknown paths get 404, unauthenticated requests 401.
 import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
+import type { WebSocket } from 'ws';
 import type { Caller } from './router.ts';
 
 export type UpgradeHandler = (
@@ -77,4 +78,16 @@ export function installUpgrades(
     }
     reject(socket, 404, 'Not Found');
   });
+}
+
+/** Pings every 20 s and terminates a socket that answered nothing since the last ping (phone asleep, wifi gone), so its PTY and listeners are freed. */
+export function keepAlive(ws: WebSocket, every = 20_000): void {
+  let alive = true;
+  ws.on('pong', () => (alive = true));
+  const timer = setInterval(() => {
+    if (!alive) return ws.terminate();
+    alive = false;
+    ws.ping();
+  }, every);
+  ws.on('close', () => clearInterval(timer));
 }

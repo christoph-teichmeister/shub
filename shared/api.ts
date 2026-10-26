@@ -820,6 +820,7 @@ export type ServerEvent =
       context: { sessionId?: string; projectId?: string; entryId?: string };
     };
 
-export type TerminalControl = { type: 'resize'; cols: number; rows: number };
+/** resize: client to server. size: server to a `follow` client (query `follow=1`, `seed=1` replays recent output first). */
+export type TerminalControl = { type: 'resize' | 'size'; cols: number; rows: number };
 
 export const STATUS_ORANGE_TOKEN = 'status-needs-you';
