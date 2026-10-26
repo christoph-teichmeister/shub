@@ -155,6 +155,8 @@ async function mockApi(page: Page, overrides: Record<string, Mock> = {}): Promis
       return r.fulfill({ json: hit, headers: CORS });
     }
     if (method !== 'GET') return r.fulfill({ json: { ok: true }, headers: CORS });
+    // The phone overview asks every project for its other hosts' sessions: none by default.
+    if (/^\/api\/projects\/[^/]+\/old-sessions$/.test(path)) return r.fulfill({ json: [], headers: CORS });
     return r.fulfill({ status: 404, json: { error: `no mock for ${path}` }, headers: CORS });
   });
   await page.routeWebSocket('**/api/events', (ws) => ws.send(JSON.stringify({ type: 'hello', apiVersion: 1 })));
