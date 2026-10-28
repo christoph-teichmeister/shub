@@ -11,6 +11,7 @@ export const SHORTCUTS: [string, string[]][] = [
   ['New session in this project', ['Alt N']],
   ['Go to tab 1 to 9', ['Alt 1', 'Alt 9']],
   ['Previous / next tab', ['Alt [', 'Alt ]']],
+  ['Previous / next session in the sidebar, across projects', ['Alt ↑', 'Alt ↓']],
   ['Toggle split view', ['Alt S']],
   ['Toggle services panel', ['Alt D']],
   ['Terminal pane in this session', ['Alt T']],
