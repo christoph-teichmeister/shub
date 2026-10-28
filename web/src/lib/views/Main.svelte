@@ -722,6 +722,16 @@
     if (s) location.hash = sessionHref(s);
   }
 
+  // Alt Up/Down: previous/next session in sidebar order, across projects.
+  function stepSidebar(dir: number) {
+    const shown = app.config?.activeGroup ? activeProjects : groups.flatMap((g) => g.projects);
+    const flat = shown.flatMap((p) => placeRolled(sessionsOf(p.id)));
+    if (!flat.length) return;
+    const i = flat.findIndex((s) => s.id === root?.id);
+    const next = flat[i < 0 ? (dir > 0 ? 0 : flat.length - 1) : (i + dir + flat.length) % flat.length];
+    location.hash = sessionHref(next);
+  }
+
   // Remembered per browser; storage can be missing or throw (private window).
   let sidebarCollapsed = $state(false);
   try {
@@ -765,13 +775,17 @@
         case 'KeyN':
           void newSession();
           break;
-        case 'ArrowUp':
         case 'BracketLeft':
           selectTab(index - 1);
           break;
-        case 'ArrowDown':
         case 'BracketRight':
           selectTab(index + 1);
+          break;
+        case 'ArrowUp':
+          stepSidebar(-1);
+          break;
+        case 'ArrowDown':
+          stepSidebar(1);
           break;
         case 'KeyS':
           split = !split;
