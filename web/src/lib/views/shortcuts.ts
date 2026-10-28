@@ -10,7 +10,7 @@ export const SHORTCUTS: [string, string[]][] = [
   ['Search projects and sessions', ['Alt K']],
   ['New session in this project', ['Alt N']],
   ['Go to tab 1 to 9', ['Alt 1', 'Alt 9']],
-  ['Previous / next tab', ['Alt [', 'Alt ]']],
+  ['Previous / next tab', ['Alt [', 'Alt ]', 'Alt ↑', 'Alt ↓']],
   ['Toggle split view', ['Alt S']],
   ['Toggle services panel', ['Alt D']],
   ['Terminal pane in this session', ['Alt T']],

@@ -765,9 +765,11 @@
         case 'KeyN':
           void newSession();
           break;
+        case 'ArrowUp':
         case 'BracketLeft':
           selectTab(index - 1);
           break;
+        case 'ArrowDown':
         case 'BracketRight':
           selectTab(index + 1);
           break;
