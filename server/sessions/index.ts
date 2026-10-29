@@ -183,11 +183,15 @@ function routes(sessions: SessionsService, services: Services, router: Router, c
   });
   router.add(ROUTES.sessionCommand, async (req) => {
     requireUser(req.caller);
-    const { index, action } = await req.json<{ index?: unknown; action?: unknown }>();
-    if (typeof index !== 'number' || (action !== 'run' && action !== 'dismiss')) {
-      throw new HttpError(400, "index: number, action: 'run' | 'dismiss'");
+    const { index, action, command } = await req.json<{ index?: unknown; action?: unknown; command?: unknown }>();
+    if (
+      typeof index !== 'number' ||
+      (action !== 'run' && action !== 'dismiss') ||
+      (command !== undefined && typeof command !== 'string')
+    ) {
+      throw new HttpError(400, "index: number, action: 'run' | 'dismiss', command?: string");
     }
-    sessions.answerCommand(req.params.id, index, action);
+    sessions.answerCommand(req.params.id, index, action, command);
     return { ok: true };
   });
   router.add(ROUTES.sessionKeys, async (req) => {
