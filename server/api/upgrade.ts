@@ -10,7 +10,7 @@
 //   }
 //
 // The handler gets an authenticated caller; it must take over the socket (e.g. wss.handleUpgrade) or
-// destroy it. Unknown paths get 404, unauthenticated requests 401.
+// destroy it. Unknown paths get 404, unauthenticated requests 401, a handler that throws 500 (400 for a bad URL).
 import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { WebSocket } from 'ws';
@@ -66,17 +66,26 @@ export function installUpgrades(
 ): void {
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     socket.on('error', () => socket.destroy());
-    if (check(req)) return reject(socket, 403, 'Forbidden');
-    const path = new URL(req.url ?? '/', 'http://x').pathname;
-    for (const entry of entries(server)) {
-      const match = entry.path.exec(path);
-      if (!match) continue;
-      const caller = resolve(req);
-      if (!caller) return reject(socket, 401, 'Unauthorized');
-      if (caller.deviceId) track(caller.deviceId, socket);
-      return entry.handler(req, socket, head, caller, match);
+    // A throw out of an 'upgrade' listener ends the process: a malformed URL is the caller's fault, the rest ours.
+    try {
+      if (check(req)) return reject(socket, 403, 'Forbidden');
+      const path = new URL(req.url ?? '/', 'http://x').pathname;
+      for (const entry of entries(server)) {
+        const match = entry.path.exec(path);
+        if (!match) continue;
+        const caller = resolve(req);
+        if (!caller) return reject(socket, 401, 'Unauthorized');
+        if (caller.deviceId) track(caller.deviceId, socket);
+        return entry.handler(req, socket, head, caller, match);
+      }
+      reject(socket, 404, 'Not Found');
+    } catch (err) {
+      if (err instanceof URIError || (err as { code?: string }).code === 'ERR_INVALID_URL') {
+        return reject(socket, 400, 'Bad Request');
+      }
+      console.error('shub: upgrade', req.url, err);
+      reject(socket, 500, 'Internal Server Error');
     }
-    reject(socket, 404, 'Not Found');
   });
 }
 
