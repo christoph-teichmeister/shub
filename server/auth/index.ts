@@ -137,6 +137,8 @@ export class AuthService implements Auth {
   init(): void {
     this.#services.state.migrate('auth', MIGRATIONS);
     this.#loadOrCreateToken();
+    // Plugins end with shub and get a fresh token on start; one left by a crash would stay valid forever.
+    this.#db.prepare("DELETE FROM client_tokens WHERE kind = 'plugin'").run();
     const rows = this.#db.prepare('SELECT token_hash, kind, client_id FROM client_tokens').all() as {
       token_hash: string;
       kind: ClientKind;
