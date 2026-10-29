@@ -488,8 +488,7 @@ export class AuthService implements Auth {
   renameDevice(id: string, name: string): Device | undefined {
     this.#db.prepare('UPDATE devices SET name = ? WHERE id = ?').run(name, id);
     this.#publish(id);
-    const row = this.#db.prepare('SELECT * FROM devices WHERE id = ?').get(id) as DeviceRow | undefined;
-    return row && toDevice(row);
+    return this.#changed(id);
   }
 
   /** Revoke: the device ends here at once and a tombstone in the group ends it on every host. */

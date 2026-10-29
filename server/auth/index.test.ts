@@ -105,7 +105,7 @@ test('pairing refuses anything but a P-256 public key', async () => {
 });
 
 /** A host of the device group: its own state dir, store and auth. */
-function host() {
+function host(emit: (e: { type: string }) => void = () => {}) {
   const stateDir = mkdtempSync(join(tmpdir(), 'shub-auth-'));
   const services = {
     state: openState(stateDir),
@@ -113,7 +113,7 @@ function host() {
     permissions: { rightsFor },
   } as unknown as Services;
   services.group = new GroupStore(services.state.db, services.state.migrate);
-  const auth = new AuthService({ paths: { stateDir }, port: 4780, bus: { emit() {} } } as unknown as Context, services);
+  const auth = new AuthService({ paths: { stateDir }, port: 4780, bus: { emit } } as unknown as Context, services);
   auth.init();
   const close = () => (services.state.db.close(), rmSync(stateDir, { recursive: true, force: true }));
   return { auth, group: services.group, close };
@@ -155,6 +155,17 @@ test('a revoke syncs to a host that was offline and ends the device there at onc
   assert.deepEqual(b.auth.devices(), []);
   a.close();
   b.close();
+});
+
+test('renaming a device tells the clients', async () => {
+  const events: string[] = [];
+  const h = host((e) => events.push(e.type));
+  const { publicKey } = (await import('node:crypto')).generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const device = h.auth.redeemPairing((await h.auth.startPairing()).code, 'x', publicKey.export({ format: 'jwk' }));
+  events.length = 0;
+  assert.equal(h.auth.renameDevice(device.id, 'Pixel')?.name, 'Pixel');
+  assert.deepEqual(events, ['devices.changed']);
+  h.close();
 });
 
 test('another shub host in the group is not a device here', () => {
