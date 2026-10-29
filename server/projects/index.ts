@@ -168,7 +168,10 @@ function projectRoutes(services: Services, router: Router): void {
 
   router.add(ROUTES.config, (req) => {
     requireRight(req.caller, 'read');
-    return config.get();
+    const c = config.get();
+    // A plugin's env may hold secrets: only the user sees it, not sessions or plugins.
+    if (req.caller.kind === 'user' || req.caller.kind === 'cli') return c;
+    return { ...c, plugins: c.plugins.map(({ env: _, ...p }) => p) };
   });
   router.add(ROUTES.projects, (req) => {
     requireRight(req.caller, 'read');
