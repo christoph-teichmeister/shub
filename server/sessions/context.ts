@@ -62,10 +62,12 @@ function scan(text: string): { tokens: number | null; window: number | null } {
 
 /**
  * The context fill of a transcript, or null while it has no reply yet. `knownWindow` (from the status line) wins
- * over the transcript's model. Reads only the tail; the whole file only when neither tells the window.
+ * over the transcript's model. Reads only the tail; the whole file only when the tail has no reply or compact, or neither tells the window.
  */
 export function contextFill(file: string, knownWindow?: number): ContextFill | null {
   let { tokens, window } = scan(read(file, TAIL));
+  // A compact summary can push the last reply or compact line out of the tail: look at the whole file once.
+  if (tokens === null) ({ tokens, window } = scan(read(file, Infinity)));
   if (tokens === null) return null;
   window = knownWindow ?? window ?? scan(read(file, Infinity)).window ?? WINDOW;
   // A context past 200k can only be a 1M window.

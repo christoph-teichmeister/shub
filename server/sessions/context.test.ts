@@ -44,6 +44,14 @@ test('contextFill skips subagent lines and counts a compact as its post-compact 
   });
 });
 
+test('contextFill finds a compact that lies past the tail', () => {
+  const filler = { type: 'user', message: { content: 'x'.repeat(300 * 1024) } };
+  assert.deepEqual(contextFill(transcript(reply(0, 300_000, 0), compact(29_743), filler), 1_000_000), {
+    tokens: 29_743,
+    window: 1_000_000,
+  });
+});
+
 test('contextFill finds an early model attachment past the tail, and anything over 200k is 1M', () => {
   const filler = { type: 'user', message: { content: 'x'.repeat(300 * 1024) } };
   const file = transcript(model('claude-opus-5-5[1m]'), filler, reply(0, 10_000, 0));
