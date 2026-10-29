@@ -3,7 +3,6 @@
   import { Terminal, type ITheme } from '@xterm/xterm';
   import { FitAddon } from '@xterm/addon-fit';
   import { WebLinksAddon } from '@xterm/addon-web-links';
-  import { WebglAddon } from '@xterm/addon-webgl';
   import ImageViewer from '../ImageViewer/ImageViewer.svelte';
   import { allImagePaths, imagePathsAt, NOTE_PATH } from './imagePaths.ts';
   import type { TerminalControl } from '../../../../../shared/api.ts';
@@ -176,14 +175,6 @@
     // Phone: the message field below is the place to type. Gboard's autocorrect rewrites half-typed words and xterm
     // sends every rewrite as keystrokes, so words repeat; with no on-screen keyboard here a tap only selects.
     if (compact) t.textarea?.setAttribute('inputmode', 'none');
-    // WebGL draws box-drawing glyphs cell-exact, so Claude's tables connect; the DOM renderer leaves gaps.
-    try {
-      const gl = new WebglAddon();
-      gl.onContextLoss(() => gl.dispose());
-      t.loadAddon(gl);
-    } catch {
-      // No WebGL: stay on the DOM renderer.
-    }
     term = t;
 
     let ws: WebSocket | undefined;
@@ -365,6 +356,17 @@
     const observer = new ResizeObserver(() => requestAnimationFrame(refit));
     observer.observe(host!);
     void document.fonts?.ready.then(refit);
+    // WebGL draws box-drawing glyphs cell-exact, so Claude's tables connect; the DOM renderer leaves gaps. The addon
+    // is a chunk of its own: until it arrives, and without WebGL or when it fails to load, the DOM renderer draws.
+    void import('@xterm/addon-webgl')
+      .then(({ WebglAddon }) => {
+        if (closed) return;
+        const gl = new WebglAddon();
+        gl.onContextLoss(() => gl.dispose());
+        t.loadAddon(gl);
+        refit(); // the new renderer may measure the cells a pixel off
+      })
+      .catch(() => {});
 
     return () => {
       closed = true;
