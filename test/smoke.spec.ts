@@ -256,6 +256,29 @@ test('styleguide renders every section', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test.describe('chunks that do not arrive', () => {
+  // The service worker would fetch the chunks itself, past page.route.
+  test.use({ serviceWorkers: 'block' });
+  const aborted = (e: string) => e.includes('net::ERR_FAILED');
+
+  test('a lazy view offers a reload', async ({ page }) => {
+    const { errors } = await mockApi(page);
+    await page.route('**/assets/Styleguide-*.js', (r) => r.abort());
+    await page.goto('/#/styleguide');
+    await expect(page.getByRole('heading', { name: 'This view did not load' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Reload' })).toBeVisible();
+    expect(errors.filter((e) => !aborted(e))).toEqual([]);
+  });
+
+  test('the terminal draws on the DOM renderer without the WebGL addon', async ({ page }) => {
+    const { errors } = await mockApi(page);
+    await page.route('**/assets/addon-webgl-*.js', (r) => r.abort());
+    await page.goto('/#/p/ai-portal/s1');
+    await expect(page.locator('.xterm-rows')).toContainText('mocked terminal');
+    expect(errors.filter((e) => !aborted(e))).toEqual([]);
+  });
+});
+
 test('login on 401: the host browser bootstraps with the token', async ({ page }) => {
   const { errors, calls } = await mockApi(page, {
     '/api/config': { status: 401, json: { error: 'login required' } },

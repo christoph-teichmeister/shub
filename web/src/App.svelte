@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, type Component } from 'svelte';
+  import Button from './lib/components/Button/Button.svelte';
+  import EmptyState from './lib/components/EmptyState/EmptyState.svelte';
   import Toast from './lib/components/Toast/Toast.svelte';
   import UpdateCurtain from './lib/components/UpdateCurtain/UpdateCurtain.svelte';
   import { api } from './lib/stores/api.ts';
@@ -16,15 +18,10 @@
     reloadForUpdate,
     ui,
   } from './lib/stores/state.svelte.ts';
-  import AppSettings from './lib/views/AppSettings.svelte';
-  import FirstRun from './lib/views/FirstRun.svelte';
   import Login from './lib/views/Login.svelte';
   import Main from './lib/views/Main.svelte';
   import Overlays from './lib/views/Overlays.svelte';
   import Phone from './lib/views/Phone.svelte';
-  import ProjectSettings from './lib/views/ProjectSettings.svelte';
-  import Styleguide from './lib/views/Styleguide.svelte';
-  import ThemeEditor from './lib/views/ThemeEditor.svelte';
 
   const route = $derived(router.route);
   const signIn = $derived(route.name === 'pair' || route.name === 'login' || app.authRequired);
@@ -80,28 +77,38 @@
   });
 </script>
 
+<!-- Views off the everyday path load on demand: own chunks, which the loader bundle carries offline too. -->
+{#snippet lazy(view: Promise<{ default: Component<any> }>, props: Record<string, unknown> = {})}
+  {#await view then { default: View }}<View {...props} />{:catch}
+    <!-- A chunk that did not arrive (offline without the bundle, or gone after an update). -->
+    <EmptyState title="This view did not load" body="Reload to try again.">
+      <Button variant="primary" onclick={() => location.reload()}>Reload</Button>
+    </EmptyState>
+  {/await}
+{/snippet}
+
 {#snippet settings()}
   {#if route.name !== 'settings'}{:else if route.rest[0] === 'project' && route.rest[1]}
-    {#key route.rest[1]}<ProjectSettings id={route.rest[1]} />{/key}
+    {#key route.rest[1]}{@render lazy(import('./lib/views/ProjectSettings.svelte'), { id: route.rest[1] })}{/key}
   {:else if route.rest[0] === 'theme'}
-    {#key route.rest[1]}<ThemeEditor id={route.rest[1] ?? 'new'} />{/key}
+    {#key route.rest[1]}{@render lazy(import('./lib/views/ThemeEditor.svelte'), { id: route.rest[1] ?? 'new' })}{/key}
   {:else if route.rest[0] === 'import'}
-    <FirstRun />
+    {@render lazy(import('./lib/views/FirstRun.svelte'))}
   {:else}
-    <AppSettings />
+    {@render lazy(import('./lib/views/AppSettings.svelte'))}
   {/if}
 {/snippet}
 
 {#if route.name === 'styleguide'}
-  <Styleguide />
+  {@render lazy(import('./lib/views/Styleguide.svelte'))}
 {:else if signIn}
   <Login pairCode={route.name === 'pair' ? route.code : undefined} />
 {:else if route.name === 'settings' && (ui.phone || (app.ready && !app.unreachable && app.projects.length === 0))}
   {@render settings()}
 {:else if route.name !== 'settings' && app.ready && !app.unreachable && app.projects.length === 0}
-  <FirstRun firstRun />
+  {@render lazy(import('./lib/views/FirstRun.svelte'), { firstRun: true })}
 {:else if route.name === 'village' && !ui.phone}
-  {#await import('./lib/views/Village/Village.svelte') then { default: Village }}<Village />{/await}
+  {@render lazy(import('./lib/views/Village/Village.svelte'))}
 {:else if ui.phone}
   <Phone />
 {:else}
