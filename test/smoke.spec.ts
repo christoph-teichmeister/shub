@@ -321,7 +321,8 @@ test('a phone pairs with a code and waits for approval', async ({ page }) => {
   const redeem = calls.find((c) => c.path === '/api/auth/pairing/redeem')?.body as Record<string, unknown>;
   expect(redeem).toMatchObject({ code: 'abc123', deviceName: 'Pixel', publicKey: { kty: 'EC', crv: 'P-256' } });
   expect(redeem.publicKey).not.toHaveProperty('d');
-  expect(calls.find((c) => c.path === '/api/auth/challenge')?.body).toEqual({ deviceId: 'phone-1' });
+  // The waiting text shows before the challenge goes out.
+  await expect.poll(() => calls.find((c) => c.path === '/api/auth/challenge')?.body).toEqual({ deviceId: 'phone-1' });
   expect(errors.filter((e) => !e.includes('401') && !e.includes('409'))).toEqual([]);
 });
 
