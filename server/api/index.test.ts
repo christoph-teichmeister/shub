@@ -469,6 +469,28 @@ test("another machine's app pairs cross-origin with a short code and may call th
   assert.equal((await foreign('GET', '/api/devices', 'https://evil.example')).status, 403);
 });
 
+test('the cached allow-lists follow the public URL and the group hosts without a restart', async () => {
+  const { request } = await import('node:http');
+  const viaHost = (host: string) =>
+    new Promise<number>((resolve) =>
+      request(base + '/api/health', { headers: { host } }, (r) => resolve(r.statusCode!)).end(),
+    );
+  const peer = 'https://peer.invalid';
+  const fromPeer = () => call('GET', '/api/devices', undefined, { origin: peer });
+  assert.equal(await viaHost('box.invalid'), 403);
+  assert.equal((await fromPeer()).status, 403);
+
+  services.config.update((c) => void (c.publicUrl = 'https://box.invalid'), 'test');
+  assert.equal(await viaHost('box.invalid'), 200, 'config.changed rebuilds the hosts');
+  services.group.put('device:peer-host', { name: 'Peer', kind: 'host', url: peer });
+  assert.equal((await fromPeer()).status, 401, 'a new group host is an allowed origin');
+
+  services.config.update((c) => void delete c.publicUrl, 'test');
+  services.group.remove('device:peer-host');
+  assert.equal(await viaHost('box.invalid'), 403);
+  assert.equal((await fromPeer()).status, 403);
+});
+
 test('the bundle offer: 404 in a dev build, else the manifest with its release SUMS and signature', async () => {
   assert.equal((await call('GET', '/api/bundle')).status, 404);
   const dist = join(ctx.paths.appDir, 'web', 'dist');
