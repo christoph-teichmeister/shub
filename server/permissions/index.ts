@@ -191,7 +191,8 @@ export function create(
         return service.approvals();
       });
       router.add(ROUTES.approvalDecide, async (req) => {
-        // Approvals exist to put a human in the loop; the CLI token is readable by sessions, so only the cookie user.
+        // Approvals put a human in the loop. Sessions can read the access token the CLI signs in with, so only a signed-in
+        // browser or phone (kind user) decides.
         if (req.caller.kind !== 'user') throw new HttpError(403, 'only you can decide approvals');
         const body = await req.json<{ approve?: unknown }>();
         if (typeof body?.approve !== 'boolean') throw new HttpError(400, 'approve must be a boolean');

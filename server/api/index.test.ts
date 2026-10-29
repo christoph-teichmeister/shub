@@ -16,7 +16,9 @@ import * as state from '../state/index.ts';
 import * as config from '../config/index.ts';
 import * as group from '../group/index.ts';
 import * as auth from '../auth/index.ts';
+import * as permissions from '../permissions/index.ts';
 import * as projects from '../projects/index.ts';
+import * as sessions from '../sessions/index.ts';
 import * as skills from '../skills/index.ts';
 import { listen } from './index.ts';
 
@@ -40,6 +42,8 @@ async function freePort(): Promise<number> {
 let ctx: Context;
 let server: Server;
 let services: Services;
+let approvalsService: ReturnType<typeof permissions.create>['service'];
+let sessionsService: ReturnType<typeof sessions.create>['service'];
 let base: string;
 let accessToken: string;
 let userToken = ''; // the host's own browser, signed in by key
@@ -53,6 +57,7 @@ before(async () => {
     SHUB_CONFIG_DIR: join(root, 'cfg'),
     SHUB_STATE_DIR: join(root, 'state'),
     SHUB_PORT: String(port),
+    SHUB_TMUX_SOCKET: `shub-api-test-${process.pid}`, // never started here, but never the real one either
   });
   ctx.paths.appDir = join(root, 'app');
   mkdirSync(join(ctx.paths.appDir, 'web', 'dist', 'assets'), { recursive: true });
@@ -87,6 +92,12 @@ before(async () => {
     modules.push(created.module);
     if (key) (services as any)[key] = created.service;
   }
+  // Their routes beside the stub permission model: deciding approvals and sending keys have rules of their own.
+  const perms = permissions.create(ctx, services);
+  approvalsService = perms.service;
+  const sess = sessions.create(ctx, services);
+  sessionsService = sess.service;
+  modules.push(perms.module, sess.module);
   server = await listen(ctx, services, modules);
   base = `http://127.0.0.1:${port}`;
   accessToken = readFileSync(join(ctx.paths.stateDir, 'token'), 'utf8').trim();
@@ -119,6 +130,23 @@ async function signInWith(deviceId: string, privateKey: KeyObject): Promise<stri
   const res = await call('POST', '/api/auth/session', { deviceId, nonce, signature });
   assert.equal(res.status, 200);
   return (await res.json()).token as string;
+}
+
+const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+
+/** A device paired with a code and approved on the host, at Prompts (the level of a new one), signed in. */
+async function approvedDevice(name: string, kind: 'phone' | 'browser' = 'phone') {
+  const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const { code } = await (await asUser('POST', '/api/auth/pairing')).json();
+  const redeem = { code, deviceName: name, kind, publicKey: publicKey.export({ format: 'jwk' }) };
+  const { device } = await (await call('POST', '/api/auth/pairing/redeem', redeem)).json();
+  assert.equal((await asUser('POST', `/api/devices/${device.id}/approve`)).status, 200);
+  const token = await signInWith(device.id, privateKey);
+  return {
+    id: device.id as string,
+    token,
+    as: (method: string, path: string, body?: unknown) => call(method, path, body, bearer(token)),
+  };
 }
 
 /** The first browser on the host: bootstraps with the access token and a key of its own. */
@@ -537,6 +565,155 @@ test('static files with SPA fallback; unknown api paths are JSON 404', async () 
   assert.match(await spa.text(), /<title>shub/);
   assert.equal((await call('GET', '/..%2fpackage.json')).status, 404);
   assert.equal((await call('GET', '/api/nope')).status, 404);
+});
+
+test('only you decide approvals: the CLI token and session tokens get 403', async () => {
+  const a = approvalsService.requestApproval({
+    requestedBy: 'session:s1',
+    action: 'session.start',
+    projectId: null,
+    summary: 'Start a session',
+    detail: 'rm -rf build',
+  });
+  // Sessions can read the access token the CLI uses, so neither may approve what a session asked for.
+  const session = services.auth.issueClientToken({ kind: 'session', id: 'session:s1', rights: [] });
+  for (const token of [accessToken, session]) {
+    const res = await call('POST', `/api/approvals/${a.id}`, { approve: true }, bearer(token));
+    assert.equal(res.status, 403);
+    assert.match((await res.json()).error, /only you/);
+  }
+  services.auth.revokeClientToken(session);
+  assert.equal(approvalsService.approvals()[0].state, 'pending');
+  const res = await asUser('POST', `/api/approvals/${a.id}`, { approve: false });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).state, 'rejected');
+});
+
+test('a Prompts phone sends named keys and single digits only; a session token drives no terminal', async () => {
+  const sent: string[][] = [];
+  const sendKeys = sessionsService.sendKeys;
+  sessionsService.sendKeys = (_id, keys) => void sent.push(keys);
+  try {
+    const phone = await approvedDevice('Pixel');
+    assert.equal((await phone.as('POST', '/api/sessions/s1/keys', { keys: ['ls\r'] })).status, 403);
+    assert.equal((await phone.as('POST', '/api/sessions/s1/keys', { keys: ['1', 'ls\r'] })).status, 403, 'all or none');
+    assert.equal((await phone.as('POST', '/api/sessions/s1/keys', { keys: ['1'] })).status, 200);
+    assert.equal((await phone.as('POST', '/api/sessions/s1/keys', { keys: 'Escape' })).status, 200);
+    assert.equal((await phone.as('POST', '/api/sessions/s1/paste', { text: 'ls' })).status, 403, 'no text either');
+    // At Control a phone types like the desktop.
+    assert.equal((await asUser('PATCH', `/api/devices/${phone.id}`, { level: 'control' })).status, 200);
+    assert.equal((await phone.as('POST', '/api/sessions/s1/keys', { keys: ['ls\r'] })).status, 200);
+    assert.deepEqual(sent, [['1'], ['Escape'], ['ls\r']]);
+    assert.equal((await asUser('DELETE', `/api/devices/${phone.id}`)).status, 200);
+
+    // A session types into no terminal, not even its own, and answers no prompt there.
+    const session = services.auth.issueClientToken({ kind: 'session', id: 'session:s1', rights: [] });
+    for (const [path, body] of [
+      ['/api/sessions/s1/keys', { keys: ['1'] }],
+      ['/api/sessions/s2/keys', { keys: ['1'] }],
+      ['/api/sessions/s2/paste', { text: 'ls' }],
+      ['/api/sessions/s2/command', { index: 0, action: 'run' }],
+    ] as const) {
+      assert.equal((await call('POST', path, body, bearer(session))).status, 403, path);
+    }
+    services.auth.revokeClientToken(session);
+    assert.equal(sent.length, 3);
+  } finally {
+    sessionsService.sendKeys = sendKeys;
+  }
+});
+
+test('a session token may not take a conversation over or link a non-web URL', async () => {
+  const session = services.auth.issueClientToken({ kind: 'session', id: 'session:s1', rights: [] });
+  const start = { kind: 'claude', projectId: null, resumeClaudeSessionId: 'c1', takeOver: true };
+  assert.equal((await call('POST', '/api/sessions', start, bearer(session))).status, 403);
+  services.auth.revokeClientToken(session);
+  const link = (url: string) => asUser('POST', '/api/sessions/s1/links', { label: 'MR', url });
+  assert.equal((await link('javascript:alert(1)')).status, 400);
+  assert.equal((await link('file:///etc/passwd')).status, 400);
+});
+
+test(
+  "a level lowered on another host closes the phone's sockets when it syncs here; only managers approve",
+  { timeout: 10_000 },
+  async () => {
+    const phone = await approvedDevice('Pixel');
+    assert.equal((await asUser('PATCH', `/api/devices/${phone.id}`, { level: 'control' })).status, 200);
+    assert.equal((await phone.as('POST', '/api/auth/pairing')).status, 200, 'Control makes codes');
+    const ws = new WebSocket(base.replace('http', 'ws') + '/api/events', ['shub', `bearer.${phone.token}`]);
+    await new Promise((resolve) => ws.once('message', resolve));
+    const closed = new Promise((resolve) => ws.once('close', resolve));
+
+    // The host-to-host sync merges the other host's newer item, then applies the group to the devices here.
+    const item = services.group.get(`device:${phone.id}`)!;
+    const lowered = {
+      ...item,
+      body: { ...(item.body as object), level: 'prompts' },
+      version: { ...item.version, b: 1 },
+    };
+    assert.equal(services.group.merge(lowered), 'newer');
+    services.auth.applyGroup();
+    await closed;
+    assert.equal((await (await phone.as('GET', '/api/auth/me')).json()).caller.level, 'prompts');
+    assert.equal((await phone.as('POST', '/api/auth/pairing')).status, 403);
+
+    // A browser at Control still is no manager: approving is for a trusted host or a Control phone.
+    const browser = await approvedDevice('Laptop', 'browser');
+    assert.equal((await asUser('PATCH', `/api/devices/${browser.id}`, { level: 'control' })).status, 200);
+    const res = await browser.as('POST', `/api/devices/${phone.id}/approve`, { confirm: true });
+    assert.equal(res.status, 403);
+    assert.match((await res.json()).error, /trusted host or from a phone at level Control/);
+    for (const id of [phone.id, browser.id]) assert.equal((await asUser('DELETE', `/api/devices/${id}`)).status, 200);
+  },
+);
+
+test('phone setup runs `tailscale serve` for you only, and says why it cannot', async () => {
+  const session = services.auth.issueClientToken({ kind: 'session', id: 'session:s1', rights: [] });
+  assert.equal((await call('GET', '/api/phone-setup', undefined, bearer(session))).status, 403);
+  assert.equal((await call('POST', '/api/phone-setup/serve', undefined, bearer(session))).status, 403);
+  services.auth.revokeClientToken(session);
+
+  // A fake `tailscale` first on PATH: its answers come from files in its folder, its serve calls are recorded.
+  const bin = mkdtempSync(join(tmpdir(), 'shub-tailscale-'));
+  const script = [
+    '#!/bin/sh',
+    'dir=$(dirname "$0")',
+    'case "$1 $2" in',
+    '  "status --json") cat "$dir/status.json" ;;',
+    '  "serve status") echo "{}" ;;',
+    '  "serve --bg") echo "$*" >> "$dir/served"; [ ! -f "$dir/denied" ] || { echo "access denied" >&2; exit 1; } ;;',
+    'esac',
+  ].join('\n');
+  writeFileSync(join(bin, 'tailscale'), script, { mode: 0o755 });
+  const status = (s: object) => writeFileSync(join(bin, 'status.json'), JSON.stringify(s));
+  const path = process.env.PATH;
+  process.env.PATH = `${bin}:${path}`;
+  const serve = async () => {
+    const res = await asUser('POST', '/api/phone-setup/serve');
+    return { status: res.status, body: await res.json() };
+  };
+  try {
+    status({ BackendState: 'Stopped' });
+    assert.deepEqual(await serve(), { status: 409, body: { error: 'Tailscale is not connected on this machine' } });
+    status({ BackendState: 'Running', Self: { DNSName: 'pc.tail1.ts.net.' }, CertDomains: [] });
+    assert.match((await serve()).body.error, /HTTPS certificates are off/);
+    status({ BackendState: 'Running', Self: { DNSName: 'pc.tail1.ts.net.' }, CertDomains: ['pc.tail1.ts.net'] });
+    writeFileSync(join(bin, 'denied'), '');
+    assert.match((await serve()).body.error, /sudo tailscale set --operator=\$USER/);
+    rmSync(join(bin, 'denied'));
+    const ok = await serve();
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.publicUrl, 'https://pc.tail1.ts.net');
+    // Tailnet only: serve, never funnel, and only to shub on loopback.
+    assert.deepEqual(
+      readFileSync(join(bin, 'served'), 'utf8').trim().split('\n').at(-1),
+      `serve --bg http://127.0.0.1:${ctx.port}`,
+    );
+  } finally {
+    process.env.PATH = path;
+    services.config.update((c) => delete c.publicUrl, 'test');
+    rmSync(bin, { recursive: true, force: true });
+  }
 });
 
 test('rotate signs out other devices but keeps the caller', async () => {
