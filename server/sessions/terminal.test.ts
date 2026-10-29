@@ -1,9 +1,39 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import type { WebSocket } from 'ws';
-import { keepAlive } from '../api/upgrade.ts';
-import { attachArgs, inbound, parseFollow } from './terminal.ts';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { WebSocket } from 'ws';
+import { installUpgrades, keepAlive } from '../api/upgrade.ts';
+import type { SessionsService } from './service.ts';
+import { attachArgs, attachTerminals, inbound, parseFollow } from './terminal.ts';
+
+test('a malformed terminal URL is a 400 and a failing handler a 500, not a crash', async () => {
+  const server = createServer();
+  installUpgrades(
+    server,
+    () => null,
+    () => ({ kind: 'user', id: 'chris', rights: [] }),
+  );
+  const get = (id: string) => {
+    if (id === 'boom') throw new Error('tmux failed');
+  };
+  attachTerminals(server, { get } as unknown as SessionsService);
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const status = (path: string) =>
+    new Promise<number>((resolve) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${(server.address() as AddressInfo).port}${path}`);
+      ws.on('unexpected-response', (_req, res) => resolve(res.statusCode ?? 0));
+      ws.on('error', () => resolve(0));
+    });
+  try {
+    assert.equal(await status('/api/terminals/%E0%A4%A'), 400);
+    assert.equal(await status('/api/terminals/boom'), 500);
+    assert.equal(await status('/api/terminals/nope'), 404, 'the server still answers');
+  } finally {
+    server.close();
+  }
+});
 
 test('only a follow client attaches with ignore-size', () => {
   assert.deepEqual(attachArgs('s', 'n', false), ['-L', 's', 'attach-session', '-t', '=n']);
