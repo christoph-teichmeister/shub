@@ -36,3 +36,21 @@ test('noteUrl links existing notes inside the knowledge base only', () => {
     rmSync(outside, { recursive: true });
   }
 });
+
+test('noteFile opens Claude scratchpad drafts but not other files in tmp', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'tmp-test-'));
+  try {
+    const dir = join(tmp, `claude-${process.getuid?.()}`, 'proj', 'scratchpad');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'draft.md'), 'x');
+    writeFileSync(join(tmp, 'other.md'), 'x');
+    const env = { KB_DIR: join(tmp, 'no-kb'), KB_NOTE_URL: 'https://ha/kb/notes/{path}' };
+
+    assert.equal(noteFile(join(dir, 'draft.md'), env, tmp, tmp)?.file.endsWith('scratchpad/draft.md'), true);
+    assert.equal(noteFile(join(tmp, 'other.md'), env, tmp, tmp), null);
+    assert.equal(noteFile(join(dir, '..', '..', '..', 'other.md'), env, tmp, tmp), null);
+    assert.equal(noteUrl(join(dir, 'draft.md'), env, tmp), null);
+  } finally {
+    rmSync(tmp, { recursive: true });
+  }
+});
