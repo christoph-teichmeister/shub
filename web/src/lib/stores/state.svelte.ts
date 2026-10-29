@@ -18,6 +18,7 @@ import type {
 } from '../../../../shared/api.ts';
 import { API_VERSION, TERMINAL_SETTINGS_DEFAULTS, terminalSettingsError } from '../../../../shared/api.ts';
 import { newlyMerged } from '../children.ts';
+import { placeSessions } from '../status.ts';
 import { applyTheme, findTheme } from '../tokens/tokens.ts';
 import { api, ApiError, wsTarget } from './api.ts';
 import { href } from './router.svelte.ts';
@@ -170,6 +171,21 @@ export function rolledUp(s: Session): Session {
     kids.find((k) => k.status === 'needs-you') ??
     (s.status !== 'needs-you' && s.status !== 'working' ? kids.find((k) => k.status === 'working') : undefined);
   return hot ? { ...s, status: hot.status } : s;
+}
+
+/** Sidebar order, where a pane that needs you counts for its session; the sessions themselves stay as they are. */
+export const placeRolled = (list: Session[]) =>
+  placeSessions(list.map(rolledUp)).map((r) => list.find((s) => s.id === r.id)!);
+
+/** Pins a session below the project's pinned ones. */
+export function pinSession(s: Session) {
+  const last = Math.max(-1, ...sessionsOf(s.projectId).map((x) => x.position ?? -1));
+  s.position = last + 1;
+  void api('sessionsReorder', { body: { positions: { [s.id]: s.position } } }).catch(toastError);
+}
+export function unpinSession(s: Session) {
+  s.position = null;
+  void api('sessionsReorder', { body: { positions: { [s.id]: null } } }).catch(toastError);
 }
 
 function guard<T>(p: Promise<T>): Promise<T | undefined> {
