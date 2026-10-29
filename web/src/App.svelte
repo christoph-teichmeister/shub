@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Toast from './lib/components/Toast/Toast.svelte';
   import UpdateCurtain from './lib/components/UpdateCurtain/UpdateCurtain.svelte';
+  import { api } from './lib/stores/api.ts';
   import { select } from './lib/stores/device.ts';
   import { checkAppUpdate } from './lib/stores/loader.ts';
   import { fleet, loadMachines } from './lib/stores/machines.svelte.ts';
@@ -54,7 +55,18 @@
       if (s) go(...(s.projectId ? ['p', s.projectId, s.id] : ['g']));
     });
     const stopEvents = connectEvents();
+    // The desktop UI tells the server it is in use (window focused, input in the last 5 min): the phone gets no push then.
+    let lastInput = Date.now();
+    const onInput = () => (lastInput = Date.now());
+    const events = ['keydown', 'pointerdown', 'pointermove', 'wheel'] as const;
+    for (const e of events) addEventListener(e, onInput, { passive: true });
+    const beat = () =>
+      !ui.phone && document.hasFocus() && Date.now() - lastInput < 5 * 60_000 && void api('presence').catch(() => {});
+    const beatTimer = setInterval(beat, 30_000);
+    beat();
     return () => (
+      clearInterval(beatTimer),
+      events.forEach((e) => removeEventListener(e, onInput)),
       clearInterval(appTimer),
       clearInterval(childTimer),
       stopEvents(),

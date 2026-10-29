@@ -556,6 +556,7 @@ export const ROUTE_LEVELS: Partial<Record<keyof typeof ROUTES, DeviceLevel>> = {
   deviceDelete: 'view', // revoke works from any trusted device
   pushSubscribe: 'view',
   pushTest: 'view',
+  presence: 'view',
   approvalDecide: 'prompts',
   sessionCommand: 'prompts', // by index only: runs a command Claude handed over, never text from the phone
   sessionKeys: 'prompts', // prompts: named keys and single digits only, see sessions
@@ -781,6 +782,7 @@ export const ROUTES = {
   pushKey: 'GET /api/push/key',
   pushSubscribe: 'POST /api/push/subscribe',
   pushTest: 'POST /api/push/test',
+  presence: 'POST /api/presence', // the desktop UI is in use right now: no phone push for a while -> { ok }
 
   eventsStream: 'GET /api/events/stream', // Server-Sent Events twin of the /api/events WebSocket
 
