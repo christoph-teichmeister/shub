@@ -343,6 +343,12 @@
     else void loadConfig();
   }
 
+  async function setTrustSessions(trustSessions: boolean) {
+    const config = await api<Config>('settings', { body: { trustSessions } }).catch(toastError);
+    if (config) app.config = config;
+    else void loadConfig();
+  }
+
   async function newCode() {
     pairing = (await api<typeof pairing>('pairingStart').catch(toastError)) ?? null;
   }
@@ -749,6 +755,16 @@
           </ChoiceButton>
         {/each}
       </div>
+    </Section>
+    <Section
+      title="Sessions may act without asking"
+      description="A project session can start sessions and change projects, buttons and links without an approval. Still one level deep and limited to 5 starts an hour. Stays on this machine."
+    >
+      <Checkbox
+        label="Skip the approval"
+        checked={!!app.config?.trustSessions}
+        onchange={(e) => setTrustSessions(e.currentTarget.checked)}
+      />
     </Section>
   </div>
 

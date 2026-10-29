@@ -410,7 +410,14 @@ function settingsRoutes(services: Services, router: Router): void {
         Partial<
           Pick<
             Config,
-            'activeTheme' | 'notifications' | 'groups' | 'defaultPermissionMode' | 'activeGroup' | 'terminal' | 'sync'
+            | 'activeTheme'
+            | 'notifications'
+            | 'groups'
+            | 'defaultPermissionMode'
+            | 'activeGroup'
+            | 'terminal'
+            | 'sync'
+            | 'trustSessions'
           >
         >
       >();
@@ -422,6 +429,8 @@ function settingsRoutes(services: Services, router: Router): void {
     if (body.defaultPermissionMode !== undefined && !isLaunchPermissionMode(body.defaultPermissionMode)) {
       bad('unknown permission mode');
     }
+    if (body.trustSessions !== undefined && typeof body.trustSessions !== 'boolean')
+      bad('trustSessions must be true or false');
     if (body.activeGroup !== undefined && typeof body.activeGroup !== 'boolean')
       bad('activeGroup must be true or false');
     if (body.terminal !== undefined) {
@@ -445,6 +454,7 @@ function settingsRoutes(services: Services, router: Router): void {
       if (body.notifications !== undefined) Object.assign(c.notifications, body.notifications);
       if (body.defaultPermissionMode !== undefined) c.defaultPermissionMode = body.defaultPermissionMode;
       if (body.activeGroup !== undefined) c.activeGroup = body.activeGroup;
+      if (body.trustSessions !== undefined) c.trustSessions = body.trustSessions;
       if (body.sync !== undefined) c.sync = { ...c.sync, ...body.sync };
       if (body.terminal !== undefined) {
         // null resets a field to its default.

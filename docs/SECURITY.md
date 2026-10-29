@@ -75,7 +75,7 @@ Every decision is `allow`, `ask` (an approval card on the desktop and a push on 
 - **user** may do everything. Only `user` can decide approvals, not even `cli`: the token file is readable by any process of your user, a device key is not.
 - **cli** is like the user, except that it cannot decide approvals, its `buttons.write` asks and its session starts count towards the rate limit.
 - **global-claude** may write projects and start sessions. A start through a configured button with simple input is allowed; a free prompt (or a button with non-simple input) asks.
-- **session** is read-only. Every write (session start, `projects.write`, `buttons.write`, a link on another session) asks; the one direct write is a link on its own tab (`shub session link`, e.g. its MR).
+- **session** is read-only. Every write (session start, `projects.write`, `buttons.write`, a link on another session) asks; the one direct write is a link on its own tab (`shub session link`, e.g. its MR). Settings > "Sessions may act without asking" (`trustSessions`, local.json, off by default) turns these asks into allows; the rate limit, one level deep and everything for other callers stay.
 - **spawned-session** may not write at all (deny). Sessions are "one level deep": a session started by a session cannot start more.
 - **plugin** gets only rights its manifest requested and you granted; anything else is denied. A session start with a free prompt asks (needs `sessions.start`); a button start with simple input is allowed with `sessions.start.button`. `buttons.write` asks even when granted.
 - **buttons.write** from anyone but the user always asks (or is denied, see above). The approval shows a diff of the button prompts, because a button prompt later runs without a second look.

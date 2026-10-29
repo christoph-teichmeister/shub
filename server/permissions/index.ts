@@ -85,7 +85,11 @@ export function create(
         action.kind === 'session.start' && action.request.buttonId !== undefined && action.request.projectId
           ? services.config.project(action.request.projectId)?.buttons.find((b) => b.id === action.request.buttonId)
           : undefined;
-      const decision = decide(caller, action, { recentAutoStarts: n, button });
+      const decision = decide(caller, action, {
+        recentAutoStarts: n,
+        button,
+        trustSessions: services.config.get().trustSessions,
+      });
       if (action.kind === 'session.start' && decision.outcome === 'allow' && caller.kind !== 'user') {
         db().prepare('INSERT INTO auto_starts (at) VALUES (?)').run(now);
       }
