@@ -2,9 +2,10 @@
 import { createReadStream, existsSync } from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import { ROUTES, type SessionKind, type SessionLink, type StartSessionRequest } from '../../shared/api.ts';
-import { HttpError, requireRight, requireUser, sendJson, type Caller, type Router } from '../api/router.ts';
+import { HttpError, isUser, requireRight, requireUser, sendJson, type Caller, type Router } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
+import { approvalGate } from '../permissions/gate.ts';
 import type { Services } from '../services.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
 import { chatSince, followTranscript } from './chat.ts';
@@ -45,8 +46,6 @@ function parseStart(body: Partial<StartSessionRequest>): StartSessionRequest {
   return { ...body, projectId: typeof body.projectId === 'string' ? body.projectId : null } as StartSessionRequest;
 }
 
-const isUser = (caller: Caller): boolean => caller.kind === 'user' || caller.kind === 'cli';
-
 async function startRoute(
   sessions: SessionsService,
   services: Services,
@@ -65,30 +64,21 @@ async function startRoute(
     if (!(await listWorktrees(project.path)).some((w) => cwd === w.path || cwd.startsWith(`${w.path}/`)))
       throw new HttpError(400, `not inside a worktree of ${project.name}: ${cwd}`);
   }
-  const decision = services.permissions.decide(caller, {
-    kind: 'session.start',
-    request,
-    viaButton: !!request.buttonId,
-    simpleInput: isSimpleInput(request.input),
-  });
-  if (decision.outcome === 'deny') throw new HttpError(403, decision.reason);
-  if (decision.outcome === 'allow') return sessions.start(request, caller.id, isUser(caller));
-
-  const approval = services.permissions.requestApproval({
-    requestedBy: caller.id,
-    action: 'session.start',
-    projectId: request.projectId,
-    summary: `Start ${button ? `"${button.label}"` : 'a session'} in ${project?.name ?? 'global'} (${decision.reason})`,
-    detail: button
-      ? buttonPrompt(button, request.input)
-      : (request.prompt ?? (request.resumeClaudeSessionId ? `resume ${request.resumeClaudeSessionId}` : '')),
-  });
-  services.permissions
-    .waitForDecision(approval.id)
-    .then(async (approved) => {
-      if (approved) await sessions.start(request, caller.id);
-    })
-    .catch((err) => console.error('shub: approved session start failed', err));
+  const approval = approvalGate(
+    services.permissions,
+    caller,
+    [{ kind: 'session.start', request, viaButton: !!request.buttonId, simpleInput: isSimpleInput(request.input) }],
+    (reason) => ({
+      action: 'session.start',
+      projectId: request.projectId,
+      summary: `Start ${button ? `"${button.label}"` : 'a session'} in ${project?.name ?? 'global'} (${reason})`,
+      detail: button
+        ? buttonPrompt(button, request.input)
+        : (request.prompt ?? (request.resumeClaudeSessionId ? `resume ${request.resumeClaudeSessionId}` : '')),
+    }),
+    () => sessions.start(request, caller.id),
+  );
+  if (!approval) return sessions.start(request, caller.id, isUser(caller));
   sendJson(res, 202, { approval });
 }
 

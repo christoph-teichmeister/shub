@@ -7,7 +7,6 @@ import {
   ROUTES,
   SYNC_CATEGORIES,
   terminalSettingsError,
-  type Approval,
   type ButtonDef,
   type ChildWorktree,
   type Config,
@@ -21,7 +20,8 @@ import {
 import { remoteIcon } from '../config/index.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
-import { HttpError, requireRight, requireUser, type Caller, type Request, type Router } from '../api/router.ts';
+import { HttpError, requireRight, requireUser, type Request, type Router } from '../api/router.ts';
+import { gate } from '../permissions/gate.ts';
 import type { PermissionAction, Services } from '../services.ts';
 import { importCandidates } from './import.ts';
 import { updateMainCheckout } from './main-checkout.ts';
@@ -36,43 +36,6 @@ import {
 } from './children.ts';
 import { listWorktrees, pruneWorktrees, removeWorktree, worktreeOverview } from './worktrees.ts';
 import { isLaunchPermissionMode } from '../sessions/launch.ts';
-
-type Gated<T> = T | { approval: Approval };
-
-interface ApprovalInfo {
-  action: Approval['action'];
-  projectId: string | null;
-  summary: string;
-  detail: string;
-}
-
-/**
- * Runs `apply` when every action is allowed; on "ask" it files one approval and applies once the user approves.
- * The most restrictive decision wins.
- */
-function gate<T>(
-  services: Services,
-  caller: Caller,
-  actions: PermissionAction[],
-  info: ApprovalInfo,
-  apply: () => T,
-): Gated<T> {
-  const decisions = actions.map((a) => services.permissions.decide(caller, a));
-  const denied = decisions.find((d) => d.outcome === 'deny');
-  if (denied && denied.outcome === 'deny') throw new HttpError(403, denied.reason);
-  const run = () => {
-    const result = apply();
-    services.permissions.log({ actor: caller.id, action: info.action, detail: info.summary });
-    return result;
-  };
-  if (!decisions.some((d) => d.outcome === 'ask')) return run();
-  const approval = services.permissions.requestApproval({ requestedBy: caller.id, ...info });
-  services.permissions
-    .waitForDecision(approval.id)
-    .then((ok) => ok && run())
-    .catch((err) => console.error('shub: approved change failed', err));
-  return { approval };
-}
 
 const VISIBILITIES: Visibility[] = ['pinned', 'dormant'];
 const ASKS: ButtonDef['ask'][] = ['nothing', 'text', 'number', 'pick-worktree'];

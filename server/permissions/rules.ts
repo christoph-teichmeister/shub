@@ -2,7 +2,7 @@
 // rate-limit count and the button the request refers to.
 import { PROMPT_SKIPPING_MODES } from '../../shared/api.ts';
 import type { ButtonDef, ClientKind, Decision, Right } from '../../shared/api.ts';
-import type { Caller } from '../api/router.ts';
+import { isUser, type Caller } from '../api/router.ts';
 import type { PermissionAction } from '../services.ts';
 
 // A Record keyed by Right makes tsc fail when a new Right is added to shared/api.ts but not here.
@@ -65,22 +65,18 @@ export function decide(caller: Caller, action: PermissionAction, env: DecideEnv)
       }
       return decideByRight(caller, 'buttons.write', 'ask');
     case 'projects.delete':
-      return isHuman(caller) ? allow : deny('only you can delete projects');
+      return isUser(caller) ? allow : deny('only you can delete projects');
     case 'session.close':
-      if (isHuman(caller) || caller.id === `session:${action.sessionId}`) return allow;
+      if (isUser(caller) || caller.id === `session:${action.sessionId}`) return allow;
       return deny('only you can close another session');
     case 'session.link':
       // A session may pin links to its own tab (e.g. its MR); other sessions' tabs still go by the right.
       if (caller.kind === 'session' && caller.id === `session:${action.sessionId}`) return allow;
       return decideByRight(caller, 'sessions.link', 'allow');
     case 'ui.contribute':
-      if (caller.kind !== 'plugin') return isHuman(caller) ? allow : deny('only plugins contribute UI');
+      if (caller.kind !== 'plugin') return isUser(caller) ? allow : deny('only plugins contribute UI');
       return caller.rights.includes('ui.contribute') ? allow : deny('right ui.contribute not granted');
   }
-}
-
-function isHuman(caller: Caller): boolean {
-  return caller.kind === 'user' || caller.kind === 'cli';
 }
 
 /** Writes other than session starts: user/cli allowed, global Claude only projects.write, sessions ask, plugins by grant. */
