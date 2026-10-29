@@ -28,7 +28,11 @@ shub listens on `127.0.0.1:4780` only; phones reach it through `tailscale serve`
 - `POST /api/auth/rotate` writes a new access token to the file and signs out every device except the caller's.
   Client tokens stay valid. The response `{ok, token, tokenFile}` is the only place the new token is shown
   (`no-store`, never logged); afterwards it is only in the file.
-- `GET /api/auth/me` returns `{caller, device}`; `POST /api/auth/logout` removes the caller's device.
+- Signing in: `POST /api/auth/challenge {deviceId}` returns `{nonce}` (409 while the device waits for approval); the
+  device signs `shub-login:<nonce>` with its key and `POST /api/auth/session {deviceId, nonce, signature}` returns a
+  short-lived `{token, expiresAt}` for `Authorization: Bearer` (and the WebSocket subprotocol `bearer.<token>`).
+- `GET /api/auth/me` returns `{caller, device, local}` (`local`: this device may approve and set levels);
+  `POST /api/auth/logout` removes the caller's device.
 - Rights of every caller come from the permission module at request time (`docs/SECURITY.md`).
   Routes that change things go through `permissions.decide`; an "ask" decision answers `200 {approval}` and the
   change is applied once the user approves it.
@@ -36,9 +40,14 @@ shub listens on `127.0.0.1:4780` only; phones reach it through `tailscale serve`
 ### Request guard
 
 - `Host` must be `127.0.0.1:<port>`, `localhost:<port>` or the host of `SHUB_PUBLIC_URL`, else `403` (DNS rebinding).
-- A foreign `Origin` is always refused. Bearer clients send none.
-- No login needed: `GET /api/health`, `POST /api/auth/login`, `POST /api/auth/pairing/redeem`, the static web app.
-  `/api/hooks/*` and `/api/guard` authenticate with the session's client token instead of a cookie.
+- A foreign `Origin` is refused, except the app origins of devices paired from another machine's shub and the URLs
+  of the group's hosts; `GET /api/health` and `POST /api/auth/pairing/redeem` take any origin. Bearer clients send
+  none.
+- No login needed: `GET /api/health`, `GET /api/bundle`, `POST /api/auth/bootstrap` (loopback only, needs the access
+  token), `POST /api/auth/challenge`, `POST /api/auth/session`, `POST /api/auth/pairing/redeem`, the host-to-host
+  sync routes `POST /api/group/challenge|session|pull|push|manifest|chunk` (they check the host's key and group
+  token themselves) and the static web app.
+- `/api/hooks/*` and `/api/guard` take the session's client token and answer only shub sessions.
 
 ## Requests and errors
 
@@ -52,14 +61,14 @@ All routes are in `ROUTES` in `shared/api.ts`. Notes on the ones that are not ob
 
 | Route                             | Body / result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/health`                 | `{ok, version, apiVersion}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `GET /api/health`                 | `{ok, version, apiVersion, machine}`                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `GET /api/config`                 | `Config` (needs `read`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `GET /api/projects`               | `ProjectView[]`, sorted by `order`; `resolvedIcon` from the git remote for `auto` icons; `remoteUrl` is the `origin` remote as a browser URL, when there is one; `accent` is the symbol colour or `#f92672`, never the status orange                                                                                                                                                                                                                                                           |
 | `POST /api/projects`              | `{name, path, group?, visibility?, icon?, buttons?, create?}` -> `ProjectView`; `path` must be an existing absolute folder, or with `create: true` a missing one, which shub creates (`mkdir -p`) and runs `git init` in once the change is allowed; an `image` icon's `path` is a `data:image/` or `https://` URL; new groups are added to `groups`                                                                                                                                           |
 | `PATCH /api/projects/:id`         | any of the same fields plus `mainCheckout` (`{branch, updateMinutes}` with 0 to 1440, `null` switches it off); changing `buttons` is also checked as `buttons.write`                                                                                                                                                                                                                                                                                                                           |
 | `POST /api/projects/reorder`      | `{ids: string[]}` -> `ProjectView[]`; unlisted projects keep their relative order after the listed ones                                                                                                                                                                                                                                                                                                                                                                                        |
 | `DELETE /api/projects/:id`        | removes the entry only, never the folder                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `GET /api/projects/import`        | `{path, name, sessions, lastUsedAt, suggested: 'pinned'                                                                                                                                                                                                                                                                                                                                                                                                                                        | 'dormant', resolvedIcon}[]`from`~/.claude/projects`; worktrees merged, configured and vanished paths left out; pinned = used in the last 14 days |
+| `GET /api/projects/import`        | `{path, name, sessions, lastUsedAt, suggested: 'pinned'\|'dormant', resolvedIcon}[]` from `~/.claude/projects`; worktrees merged, configured and vanished paths left out; pinned = used in the last 14 days                                                                                                                                                                                                                                                                                    |
 | `GET /api/folders`                | user only: `?path=` (absolute, default home) -> `{path, parent, folders}`, the non-hidden subfolders on the shub machine, for the folder picker                                                                                                                                                                                                                                                                                                                                                |
 | `PUT /api/themes/:id`             | `{name, base?, tokens}` -> `ThemeDef`; built-in themes (`monokai`, `dracula`, `neutral-dark`) are read-only                                                                                                                                                                                                                                                                                                                                                                                    |
 | `PATCH /api/settings`             | `{activeTheme?, groups?, notifications?, defaultPermissionMode?, activeGroup?, trustSessions?}` -> `Config`                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -98,7 +107,9 @@ Other modules add their own WebSocket paths (e.g. `/api/terminals/:id`) through 
 
 ## CLI
 
-`shub status | project list|show|add | session list|start|status | open`, `--json` for machine output,
-`--help` per command. Talks to `SHUB_URL` (default `http://127.0.0.1:4780`) with `SHUB_TOKEN` or the token file.
-Installed with the launcher (`launcher/`), `shub` is the launcher: it handles `start`, `install`, `update`,
-`rollback`, `service` and `doctor` and passes every other command to this CLI of the installed version.
+`shub status | open | project list|show|add | session list|start|status|rename|wait|ready|link|close | claude |
+device list|approve|level|remove | plugin add|list|enable|update|remove`, `--json` for machine output, `--help` per
+command (`shub --help` lists them all). Talks to `SHUB_URL` (default `http://127.0.0.1:4780`) with `SHUB_TOKEN` or
+the token file. Installed with the launcher (`launcher/`), `shub` is the launcher: it handles `start`, `install`,
+`update`, `rollback`, `service`, `token` and `doctor` and passes every other command to this CLI of the installed
+version.

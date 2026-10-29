@@ -10,6 +10,7 @@ own process with its own token; the plugin can only do what its manifest request
 shub plugin add <git-url>                 # clone, validate, install disabled with no rights
 shub plugin list
 shub plugin enable <name> --grant read,ui.contribute
+shub plugin update [name]                 # pull the newest version of one or all plugins and restart them
 shub plugin remove <name>                 # asks first, stops it, deletes its folder
 ```
 
