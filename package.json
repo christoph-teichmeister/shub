@@ -40,7 +40,7 @@
     "stylelint-config-standard": "^40.0.0",
     "svelte": "^5.57.2",
     "svelte-check": "^4.7.7",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.3",
     "vite": "^6.4.4"
   },
   "engines": {
