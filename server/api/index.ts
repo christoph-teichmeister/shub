@@ -194,8 +194,16 @@ export async function listen(ctx: Context, services: Services, modules: ShubModu
   });
   for (const m of modules) m.routes?.(router);
 
-  // Per request: the phone setup can set the public URL while shub runs.
-  const allowed = () => allowList(ctx.port, publicUrl(services.config.get()), services.auth.appOrigins());
+  // Built once and again after what it is made of changes: the public URL (the phone setup sets it while shub runs),
+  // the devices' app origins and the group's host URLs.
+  let cached: Allowed | undefined;
+  const allowed = () => (cached ??= allowList(ctx.port, publicUrl(services.config.get()), services.auth.appOrigins()));
+  ctx.bus.on((e) => {
+    if (e.type === 'config.changed' || e.type === 'devices.changed') cached = undefined;
+  });
+  services.group.onChange((key) => {
+    if (key.startsWith('device:')) cached = undefined;
+  });
   const distDir = join(ctx.paths.appDir, 'web', 'dist');
   const server = createServer((req, res) => {
     handle(router, services, distDir, allowed(), req, res).catch((err) => sendError(res, err));
