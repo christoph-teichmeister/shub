@@ -41,6 +41,17 @@ test('user may do everything', () => {
   }
 });
 
+test("trustSessions turns a session's asks into allows, keeps the limit and one level deep", () => {
+  const s = caller('session');
+  const trust = { ...env, trustSessions: true };
+  assert.equal(outcome(s, freePrompt), 'ask');
+  assert.equal(outcome(s, freePrompt, trust), 'allow');
+  assert.equal(outcome(s, { kind: 'buttons.write' } as PermissionAction, trust), 'allow');
+  assert.equal(outcome(s, freePrompt, { ...trust, recentAutoStarts: AUTO_START_LIMIT }), 'ask');
+  assert.equal(outcome(caller('spawned-session'), freePrompt, trust), 'deny');
+  assert.equal(outcome(caller('plugin'), freePrompt, trust), 'deny');
+});
+
 test('user is not rate limited', () => {
   assert.equal(outcome(caller('user'), freePrompt, { ...env, recentAutoStarts: 99 }), 'allow');
 });

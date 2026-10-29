@@ -346,6 +346,7 @@ export class SessionsService implements Sessions {
               button,
               this.#services.config.get().defaultPermissionMode,
               byUser || request.kind === 'global',
+              !!this.#services.config.get().trustSessions && startedBy.startsWith('session:'),
             ),
         startedBy,
         parent?.id ?? null,

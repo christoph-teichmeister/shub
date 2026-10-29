@@ -110,6 +110,9 @@ export interface Config {
   /** What happens when a newer release is out: "auto" installs it, "ask" shows it in
    *  Settings, "off" stops the hourly check ("Check now" still works). Absent: "ask". */
   updateMode?: UpdateMode;
+  /** Project sessions may start sessions and change projects/buttons/links without asking (still one level deep,
+   *  still rate limited); local.json. Absent: false. */
+  trustSessions?: boolean;
   /** https address the phone reaches shub at (the `tailscale serve` name); local.json. SHUB_PUBLIC_URL wins. */
   publicUrl?: string;
   /** What this host syncs with the device group; local.json. A missing category is on, except pluginEnv. */

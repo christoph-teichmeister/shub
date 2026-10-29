@@ -30,6 +30,8 @@ export interface DecideEnv {
   recentAutoStarts: number;
   /** The button a session.start refers to, if it exists. */
   button?: ButtonDef;
+  /** Settings > "Sessions may act without asking": a project session's `ask` becomes `allow` (and its starts run in bypassPermissions). */
+  trustSessions?: boolean;
 }
 
 const allow: Decision = { outcome: 'allow' };
@@ -52,9 +54,19 @@ export function rightsFor(kind: ClientKind, granted: Right[] = []): Right[] {
 }
 
 export function decide(caller: Caller, action: PermissionAction, env: DecideEnv): Decision {
+  const decision = trusted(caller, decideBase(caller, action, env), env);
+  // The rate limit stays on, so a runaway session still ends up at an approval.
+  return action.kind === 'session.start' ? limitAutoStarts(caller, decision, env) : decision;
+}
+
+function trusted(caller: Caller, decision: Decision, env: DecideEnv): Decision {
+  return env.trustSessions && caller.kind === 'session' && decision.outcome === 'ask' ? allow : decision;
+}
+
+function decideBase(caller: Caller, action: PermissionAction, env: DecideEnv): Decision {
   switch (action.kind) {
     case 'session.start':
-      return limitAutoStarts(caller, decideStart(caller, action, env), env);
+      return decideStart(caller, action, env);
     case 'projects.write':
       return decideByRight(caller, 'projects.write', 'allow');
     case 'buttons.write':

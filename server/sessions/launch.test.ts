@@ -51,6 +51,10 @@ test('permission modes: button wins, lock stays default, only the user gets the 
   assert.equal(permissionModeFor(button({ permissionMode: 'plan' }), 'auto', true), 'plan');
   assert.equal(permissionModeFor(button({ lockDefaultMode: true }), 'auto', true), 'default');
   assert.equal(permissionModeFor(button({ lockDefaultMode: true }), 'inherit', true), 'default');
+  // trusted session starts bypass; a button's mode and the lock still win
+  assert.equal(permissionModeFor(undefined, 'default', false, true), 'bypassPermissions');
+  assert.equal(permissionModeFor(button({ permissionMode: 'plan' }), 'default', false, true), 'plan');
+  assert.equal(permissionModeFor(button({ lockDefaultMode: true }), 'default', false, true), 'default');
 });
 
 test('auto names', () => {
