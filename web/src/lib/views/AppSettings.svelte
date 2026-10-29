@@ -758,7 +758,7 @@
     </Section>
     <Section
       title="Sessions may act without asking"
-      description="A project session can start sessions and change projects, buttons and links without an approval. Still one level deep and limited to 5 starts an hour. Stays on this machine."
+      description="A project session can start sessions and change projects, buttons and links without an approval. Sessions they start run with bypass permissions on. Still one level deep and limited to 5 starts an hour. Stays on this machine."
     >
       <Checkbox
         label="Skip the approval"

@@ -22,14 +22,16 @@ export function buttonPrompt(button: ButtonDef, input = ''): string {
 /**
  * A locked button never runs outside default; otherwise a button's own mode wins. Without one, only the user
  * (and the global Claude) get the app setting, so sessions and plugins never inherit a prompt-skipping mode.
+ * Exception: with "Sessions may act without asking" on, a session's own start runs in bypassPermissions.
  */
 export function permissionModeFor(
   button: ButtonDef | undefined,
   setting: LaunchPermissionMode = 'default',
   byUser = false,
+  trustedSession = false,
 ): LaunchPermissionMode {
   if (button?.lockDefaultMode) return 'default';
-  return button?.permissionMode ?? (byUser ? setting : 'default');
+  return button?.permissionMode ?? (byUser ? setting : trustedSession ? 'bypassPermissions' : 'default');
 }
 
 export function isPermissionMode(value: unknown): value is PermissionMode {

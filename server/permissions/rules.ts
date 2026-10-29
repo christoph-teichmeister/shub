@@ -30,7 +30,7 @@ export interface DecideEnv {
   recentAutoStarts: number;
   /** The button a session.start refers to, if it exists. */
   button?: ButtonDef;
-  /** Settings > "Sessions may act without asking": a project session's `ask` becomes `allow`. */
+  /** Settings > "Sessions may act without asking": a project session's `ask` becomes `allow` (and its starts run in bypassPermissions). */
   trustSessions?: boolean;
 }
 
