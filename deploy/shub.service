@@ -12,7 +12,6 @@ After=network.target
 Type=simple
 WorkingDirectory=%h/PycharmProjects/private/shub
 ExecStart=/usr/bin/env node %h/PycharmProjects/private/shub/server/main.ts
-Environment=NODE_ENV=production
 # Environment=SHUB_PORT=4780
 # Environment=SHUB_PUBLIC_URL=https://<machine>.<tailnet>.ts.net
 Restart=on-failure
