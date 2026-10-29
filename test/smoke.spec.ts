@@ -1776,6 +1776,22 @@ test('phone offers push once, and Not now keeps it away', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('phone keeps the message when sending it failed', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { errors } = await mockApi(page, {
+    '/api/sessions': [session],
+    'POST /api/sessions/s1/keys': { status: 503, json: { error: 'tmux is gone' } },
+  });
+  await page.goto('/#/p/ai-portal/s1');
+  await page.getByRole('button', { name: 'Show terminal' }).click(); // Claude sessions open as a chat on the phone
+  const field = page.getByLabel('Message to Claude');
+  await field.fill('run the tests');
+  await field.press('Enter');
+  await expect(page.getByText('tmux is gone')).toBeVisible();
+  await expect(field).toHaveValue('run the tests');
+  expect(errors.filter((e) => !e.includes('503'))).toEqual([]);
+});
+
 test('phone toast sits at the top and the message field is 16 px, so iOS does not zoom', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const { errors } = await mockApi(page, { '/api/sessions': [session] });

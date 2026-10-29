@@ -142,10 +142,13 @@ export async function closeSession(id: string): Promise<void> {
   });
 }
 
-/** Sends tmux keys: named keys (Escape, C-c, Up, Down, Tab, Enter) or literal text. */
-export const sendKeys = (id: string, keys: string[]) => (
+/** Sends tmux keys: named keys (Escape, C-c, Up, Down, Tab, Enter) or literal text; false (toasted) when they failed. */
+export const sendKeys = (id: string, keys: string[]): Promise<boolean> => (
   markTerminalUse(),
-  api('sessionKeys', { params: { id }, body: { keys } }).catch(toastError)
+  api('sessionKeys', { params: { id }, body: { keys } }).then(
+    () => true,
+    (err: unknown) => (toastError(err), false),
+  )
 );
 
 /** Sends /compact; the sidebar menu and the village offer it from COMPACT_AT, on your turn. */
