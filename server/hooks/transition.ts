@@ -28,6 +28,7 @@ export const HOOK_EVENTS = [
   'SessionStart',
   'SubagentStart',
   'SubagentStop',
+  'PostCompact',
 ] as const;
 export type HookEvent = (typeof HOOK_EVENTS)[number];
 
@@ -46,7 +47,6 @@ export const LAUNCH_HOOK_EVENTS: readonly string[] = [
   'SessionEnd',
   'StopFailure',
   'PreCompact',
-  'PostCompact',
   'PreModelSwitch',
   'PostModelSwitch',
   'PermissionDenied',
@@ -262,6 +262,7 @@ export function transition(
     case 'SessionStart':
     case 'SubagentStart':
     case 'SubagentStop':
+    case 'PostCompact':
       return null;
   }
 }
