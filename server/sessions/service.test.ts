@@ -1,5 +1,5 @@
 // Runs real tmux on a test-only socket (shub-test-<pid>) with bash instead of claude; kills only that server.
-import { after, before, test } from 'node:test';
+import { after, before, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -551,4 +551,20 @@ test('a pause still follows when the fill drops before the compact turn ends', a
   svc.setStatus(s.id, 'your-turn'); // its Stop hook
   assert.equal(svc.get(s.id)?.status, 'paused', 'paused once the turn ended');
   svc.close(s.id, 'chris');
+});
+
+test('stop clears the reconcile timer even after a second startup', () => {
+  svc.stop(); // the real timer from the reboot test; the mocked clearInterval below cannot clear it
+  mock.timers.enable({ apis: ['setInterval'] });
+  const reconcile = mock.method(svc, 'reconcile', () => {});
+  try {
+    svc.startup();
+    svc.startup();
+    svc.stop();
+    mock.timers.tick(10_000);
+    assert.equal(reconcile.mock.callCount(), 0, 'no timer left running after stop');
+  } finally {
+    reconcile.mock.restore();
+    mock.timers.reset();
+  }
 });
