@@ -59,7 +59,8 @@ export class HostSync {
   #out = new Map<string, string>(); // tokens we hold for other hosts, by their id
   #status = new Map<string, Pick<HostPeer, 'state' | 'since'>>();
   #dirty = new Set<string>();
-  #timers: ReturnType<typeof setTimeout | typeof setInterval>[] = [];
+  #round?: ReturnType<typeof setInterval>;
+  #push?: ReturnType<typeof setTimeout>;
 
   constructor(group: GroupStore, deps: SyncDeps) {
     this.#group = group;
@@ -74,9 +75,13 @@ export class HostSync {
     this.#publicKey = { kty, crv, x, y } as HostBody['publicKey'];
     group.onChange((key) => {
       this.#dirty.add(key);
-      const timer = setTimeout(() => void this.flush(), PUSH_DELAY_MS);
-      timer.unref();
-      this.#timers.push(timer);
+      // One flush for a burst of changes; it pushes everything dirty by then.
+      if (this.#push) return;
+      this.#push = setTimeout(() => {
+        this.#push = undefined;
+        void this.flush();
+      }, PUSH_DELAY_MS);
+      this.#push.unref();
     });
   }
 
@@ -150,14 +155,14 @@ export class HostSync {
   start(): void {
     this.announce();
     void this.round();
-    const timer = setInterval(() => void this.round(), ROUND_MS);
-    timer.unref();
-    this.#timers.push(timer);
+    this.#round = setInterval(() => void this.round(), ROUND_MS);
+    this.#round.unref();
   }
 
   stop(): void {
-    this.#timers.forEach((t) => clearTimeout(t));
-    this.#timers = [];
+    clearInterval(this.#round);
+    clearTimeout(this.#push);
+    this.#push = undefined;
   }
 
   // ---------- serving the other hosts ----------

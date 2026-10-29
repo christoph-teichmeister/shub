@@ -75,6 +75,19 @@ test('a host learns of another host from the group and dials it', async () => {
   assert.ok(b.group.get(`device:${a.group.hostId}`));
 });
 
+test('a burst of changes is pushed by one flush, then the next change schedules another', async () => {
+  const { a } = hosts('a');
+  let flushes = 0;
+  a.sync.flush = async () => void flushes++;
+  for (let i = 0; i < 50; i++) a.group.put(`plugin:p${i}`, { name: `p${i}` });
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(flushes, 1);
+  a.group.put('plugin:p0', { name: 'again' });
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(flushes, 2);
+  a.sync.stop();
+});
+
 test('a push reaches every reachable host at once', async () => {
   const { a, b } = await pair();
   await a.sync.round();
