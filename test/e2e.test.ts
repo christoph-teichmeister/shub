@@ -184,6 +184,15 @@ test('health, bootstrap login, project, session, terminal, hooks, close', { time
   await waitFor(() => seen.includes('e2e42'), 'echo over the terminal');
   ws.close();
 
+  // A pasted file is streamed from the request to <stateDir>/pastes.
+  const pasted = await fetch(`${base}/api/sessions/${started.id}/paste`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${browserToken}`, 'content-type': 'image/png' },
+    body: 'png',
+  });
+  const { path } = (await pasted.json()) as { path: string };
+  assert.ok(path.startsWith(join(dirs.state, 'pastes')) && readFileSync(path, 'utf8') === 'png');
+
   // Hooks with the session's own token move the status.
   const bearer = { authorization: `Bearer ${sessionToken}` };
   await json('POST', '/api/hooks/UserPromptSubmit', { prompt: 'hi' }, bearer);
