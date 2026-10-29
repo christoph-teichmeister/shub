@@ -524,6 +524,7 @@
     return [
       { id: 'rename', label: 'Rename' },
       { id: 'link', label: 'Add link…', hint: s.links[0]?.label },
+      { id: 'copy-id', label: 'Copy session ID', hint: s.id.slice(0, 8) },
       ...(!s.projectId
         ? []
         : [s.position == null ? { id: 'pin', label: 'Pin to top' } : { id: 'unpin', label: 'Unpin' }]),
@@ -559,7 +560,9 @@
       // Renaming happens in the tab, so a sidebar row of another session opens it first.
       if (s.id !== active?.id) location.hash = sessionHref(s);
       renamingId = s.id;
-    } else if (id === 'link') linkDraft = { session: s, label: '', url: '' };
+    } else if (id === 'copy-id')
+      void navigator.clipboard.writeText(s.id).then(() => toast('Session ID copied'), toastError);
+    else if (id === 'link') linkDraft = { session: s, label: '', url: '' };
     else if (id === 'wait')
       waitDraft = { session: s, reason: '', check: '', every: 30, then: 'notify', onDone: WAIT_ON_DONE };
     else if (id === 'ready')
