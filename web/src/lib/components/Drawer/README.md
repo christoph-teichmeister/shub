@@ -1,11 +1,11 @@
 # Drawer
 
-Panel sliding over the right side (`<aside>`), e.g. the global Claude. Not modal: what runs behind keeps running. Escape (inside the drawer), the close button and a click on the dimmed backdrop call `onclose`.
+Panel sliding over the right side, e.g. the global Claude. A modal `<dialog>` like Dialog: focus moves in and Tab stays there, the page behind is inert (what runs there keeps running). Escape, the close button and a click on the dimmed backdrop call `onclose`; the dialog closes once the panel has slid out.
 
 | Prop         | Type         | Default   | Notes                         |
 | ------------ | ------------ | --------- | ----------------------------- |
 | `open`       | `boolean`    |           |                               |
-| `title`      | `string`     |           | Labels the aside              |
+| `title`      | `string`     |           | Labels the dialog             |
 | `subtitle`   | `string`     |           | Muted line under the title    |
 | `closeLabel` | `string`     | `'Close'` | e.g. "Close drawer (Alt G)"   |
 | `onclose`    | `() => void` |           |                               |
