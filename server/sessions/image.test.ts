@@ -39,14 +39,17 @@ test('viewableImage allows images under /tmp/claude-* and the pastes folder only
 
 test('sendImage streams the file, and a file gone since the check only aborts that response', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'claude-test-'));
-  const server = createServer((req, res) => sendImage(res, { file: join(dir, req.url!.slice(1)), type: 'image/png' }));
+  let file = join(dir, 'a.png');
+  const server = createServer((_req, res) => sendImage(res, { file, type: 'image/png' }));
   try {
     writeFileSync(join(dir, 'a.png'), 'png bytes');
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
-    assert.equal(await (await fetch(base + 'a.png')).text(), 'png bytes');
-    await assert.rejects(fetch(base + 'gone.png').then((r) => r.text()));
-    assert.equal((await fetch(base + 'a.png')).status, 200, 'the server is still up');
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    assert.equal(await (await fetch(url)).text(), 'png bytes');
+    file = join(dir, 'gone.png');
+    await assert.rejects(fetch(url).then((r) => r.text()));
+    file = join(dir, 'a.png');
+    assert.equal((await fetch(url)).status, 200, 'the server is still up');
   } finally {
     server.close();
     rmSync(dir, { recursive: true, force: true });
