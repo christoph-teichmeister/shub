@@ -166,6 +166,12 @@ async function mockApi(page: Page, overrides: Record<string, Mock> = {}): Promis
   return { errors, calls };
 }
 
+test('the preview server never reaches a live shub: what the test does not mock answers 503', async ({ request }) => {
+  const res = await request.get('/api/health');
+  expect(res.status()).toBe(503);
+  expect(await res.json()).toEqual({ error: 'not mocked in the smoke test: /api/health' });
+});
+
 test('app shell, wordmark and projects render', async ({ page }) => {
   const { errors } = await mockApi(page);
   await page.goto('/#/');
