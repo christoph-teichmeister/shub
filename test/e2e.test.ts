@@ -276,3 +276,27 @@ test('a terminal tab starts Claude in the folder it was cd-ed to, inside the pro
   await json('DELETE', `/api/sessions/${claude.id}`);
   await json('DELETE', `/api/sessions/${shell.id}`);
 });
+
+test("terminal links open Markdown drafts from Claude's scratchpad, not other files in tmp", async () => {
+  const scratch = join(tmpdir(), `claude-${process.getuid?.()}`, `shub-e2e-${process.pid}`, 'scratchpad');
+  mkdirSync(scratch, { recursive: true });
+  try {
+    const draft = join(scratch, '1968-description.md');
+    writeFileSync(draft, '# Draft\n');
+    const link = await json<{ file: string; url: string | null }>(
+      'GET',
+      `/api/markdown-link?path=${encodeURIComponent(draft)}`,
+    );
+    assert.equal(link.file, draft);
+    assert.equal(link.url, null, 'no KB app URL for a scratchpad file');
+    const note = await json<{ text: string }>('GET', `/api/note-file?path=${encodeURIComponent(link.file)}`);
+    assert.equal(note.text, '# Draft\n');
+
+    const outside = join(root, 'other.md');
+    writeFileSync(outside, 'x');
+    assert.equal((await api('GET', `/api/markdown-link?path=${encodeURIComponent(outside)}`)).status, 404);
+    assert.equal((await api('GET', `/api/note-file?path=${encodeURIComponent(outside)}`)).status, 404);
+  } finally {
+    rmSync(join(scratch, '..'), { recursive: true, force: true });
+  }
+});
