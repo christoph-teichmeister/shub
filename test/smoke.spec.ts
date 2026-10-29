@@ -457,6 +457,21 @@ test('settings > Sync lists the other hosts of the group with their state', asyn
   expect(errors).toEqual([]);
 });
 
+test('settings asks for the other hosts every 10 s only while Sync is open', async ({ page }) => {
+  await page.clock.install();
+  const { errors, calls } = await mockApi(page);
+  const peers = () => calls.filter((c) => c.path === '/api/group/peers').length;
+  await page.goto('/#/settings/sessions');
+  await expect(page.getByRole('heading', { name: 'Sessions', exact: true })).toBeVisible();
+  await page.clock.runFor(25_000);
+  expect(peers()).toBe(0);
+  await page.goto('/#/settings/sync');
+  await expect.poll(peers).toBe(1);
+  await page.clock.runFor(10_000);
+  await expect.poll(peers).toBe(2);
+  expect(errors).toEqual([]);
+});
+
 test('a sync conflict shows as a badge and Settings > Sync, and picking a version resolves it', async ({ page }) => {
   const conflict = {
     key: 'config:terminal',
