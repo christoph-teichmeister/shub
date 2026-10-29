@@ -2,11 +2,21 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { Readable } from 'node:stream';
 import { WebSocket } from 'ws';
 import type { Config, Project, ServerEvent } from '../../shared/api.ts';
 import { installUpgrades } from '../api/upgrade.ts';
@@ -17,7 +27,7 @@ import { GroupStore } from '../group/index.ts';
 import { openState } from '../state/index.ts';
 import type { LaunchSpec } from './launch.ts';
 import { encodeCwd } from './old.ts';
-import { SessionsService, tmuxName } from './service.ts';
+import { prunePastes, SessionsService, tmuxName } from './service.ts';
 import { attachTerminals } from './terminal.ts';
 import type { CheckResult } from './waitcheck.ts';
 
@@ -120,14 +130,32 @@ test('button start: id, name, mode, prompt, env token', async () => {
 test('paste text and files', async () => {
   svc.pasteText('p1-1', 'hello paste');
   await waitFor(() => pane('p1-1').includes('hello paste'), 'pasted text');
-  const file = svc.pasteFile('p1-1', 'image/png', Buffer.from('png'));
+  const body = (...chunks: string[]) => Readable.from(chunks.map((c) => Buffer.from(c)));
+  const file = await svc.pasteFile('p1-1', 'image/png', body('p', 'ng'));
   assert.ok(file.startsWith(join(ctx.paths.stateDir, 'pastes')) && file.endsWith('.png') && existsSync(file));
+  assert.equal(readFileSync(file, 'utf8'), 'png', 'streamed to disk chunk by chunk');
   await waitFor(() => pane('p1-1').replace(/\n/g, '').includes(file), 'pasted path');
-  assert.ok(svc.pasteFile('p1-1', 'video/mp4', Buffer.from('mp4'), 'clip.MP4').endsWith('.mp4'));
-  assert.ok(svc.pasteFile('p1-1', '', Buffer.from('x'), 'a.sh;rm -rf').endsWith('.bin'));
+  assert.ok((await svc.pasteFile('p1-1', 'video/mp4', body('mp4'), 'clip.MP4')).endsWith('.mp4'));
+  assert.ok((await svc.pasteFile('p1-1', '', body('x'), 'a.sh;rm -rf')).endsWith('.bin'));
+  await assert.rejects(svc.pasteFile('p1-1', 'image/png', body()), /1 byte to 500 MB/);
+  assert.equal(readdirSync(join(ctx.paths.stateDir, 'pastes')).length, 3, 'an empty paste leaves no file');
   assert.throws(() => svc.sendKeys('p1-1', ['x'.repeat(2001)]), /keys must be/);
   svc.sendKeys('p1-1', ['C-c']);
   await waitFor(() => pane('p1-1').trimEnd().endsWith('$'), 'fresh prompt after C-c');
+});
+
+test('pasted files older than a week are deleted on start', () => {
+  const dir = join(mkdtempSync(join(tmpdir(), 'shub-pastes-')), 'pastes');
+  mkdirSync(dir);
+  const [old, fresh] = [join(dir, 'old.png'), join(dir, 'fresh.png')];
+  writeFileSync(old, 'x');
+  writeFileSync(fresh, 'x');
+  const eightDaysAgo = (Date.now() - 8 * 24 * 3600_000) / 1000;
+  utimesSync(old, eightDaysAgo, eightDaysAgo);
+  prunePastes(dirname(dir));
+  assert.deepEqual(readdirSync(dir), ['fresh.png']);
+  prunePastes(join(dir, 'missing')); // nothing pasted yet
+  rmSync(dirname(dir), { recursive: true, force: true });
 });
 
 test('terminal websocket pipes bytes both ways', async () => {

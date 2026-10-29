@@ -12,7 +12,7 @@ import { viewableImage } from './image.ts';
 import { buttonPrompt, isSimpleInput } from './launch.ts';
 import { noteFile, noteUrl } from './markdown.ts';
 import { findTranscript } from './old.ts';
-import { FILE_PASTE_MAX, NAMED_KEYS, SessionsService, type SessionsOptions } from './service.ts';
+import { NAMED_KEYS, SessionsService, type SessionsOptions } from './service.ts';
 import { attachTerminals } from './terminal.ts';
 
 const KINDS: SessionKind[] = ['claude', 'shell', 'global'];
@@ -215,7 +215,7 @@ function routes(sessions: SessionsService, services: Services, router: Router, c
       return { ok: true };
     }
     const name = decodeURIComponent(String(req.raw.headers['x-filename'] ?? ''));
-    return { path: sessions.pasteFile(req.params.id, type, await req.body(FILE_PASTE_MAX), name) };
+    return { path: await sessions.pasteFile(req.params.id, type, req.raw, name) };
   });
   const transcripts = new Map<string, string>();
   router.add(ROUTES.sessionMessages, (req) => {
