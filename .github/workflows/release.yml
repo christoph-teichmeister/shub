@@ -8,9 +8,10 @@ on:
 permissions:
   contents: read
 
-# One release at a time, so two merges never compute the same version.
+# One release at a time per branch, so two merges never compute the same version. GitHub keeps one waiting run per
+# group and a newer one replaces it: per branch, a develop merge never drops a waiting stable release.
 concurrency:
-  group: release
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -19,15 +20,15 @@ jobs:
 
   version:
     needs: checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
       channel: ${{ steps.version.outputs.channel }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       # Prints channel=... and version=... (empty when this commit already has its release).
@@ -53,13 +54,13 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
       ARCHIVE: release/shub-${{ needs.version.outputs.version }}-${{ matrix.target }}.tar.gz
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
       - name: tmux for the dry run
-        run: if [ "$RUNNER_OS" = macOS ]; then brew install tmux; else sudo apt-get install -y tmux; fi
+        run: if [ "$RUNNER_OS" = macOS ]; then brew install tmux; else sudo apt-get update && sudo apt-get install -y tmux; fi
       # npm ci builds node-pty for this runner's platform; pack keeps it and drops the dev dependencies.
       - run: npm ci
       - run: npm run build
@@ -67,7 +68,7 @@ jobs:
       - run: test -f "$ARCHIVE"
       # Install the archive with the packed launcher and start it once, on this platform.
       - run: node --no-warnings scripts/release/dry-run.ts --archive "$ARCHIVE"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: archive-${{ matrix.target }}
           path: |
@@ -77,7 +78,7 @@ jobs:
 
   publish:
     needs: [version, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: release
     permissions:
       contents: write
@@ -85,13 +86,13 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
       CHANNEL: ${{ needs.version.outputs.channel }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: archive-*
           path: release
