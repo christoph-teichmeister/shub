@@ -61,20 +61,28 @@ export async function loadMachines(): Promise<void> {
   }
 }
 
+let pollRunning = false;
+
 /** The machines not shown: online, waiting for approval, offline; and how many sessions need you there. */
 async function pollOthers(): Promise<void> {
-  for (const { origin } of fleet.list) {
-    if (origin === fleet.selected) continue;
-    try {
-      const sessions = await api<Session[]>('sessions', { origin });
-      fleet.status[origin] = { state: 'online', needsYou: sessions.filter((s) => s.status === 'needs-you').length };
-    } catch {
-      const pending = await deviceToken(origin).then(
-        () => false,
-        (err: unknown) => err instanceof PendingError,
-      );
-      fleet.status[origin] = { state: pending ? 'pending' : 'offline', needsYou: 0 };
+  if (pollRunning) return; // machines that are off take a timeout each: the next poll waits for this one
+  pollRunning = true;
+  try {
+    for (const { origin } of fleet.list) {
+      if (origin === fleet.selected) continue;
+      try {
+        const sessions = await api<Session[]>('sessions', { origin });
+        fleet.status[origin] = { state: 'online', needsYou: sessions.filter((s) => s.status === 'needs-you').length };
+      } catch {
+        const pending = await deviceToken(origin).then(
+          () => false,
+          (err: unknown) => err instanceof PendingError,
+        );
+        fleet.status[origin] = { state: pending ? 'pending' : 'offline', needsYou: 0 };
+      }
     }
+  } finally {
+    pollRunning = false;
   }
 }
 

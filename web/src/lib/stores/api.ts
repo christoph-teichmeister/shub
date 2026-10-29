@@ -23,6 +23,22 @@ export interface CallOptions {
   blob?: boolean;
 }
 
+/** No answer by then: the machine is off or out of reach (a bare fetch waits for the TCP timeout, minutes). */
+const TIMEOUT_MS = 10_000;
+/** Routes whose work takes longer on a healthy machine (git fetch, docker stop, a release check), and uploads. */
+const SLOW = new Set<RouteName>([
+  'worktrees',
+  'worktreeChildren',
+  'worktreeRemove',
+  'worktreePrune',
+  'updateCheck',
+  'pluginUpgrade',
+  'phoneSetupServe',
+  'restore',
+  'serviceAction',
+  'serviceLogs',
+]);
+
 /** Method and path for a route, with `:params` filled in (URL-encoded). */
 export function resolve(name: RouteName, params: Record<string, string> = {}): { method: string; path: string } {
   const [method, template] = ROUTES[name].split(' ');
@@ -38,8 +54,13 @@ export async function api<T = unknown>(name: RouteName, options: CallOptions = {
   const origin = options.origin ?? (await selectedOrigin());
   const url =
     (origin === here ? '' : origin) + (options.query ? `${path}?${new URLSearchParams(options.query)}` : path);
-  const init: RequestInit = { method, credentials: 'same-origin', headers: { Accept: 'application/json' } };
   const { body } = options;
+  const init: RequestInit = {
+    method,
+    credentials: 'same-origin',
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(SLOW.has(name) || body instanceof Blob ? 120_000 : TIMEOUT_MS),
+  };
   if (body instanceof Blob) {
     init.body = body;
     init.headers = {
