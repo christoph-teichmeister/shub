@@ -10,6 +10,9 @@ import {
 
 const SIMPLE_INPUT = /^[A-Za-z0-9#._/-]{1,80}$/;
 
+/** One argument for sh/bash, single-quoted. */
+export const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
+
 export function isSimpleInput(input: string | undefined): boolean {
   return input === undefined || input === '' || SIMPLE_INPUT.test(input);
 }
