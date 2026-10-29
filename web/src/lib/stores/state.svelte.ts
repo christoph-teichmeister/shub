@@ -175,8 +175,12 @@ export function rolledUp(s: Session): Session {
 function guard<T>(p: Promise<T>): Promise<T | undefined> {
   return p.catch((err: unknown) => {
     if (err instanceof ApiError && err.status === 401) app.authRequired = true;
-    // The machine is off or out of reach: fetch failed, or `tailscale serve` answers 502/504 for a stopped shub.
-    else if (err instanceof TypeError || (err instanceof ApiError && [502, 503, 504].includes(err.status))) {
+    // The machine is off or out of reach: fetch failed or timed out, or `tailscale serve` answers 502/504 for a stopped shub.
+    else if (
+      err instanceof TypeError ||
+      (err instanceof DOMException && err.name === 'TimeoutError') ||
+      (err instanceof ApiError && [502, 503, 504].includes(err.status))
+    ) {
       app.unreachable = true;
     } else console.warn(err);
     return undefined;

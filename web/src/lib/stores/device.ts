@@ -99,6 +99,7 @@ async function post<T>(origin: string, route: string, body: unknown): Promise<{ 
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000), // a machine that is off: give up instead of waiting for the TCP timeout
   });
   return { status: res.status, data: (await res.json().catch(() => ({}))) as T };
 }

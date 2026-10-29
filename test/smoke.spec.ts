@@ -308,6 +308,50 @@ test('the machine chips come from the group: one pairing signs the browser in on
   expect(errors.filter((e) => !e.includes('401'))).toEqual([]);
 });
 
+test('machines that do not answer show offline after the timeout, and their polls do not pile up', async ({ page }) => {
+  const t0 = Date.parse('2026-10-29T10:00:00Z');
+  await page.clock.install({ time: t0 });
+  const hosts = ['Laptop', 'Mini', 'Tower'];
+  const { errors } = await mockApi(page, {
+    'POST /api/auth/bootstrap': { device: { id: 'desk-1', state: 'active', level: 'control' } },
+    'POST /api/auth/challenge': { nonce: 'n1' },
+    'POST /api/auth/session': { token: 't1', expiresAt: '2099-01-01T00:00:00Z' },
+    '/api/group/peers': hosts.map((name) => ({
+      id: name,
+      name,
+      url: `https://${name.toLowerCase()}.tail.ts.net`,
+      state: 'in-sync',
+    })),
+  });
+  let asked = 0;
+  // They sign in, then never answer their session lists (switched off mid-request).
+  await page.route(/^https:\/\/\w+\.tail\.ts\.net\/api\/sessions$/, () => void asked++);
+  await page.route(
+    '**/api/config',
+    (r) => r.fulfill({ status: 401, json: { error: 'login required' }, headers: CORS }),
+    { times: 1 },
+  );
+  await page.goto('/#/');
+  await page.getByLabel('Access token').fill('secret');
+  const reloaded = page.waitForEvent('load');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await reloaded;
+  await expect.poll(() => asked).toBe(1);
+  // From here on time only moves when the test says so. 10 s per silent machine: the round takes 30 s, so the
+  // 20 s poll timer fires while it runs, and must not start a second round.
+  await page.clock.pauseAt(t0 + 8_000);
+  await page.clock.fastForward(10_000);
+  await expect.poll(() => asked).toBe(2);
+  await page.clock.fastForward(10_000);
+  await expect.poll(() => asked).toBe(3);
+  await page.waitForTimeout(300);
+  expect(asked).toBe(3);
+  const chips = page.getByRole('navigation', { name: 'Machines' });
+  await expect(chips.getByRole('button', { name: /Laptop/ })).toHaveAccessibleName(/offline/);
+  await expect(chips.getByRole('button', { name: /Mini/ })).toHaveAccessibleName(/offline/);
+  expect(errors.filter((e) => !e.includes('401'))).toEqual([]);
+});
+
 test('a phone pairs with a code and waits for approval', async ({ page }) => {
   const { errors, calls } = await mockApi(page, {
     'POST /api/auth/pairing/redeem': { device: { id: 'phone-1', state: 'pending', level: 'prompts' } },
