@@ -192,10 +192,10 @@
     let delay = 1000;
     let opened = false;
     let gen = 0; // a resume while a connect is in flight must not leave two sockets
-    const send = (data: string | Uint8Array) => ws?.readyState === WebSocket.OPEN && ws.send(data);
+    const send = (data: string | Uint8Array<ArrayBuffer>) => ws?.readyState === WebSocket.OPEN && ws.send(data);
     let resizeTimer: ReturnType<typeof setTimeout> | undefined;
     // Anything the user types, as opposed to resize and control frames: it holds back an update reload.
-    const typed = (data: string | Uint8Array) => (markTerminalUse(), send(data));
+    const typed = (data: string | Uint8Array<ArrayBuffer>) => (markTerminalUse(), send(data));
     const sendResizeNow = () => {
       const msg: TerminalControl = { type: 'resize', cols: t.cols, rows: t.rows };
       send('\u0000' + JSON.stringify(msg));
