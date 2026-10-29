@@ -381,9 +381,11 @@ export class SessionsService implements Sessions {
   /** The quick name stays until the model's title arrives, and stays for good if the user renamed meanwhile. */
   #retitle(id: string, prompt: string, quick: string): void {
     this.#autoNames.set(id, quick);
-    void this.#titler(prompt).then((title) => {
-      if (title && this.#autoNamed(id) && this.get(id)?.name === quick) this.#autoRename(id, title);
-    });
+    void this.#titler(prompt)
+      .then((title) => {
+        if (title && this.#autoNamed(id) && this.get(id)?.name === quick) this.#autoRename(id, title);
+      })
+      .catch((err) => console.error(`shub: title for ${id}`, err));
   }
 
   nameFromMr(id: string, prompt: string): void {
@@ -392,14 +394,18 @@ export class SessionsService implements Sessions {
     if (!ref || !session || session.links.some((l) => l.url === ref.url)) return;
     this.addLink(id, { source: 'shub', url: ref.url, label: ref.label });
     if (!this.#autoNamed(id)) return;
-    void this.#mrLookup(ref).then((mr) => {
-      if (mr && this.#autoNamed(id)) this.#autoRename(id, mrName(ref, mr));
-    });
+    void this.#mrLookup(ref)
+      .then((mr) => {
+        if (mr && this.#autoNamed(id)) this.#autoRename(id, mrName(ref, mr));
+      })
+      .catch((err) => console.error(`shub: MR name for ${id}`, err));
   }
 
+  /** A closed session keeps its name: a title or MR lookup that arrives late is dropped. */
   #autoNamed(id: string): boolean {
-    const name = this.get(id)?.name;
-    return !!name && (/^Session \d+$/.test(name) || this.#autoNames.get(id) === name);
+    const session = this.get(id);
+    if (!session || session.status === 'exited') return false;
+    return /^Session \d+$/.test(session.name) || this.#autoNames.get(id) === session.name;
   }
 
   #autoRename(id: string, name: string): void {
@@ -483,6 +489,9 @@ export class SessionsService implements Sessions {
       .run(row.id);
     this.#restorable.delete(row.id);
     this.#booting.delete(row.id);
+    this.#afterStart.delete(row.id);
+    this.#compacting.delete(row.id);
+    this.#autoNames.delete(row.id);
     this.#ctx.bus.emit({ type: 'session.closed', sessionId: row.id });
   }
 
