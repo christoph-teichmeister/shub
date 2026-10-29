@@ -57,6 +57,7 @@
     loadChildren,
     loadProjects,
     needsYouCount,
+    openChild,
     sessionHref,
     sessionsOf,
     childrenOf,
@@ -67,6 +68,8 @@
   } from '../stores/state.svelte.ts';
   import { serviceAction, serviceInspect, serviceLogs } from '../stores/services.ts';
   import { toast, toastError } from '../stores/toasts.svelte.ts';
+  import { dayAge, mmss } from '../format.ts';
+  import { store, stored, storedJson } from '../stored.ts';
 
   // Settings pages render here instead of the project, so the sidebar stays.
   let { children }: { children?: Snippet } = $props();
@@ -113,22 +116,8 @@
   // ---------- Active group: projects with a session, kept ACTIVE_GRACE after the last one closes ----------
   const ACTIVE_GRACE = 10 * 60_000;
   // Kept per browser so a reload keeps the countdown; storage can be missing or throw (private window).
-  let leftAt = $state<Record<string, number>>(
-    (() => {
-      try {
-        return JSON.parse(localStorage.getItem('shub.active.leftAt') ?? '{}') as Record<string, number>;
-      } catch {
-        return {};
-      }
-    })(),
-  );
-  $effect(() => {
-    try {
-      localStorage.setItem('shub.active.leftAt', JSON.stringify(leftAt));
-    } catch {
-      // not remembered, the countdown still runs
-    }
-  });
+  let leftAt = $state((storedJson('shub.active.leftAt') as Record<string, number> | null) ?? {});
+  $effect(() => store('shub.active.leftAt', JSON.stringify(leftAt)));
   let now = $state(Date.now());
   let wasActive = new Set<string>();
   $effect(() => {
@@ -164,8 +153,7 @@
   function grace(id: string) {
     if (!(id in leftAt)) return null;
     const left = Math.max(0, ACTIVE_GRACE - (now - leftAt[id]));
-    const text = `${Math.floor(left / 60_000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`;
-    return { text, opacity: 0.4 + 0.6 * (left / ACTIVE_GRACE) };
+    return { text: mmss(left), opacity: 0.4 + 0.6 * (left / ACTIVE_GRACE) };
   }
 
   /** What a folded group still shows: who needs you, else what is working. */
@@ -188,11 +176,6 @@
   /** What a session's fold hides: its worktrees and its running subagents. */
   const foldLabel = (kids: ChildWorktree[], agents: unknown[]) =>
     [kids.length && worktreeCount(kids), agents.length && plural(agents.length, 'subagent')].filter(Boolean).join(', ');
-  async function openChild(w: ChildWorktree) {
-    const request = childStart(w);
-    const s = request && (await startSession(request));
-    if (s) location.hash = sessionHref(s);
-  }
 
   // ---------- Worktrees: the open project's worktrees, searchable, with a terminal or Claude in each ----------
   let wt = $state<{ projectId: string; list: WorktreeInfo[] | null; query: string } | null>(null);
@@ -232,10 +215,6 @@
   /** Closing would lose work, git would refuse, or the session must end first. */
   const KEEP = ['active', 'locked', 'dirty', 'not-pushed'];
   const mergedWorktrees = $derived(worktrees.filter((w) => w.state === 'merged'));
-  const age = (iso: string | null) => {
-    const days = iso ? Math.floor((Date.now() - Date.parse(iso)) / 86_400_000) : null;
-    return days === null ? '' : days < 1 ? 'today' : `${days}d`;
-  };
   const closer = (p: ProjectView) => p.buttons.find((b) => b.skill === '/worktree-close');
 
   /** A plain terminal (its own tab) or a Claude session in the worktree. */
@@ -736,20 +715,10 @@
   }
 
   // Remembered per browser; storage can be missing or throw (private window).
-  let sidebarCollapsed = $state(false);
-  try {
-    sidebarCollapsed = localStorage.getItem('shub.sidebar.collapsed') === '1';
-  } catch {
-    // starts open
-  }
+  let sidebarCollapsed = $state(stored('shub.sidebar.collapsed') === '1');
   function toggleSidebar() {
     sidebarCollapsed = !sidebarCollapsed;
-    try {
-      if (sidebarCollapsed) localStorage.setItem('shub.sidebar.collapsed', '1');
-      else localStorage.removeItem('shub.sidebar.collapsed');
-    } catch {
-      // not remembered, still toggles
-    }
+    store('shub.sidebar.collapsed', sidebarCollapsed ? '1' : null);
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -1571,7 +1540,7 @@
                   /></span
                 >
                 <code class="muted" title={w.path}
-                  >{[w.branch || 'detached', age(w.lastCommitAt)].filter(Boolean).join(' · ')}</code
+                  >{[w.branch || 'detached', dayAge(w.lastCommitAt)].filter(Boolean).join(' · ')}</code
                 >
               </span>
               {#if w.state !== 'folder-gone'}

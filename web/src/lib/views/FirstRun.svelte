@@ -10,6 +10,7 @@
   import { go, href } from '../stores/router.svelte.ts';
   import { app, loadProjects } from '../stores/state.svelte.ts';
   import { toast, toastError } from '../stores/toasts.svelte.ts';
+  import { ago } from '../format.ts';
 
   /** True when shub has no projects yet (shown instead of the main view); false for "Import projects again". */
   let { firstRun = false }: { firstRun?: boolean } = $props();
@@ -54,15 +55,6 @@
       }))),
     (err: unknown) => (error = err instanceof Error ? err.message : String(err)),
   );
-
-  const ago = (iso: string) => {
-    const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
-    if (days < 1) return 'today';
-    if (days === 1) return 'yesterday';
-    if (days < 14) return `${days} days ago`;
-    if (days < 60) return `${Math.round(days / 7)} weeks ago`;
-    return `${Math.round(days / 30)} months ago`;
-  };
 
   async function addAll() {
     adding = true;

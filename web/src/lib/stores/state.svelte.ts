@@ -17,7 +17,8 @@ import type {
   Usage,
 } from '../../../../shared/api.ts';
 import { API_VERSION, TERMINAL_SETTINGS_DEFAULTS, terminalSettingsError } from '../../../../shared/api.ts';
-import { newlyMerged } from '../children.ts';
+import { childStart, newlyMerged } from '../children.ts';
+import { store, storedJson } from '../stored.ts';
 import { applyTheme, findTheme } from '../tokens/tokens.ts';
 import { api, ApiError, wsTarget } from './api.ts';
 import { href } from './router.svelte.ts';
@@ -84,23 +85,15 @@ matchMedia('(max-width: 699px)').addEventListener('change', (e) => (ui.phone = e
 
 const DEVICE_TERMINAL_KEY = 'shub.terminal.device';
 function readDeviceTerminal(): Partial<TerminalSettings> | null {
-  try {
-    const v = JSON.parse(localStorage.getItem(DEVICE_TERMINAL_KEY) ?? 'null') as unknown;
-    return v && !terminalSettingsError(v) ? (v as Partial<TerminalSettings>) : null;
-  } catch {
-    return null;
-  }
+  const v = storedJson(DEVICE_TERMINAL_KEY);
+  return v && !terminalSettingsError(v) ? (v as Partial<TerminalSettings>) : null;
 }
 /** This browser's own terminal settings over the shared ones (Settings > Terminal); null follows config.json. */
 export const deviceTerminal = $state({ value: readDeviceTerminal() });
 export function setDeviceTerminal(value: Partial<TerminalSettings> | null): void {
   deviceTerminal.value = value;
-  try {
-    if (value) localStorage.setItem(DEVICE_TERMINAL_KEY, JSON.stringify(value));
-    else localStorage.removeItem(DEVICE_TERMINAL_KEY);
-  } catch {
-    // No storage (private window): keeps working until reload.
-  }
+  // No storage (private window): keeps working until reload.
+  store(DEVICE_TERMINAL_KEY, value ? JSON.stringify(value) : null);
 }
 /** The terminal look in effect here: defaults, then config.json, then this device's own settings. */
 export function terminalSettings(): TerminalSettings {
@@ -134,6 +127,13 @@ function added(res: Session | { approval: Approval } | void): Session | undefine
 const CLOSE_FADE_MS = 400;
 
 /** Closes a session; it shows as closing until session.closed drops it. */
+/** A dormant child worktree row: its newest conversation resumed there, else a fresh Claude in it, then opened. */
+export async function openChild(w: ChildWorktree): Promise<void> {
+  const request = childStart(w);
+  const s = request && (await startSession(request));
+  if (s) location.hash = sessionHref(s);
+}
+
 export async function closeSession(id: string): Promise<void> {
   app.closing[id] = true;
   await api('sessionClose', { params: { id } }).catch((err: unknown) => {
@@ -233,16 +233,12 @@ export function reloadForUpdate(version: string): void {
     document.removeEventListener('visibilitychange', tryNow);
     // Curtain first, so the reload reads as "updating" instead of a flicker; the new page fades it out.
     app.reloadingTo = pendingVersion ?? version;
-    try {
-      sessionStorage.setItem('shub-updated', app.reloadingTo);
-    } catch {}
+    store('shub-updated', app.reloadingTo, 'session');
     setTimeout(() => {
       // A hidden page's timers freeze, so this can fire late: look again before throwing input away.
       if (canReloadNow(idleState())) return location.reload();
       app.reloadingTo = null;
-      try {
-        sessionStorage.removeItem('shub-updated');
-      } catch {}
+      store('shub-updated', null, 'session');
       arm();
     }, 900);
   };
