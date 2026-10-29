@@ -6,7 +6,6 @@
   import { fleet } from '../stores/machines.svelte.ts';
   import {
     API_VERSION,
-    type ChildWorktree,
     type OldSession,
     type ServiceContainer,
     type Session,
@@ -32,6 +31,7 @@
     app,
     childrenOf,
     needsYouCount,
+    openChild,
     sendKeys,
     sessionHref,
     sessionsOf,
@@ -41,6 +41,8 @@
   import { serviceAction, serviceInspect, serviceLogs } from '../stores/services.ts';
   import { pushEnabled, pushSupported, subscribePush } from '../stores/push.ts';
   import { toast, toastError } from '../stores/toasts.svelte.ts';
+  import { shortAge } from '../format.ts';
+  import { store, stored } from '../stored.ts';
 
   const route = $derived(router.route);
   const open = $derived<Session | null>(
@@ -68,11 +70,6 @@
 
   /** Worktrees sessions created with no Claude of shub's running there: a tap starts or resumes one. */
   const dormant = $derived(app.children.filter((w) => !sessionsIn(w, app.sessions).length));
-  async function openChild(w: ChildWorktree) {
-    const request = childStart(w);
-    const s = request && (await startSession(request));
-    if (s) location.hash = sessionHref(s);
-  }
 
   // Conversations other hosts of the group ran, merged into this list with their host as a badge. The sync only
   // lists them (the machine chips below switch to another machine's own live sessions).
@@ -127,32 +124,18 @@
     );
   });
 
-  const age = (iso: string) => {
-    const min = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
-    return min < 60 ? `${min} min` : min < 1440 ? `${Math.round(min / 60)} h` : `${Math.round(min / 1440)} d`;
-  };
   const projectName = (s: Session) => projectOf(s)?.name ?? 'Global Claude';
 
   // Phone push is the point of the phone view: offer it once, where the user lands, not three screens deep.
   const PUSH_HIDE = 'shub.pushPrompt';
   let pushOffer = $state(false);
   $effect(() => {
-    let hidden: string | null = null;
-    try {
-      hidden = localStorage.getItem(PUSH_HIDE);
-    } catch {
-      // storage blocked: offer again next time
-    }
-    if (hidden || !pushSupported() || Notification.permission === 'denied') return;
+    if (stored(PUSH_HIDE) || !pushSupported() || Notification.permission === 'denied') return;
     void pushEnabled().then((on) => (pushOffer = !on));
   });
   const hidePushOffer = () => {
     pushOffer = false;
-    try {
-      localStorage.setItem(PUSH_HIDE, '1');
-    } catch {
-      // storage blocked: the offer comes back
-    }
+    store(PUSH_HIDE, '1');
   };
   async function turnOnPush() {
     await subscribePush().then(() => {
@@ -170,19 +153,10 @@
 
   // Quick keys cost a row; a phone keyboard has no Esc or arrows, so they start shown and the choice sticks.
   const KEYS_SHOWN = 'shub.quickKeys';
-  let keysShown = $state(true);
-  try {
-    keysShown = localStorage.getItem(KEYS_SHOWN) !== '0';
-  } catch {
-    // storage blocked: shown
-  }
+  let keysShown = $state(stored(KEYS_SHOWN) !== '0');
   function toggleKeys() {
     keysShown = !keysShown;
-    try {
-      localStorage.setItem(KEYS_SHOWN, keysShown ? '1' : '0');
-    } catch {
-      // not remembered
-    }
+    store(KEYS_SHOWN, keysShown ? '1' : '0');
   }
 
   // Pictures: the picker (or camera) hands each file to the paste route, which saves it and types its path
@@ -465,7 +439,7 @@
                   <span class="grow stack"
                     ><span class="strong">{s.name}</span><span class="sub">{projectName(s)}</span></span
                   >
-                  <span class="sub age">{age(s.lastActivityAt)}</span>
+                  <span class="sub age">{shortAge(s.lastActivityAt)}</span>
                 </div>
                 {#if s.pendingPermission}
                   <p class="ask">Allow: {s.pendingPermission.tool} · {s.pendingPermission.summary}?</p>
@@ -491,7 +465,7 @@
                 <span class="grow stack"
                   ><span class="row-name">{s.name}</span><span class="sub">{projectName(s)}</span></span
                 >
-                <span class="sub age">{sec.status === 'working' ? age(s.lastActivityAt) : statusLabel(s)}</span>
+                <span class="sub age">{sec.status === 'working' ? shortAge(s.lastActivityAt) : statusLabel(s)}</span>
               </a>
             {/if}
           {/each}
@@ -505,7 +479,7 @@
           <button class="card row child" onclick={() => resumeOther(o)}>
             <span class="grow stack"
               ><span class="row-name">{o.firstPrompt.slice(0, 60)}</span><span class="sub"
-                >{app.projects.find((p) => p.id === o.projectId)?.name} · {age(o.lastAt)}</span
+                >{app.projects.find((p) => p.id === o.projectId)?.name} · {shortAge(o.lastAt)}</span
               ></span
             >
             <span class="sub">{o.host}{o.running ? ' · running' : ''} · {o.running ? 'Fork' : 'Resume'}</span>

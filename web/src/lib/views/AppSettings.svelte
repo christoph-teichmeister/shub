@@ -42,6 +42,7 @@
   } from '../stores/state.svelte.ts';
   import { toast, toastError } from '../stores/toasts.svelte.ts';
   import { applyTheme, BUILT_IN_THEMES, resolveTokens } from '../tokens/tokens.ts';
+  import { mmss } from '../format.ts';
 
   const RIGHTS: Record<Right, string> = {
     read: 'read sessions',
@@ -226,7 +227,7 @@
   let activity = $state<ActivityEntry[] | null>(null);
 
   const left = $derived(pairing ? Math.max(0, Date.parse(pairing.expiresAt) - now) : 0);
-  const countdown = $derived(`${Math.floor(left / 60_000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`);
+  const countdown = $derived(mmss(left));
 
   const loadDevices = () =>
     api<Device[]>('devices').then(

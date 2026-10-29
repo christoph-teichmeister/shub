@@ -80,10 +80,6 @@
   });
 
   const close = () => (ui.search = false);
-  const ago = (iso: string) => {
-    const days = Math.round((Date.now() - Date.parse(iso)) / 86_400_000);
-    return days < 1 ? 'today' : days === 1 ? 'yesterday' : days < 60 ? `${days} days ago` : iso.slice(0, 10);
-  };
 
   async function pin(p: ProjectView) {
     await api('projectUpdate', { params: { id: p.id }, body: { visibility: 'pinned' } }).catch(toastError);

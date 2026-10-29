@@ -7,6 +7,7 @@
   import Preview from '../NotesPanel/Preview.svelte';
   import type { Snippet } from 'svelte';
   import { tick } from 'svelte';
+  import { store, stored } from '../../stored.ts';
 
   interface Props {
     session: Session;
@@ -69,20 +70,8 @@
   // The caller keys this component by session id, so the id never changes under it.
   // svelte-ignore state_referenced_locally
   const DRAFT = `shub.chatDraft.${session.id}`;
-  let text = $state('');
-  try {
-    text = localStorage.getItem(DRAFT) ?? '';
-  } catch {
-    // storage blocked: no draft kept
-  }
-  $effect(() => {
-    try {
-      if (text) localStorage.setItem(DRAFT, text);
-      else localStorage.removeItem(DRAFT);
-    } catch {
-      // not kept
-    }
-  });
+  let text = $state(stored(DRAFT) ?? '');
+  $effect(() => store(DRAFT, text || null));
 
   // Only Control types text (paste); a Prompts phone answers questions with the buttons.
   const canType = $derived(!app.me?.caller?.level || app.me.caller.level === 'control');
