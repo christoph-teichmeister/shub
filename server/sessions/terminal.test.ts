@@ -16,7 +16,8 @@ test('follow is on only for follow=1', () => {
   assert.equal(parseFollow(new URLSearchParams('')), false);
 });
 
-test('keepAlive terminates a socket that missed a pong', async () => {
+test('keepAlive terminates a socket that missed a pong', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
   const ws = Object.assign(new EventEmitter(), {
     pings: 0,
     dead: false,
@@ -28,24 +29,34 @@ test('keepAlive terminates a socket that missed a pong', async () => {
     },
   });
   keepAlive(ws as unknown as WebSocket, 10);
-  await new Promise((r) => setTimeout(r, 35));
+  t.after(() => ws.emit('close')); // clears the interval even when an assertion fails
+  t.mock.timers.tick(10);
   assert.equal(ws.pings, 1);
+  assert.equal(ws.dead, false);
+  t.mock.timers.tick(10);
   assert.equal(ws.dead, true);
-  ws.emit('close');
 });
 
-test('keepAlive keeps a socket that answers with pong', async () => {
-  const ws: EventEmitter & { dead: boolean; ping(): void; terminate(): void } = Object.assign(new EventEmitter(), {
-    dead: false,
-    ping() {
-      setImmediate(() => ws.emit('pong'));
+test('keepAlive keeps a socket that answers with pong', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const ws: EventEmitter & { pings: number; dead: boolean; ping(): void; terminate(): void } = Object.assign(
+    new EventEmitter(),
+    {
+      pings: 0,
+      dead: false,
+      ping() {
+        this.pings++;
+        ws.emit('pong');
+      },
+      terminate() {
+        this.dead = true;
+      },
     },
-    terminate() {
-      this.dead = true;
-    },
-  });
+  );
   keepAlive(ws as unknown as WebSocket, 10);
-  await new Promise((r) => setTimeout(r, 55));
+  t.after(() => ws.emit('close'));
+  t.mock.timers.tick(50);
+  assert.equal(ws.pings, 5);
   assert.equal(ws.dead, false);
   ws.emit('close');
   assert.equal(ws.listenerCount('pong'), 1); // only the handler; the timer is cleared by close
