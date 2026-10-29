@@ -1950,3 +1950,26 @@ test('update reload happens right away when nothing is unsent', async ({ page })
   await page.evaluate(announceUpdate);
   await expect.poll(() => page.evaluate(() => (window as Marked).alive)).toBeUndefined();
 });
+
+test('clicking a Markdown draft path in the terminal opens it in the notes panel', async ({ page }) => {
+  const path = '/tmp/claude-1000/-home-chris-proj/61590bf5/scratchpad/1968-description.md';
+  const { errors, calls } = await mockApi(page, {
+    '/api/markdown-link': { file: path, url: null },
+    '/api/note-file': { text: '# Ticket 1968\n', rev: 'r1' },
+  });
+  await page.routeWebSocket('**/api/terminals/**', (ws) => ws.send(`Draft is ready:\r\n${path}\r\n`));
+  await page.goto('/#/p/ai-portal/s1');
+  const screen = page.locator('.xterm-screen');
+  await expect(screen).toBeVisible();
+  const box = (await screen.boundingBox())!;
+  // The path is on the second row; sweep down the rows until xterm marks a link under the pointer, then click.
+  let y = box.y;
+  await expect(async () => {
+    y += 6;
+    await page.mouse.move(box.x + 60, y);
+    await expect(page.locator('.xterm-cursor-pointer')).toHaveCount(1, { timeout: 150 });
+  }).toPass({ timeout: 10_000, intervals: [50] });
+  await page.mouse.click(box.x + 60, y);
+  await expect(page.getByRole('textbox', { name: 'Markdown draft' })).toHaveValue('# Ticket 1968\n');
+  expect(errors).toEqual([]);
+});
