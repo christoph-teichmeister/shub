@@ -10,14 +10,13 @@ import { promisify } from 'node:util';
 import { zstdCompress, zstdDecompress } from 'node:zlib';
 import type { HostPeer, Session, SyncSettings, TranscriptEntry, TranscriptProgress } from '../../shared/api.ts';
 import { HttpError } from '../api/router.ts';
-import { claudeDir, encodeCwd } from '../sessions/old.ts';
+import { claudeDir, encodeCwd, UUID } from '../sessions/old.ts';
 import { syncOn, type GroupStore } from './index.ts';
 
 const compress = promisify(zstdCompress);
 const decompress = promisify(zstdDecompress);
 const CHUNK = 4 * 1024 * 1024;
 const WATCH_DELAY_MS = 1000;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The body of a `session:<claude id>` item. `rel` is the session's folder below its project, "" for the project itself. */
 export interface SessionItem {

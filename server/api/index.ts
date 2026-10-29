@@ -12,7 +12,7 @@ import { publicUrl } from '../config/index.ts';
 import { refuseLevel } from '../auth/levels.ts';
 import { machineName } from '../notify/index.ts';
 import { allowList, refuse, type Allowed } from './guard.ts';
-import { HttpError, readBody, Router, sendJson, type Caller, type Request } from './router.ts';
+import { HttpError, isUser, readBody, Router, sendJson, type Caller, type Request } from './router.ts';
 import { installUpgrades, keepAlive, onUpgrade } from './upgrade.ts';
 import { bundleOffer } from './bundle.ts';
 
@@ -54,7 +54,7 @@ export function appVersion(appDir: string): string {
 /** Which bus events a caller may see: plugin actions go to the user and that plugin, everything else needs `read`. */
 export function mayRead(caller: Caller, event: ServerEvent): boolean {
   if (event.type === 'plugin.action') {
-    return caller.kind === 'user' || caller.kind === 'cli' || caller.id === `plugin:${event.plugin}`;
+    return isUser(caller) || caller.id === `plugin:${event.plugin}`;
   }
   return caller.rights.includes('read');
 }

@@ -106,6 +106,8 @@ export function requireRight(caller: Caller, right: Right): void {
 }
 
 /** Holders of the access token only: the browser user or the CLI with the token file. */
+export const isUser = (caller: Caller): boolean => caller.kind === 'user' || caller.kind === 'cli';
+
 export function requireUser(caller: Caller): void {
-  if (caller.kind !== 'user' && caller.kind !== 'cli') throw new HttpError(403, 'only the user may do this');
+  if (!isUser(caller)) throw new HttpError(403, 'only the user may do this');
 }

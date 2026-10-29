@@ -18,6 +18,7 @@
 import { homedir } from 'node:os';
 import type { HandedCommand, Session, SessionStatus, SubagentRun } from '../../shared/api.ts';
 import { RUN_MARKER } from '../sessions/launch.ts';
+import { UUID } from '../sessions/old.ts';
 
 export const HOOK_EVENTS = [
   'UserPromptSubmit',
@@ -183,7 +184,6 @@ export function handedOverCommands(message: unknown, home = homedir()): HandedCo
 }
 
 const NEW_ID_SOURCES = new Set(['clear', 'compact', 'startup', 'fork']);
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The Claude session id to remember after a SessionStart, or null when it stays the same. */
 export function newClaudeSessionId(current: string | null, payload: Record<string, unknown>): string | null {

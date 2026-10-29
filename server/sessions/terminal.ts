@@ -3,6 +3,7 @@ import type { Server } from 'node:http';
 import { spawn } from 'node-pty';
 import { WebSocketServer } from 'ws';
 import type { TerminalControl } from '../../shared/api.ts';
+import { isUser } from '../api/router.ts';
 import { keepAlive, onUpgrade } from '../api/upgrade.ts';
 import { tmuxName, type SessionsService } from './service.ts';
 
@@ -23,7 +24,7 @@ export function attachTerminals(server: Server, sessions: SessionsService): void
   server.on('close', () => wss.close());
   onUpgrade(server, /^\/api\/terminals\/([^/]+)$/, (req, socket, head, caller, match) => {
     // A terminal can type anything, so only the user (browser or CLI with the access token) attaches.
-    if (caller.kind !== 'user' && caller.kind !== 'cli') {
+    if (!isUser(caller)) {
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
       return;
     }
