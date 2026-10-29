@@ -272,6 +272,16 @@ test('client tokens: sessions get read access and approvals for writes', async (
   const res = await call('POST', '/api/projects', { name: 'p', path: (globalThis as any).projectDir }, headers);
   assert.equal((await res.json()).approval.requestedBy, 'session:s1');
   assert.equal((await call('GET', '/api/devices', undefined, headers)).status, 403);
+  // A plugin's env may hold secrets: the user sees it, a session does not.
+  services.config.update(
+    (c) => void (c.plugins = [{ name: 'p', enabled: true, grantedRights: [], env: { K: 's' } }]),
+    'test',
+  );
+  assert.deepEqual((await (await call('GET', '/api/config', undefined, headers)).json()).plugins, [
+    { name: 'p', enabled: true, grantedRights: [] },
+  ]);
+  assert.deepEqual((await (await asUser('GET', '/api/config')).json()).plugins[0].env, { K: 's' });
+  services.config.update((c) => void (c.plugins = []), 'test');
   services.auth.revokeClientToken(token);
   assert.equal((await call('GET', '/api/projects', undefined, headers)).status, 401);
 });
