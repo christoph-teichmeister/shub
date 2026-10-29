@@ -249,7 +249,9 @@ export function transition(
       const needsYou = NEEDS_YOU_NOTIFICATIONS.has(type) || /permission|waiting for your input/i.test(message);
       // Claude's idle reminder means nothing before the first prompt, while the session waits on purpose,
       // nor while it is still working (it fires after a Stop that left background tasks running).
-      const idleIgnored = current === 'new' || current === 'working' || waiting;
+      // After a finished turn it is no news either: "your-turn" already says the ball is with the user, and
+      // "needs-you" is for real blockers (permission, question, commands), not for a result to read.
+      const idleIgnored = current === 'new' || current === 'working' || current === 'your-turn' || waiting;
       if (!needsYou || (type === 'idle_prompt' && idleIgnored)) return null;
       // PermissionRequest usually fired just before for the same prompt; do not notify twice.
       if (current === 'needs-you') return { status: 'needs-you' };

@@ -119,7 +119,7 @@ test('notification: permission prompt needs you, but no second push after a perm
   const p = { notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' };
   assert.equal(transition('working', 'Notification', p)?.notify?.kind, 'needsYou');
   assert.deepEqual(transition('needs-you', 'Notification', p), { status: 'needs-you' });
-  assert.equal(transition('your-turn', 'Notification', { notification_type: 'idle_prompt' })?.status, 'needs-you');
+  assert.equal(transition('your-turn', 'Notification', { notification_type: 'idle_prompt' }), null);
   assert.equal(transition('new', 'Notification', { notification_type: 'idle_prompt' }), null);
   assert.equal(transition('working', 'Notification', { notification_type: 'auth_success', message: 'ok' }), null);
 });
