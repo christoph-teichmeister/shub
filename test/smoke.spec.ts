@@ -1760,6 +1760,42 @@ test('notes: a save that lost against Claude shows the bar; Take theirs loads th
   expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1);
 });
 
+test('notes: a poll answered after a save does not bring the older text back', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  let file = { path: '/state/notes/s1.md', text: '# Draft\n', rev: 'r1' };
+  let gets = 0;
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
+  let pollSent!: () => void;
+  const polling = new Promise<void>((r) => (pollSent = r));
+  await page.route('**/api/sessions/s1/notes', async (r) => {
+    if (r.request().method() === 'PUT') {
+      file = { ...file, text: (r.request().postDataJSON() as { text: string }).text, rev: 'r2' };
+      return r.fulfill({ json: { rev: file.rev } });
+    }
+    // The first poll reads the file before the save and answers only after it; later polls stay unanswered.
+    const before = file;
+    if (++gets > 2) return;
+    if (gets === 2) {
+      pollSent();
+      await held;
+    }
+    return r.fulfill({ json: before });
+  });
+  await page.goto('/#/p/ai-portal/s1');
+  await page.keyboard.press('Alt+m');
+  const editor = page.getByRole('textbox', { name: 'Markdown draft' });
+  await expect(editor).toHaveValue('# Draft\n');
+  await polling;
+  await editor.fill('# Draft\nmore');
+  await expect.poll(() => file.rev).toBe('r2');
+  await expect(page.getByText('saved', { exact: true })).toBeVisible();
+  release();
+  await page.waitForTimeout(500);
+  await expect(editor).toHaveValue('# Draft\nmore');
+  expect(errors).toEqual([]);
+});
+
 test('phone offers push once, and Not now keeps it away', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   // Headless Chromium reports notifications as denied; a real phone starts at "default".
