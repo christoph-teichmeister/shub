@@ -1,6 +1,7 @@
 // Git worktrees of a project folder: the list for buttons that ask "pick-worktree", and the
 // cleanup overview (state per worktree, remove, prune).
 import { execFile } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { basename } from 'node:path';
 import { promisify } from 'node:util';
 import type { Worktree, WorktreeInfo, WorktreeState } from '../../shared/api.ts';
@@ -42,6 +43,25 @@ export function parseWorktrees(porcelain: string): Worktree[] {
   return parseEntries(porcelain)
     .filter((e) => !e.bare && !e.prunable)
     .map(({ path, branch }) => ({ path, branch }));
+}
+
+/** Whether `dir` is one of the worktrees or inside one, with `..` and symlinks resolved; a missing folder is not. */
+export function insideWorktree(dir: string, worktrees: Worktree[]): boolean {
+  const real = (p: string) => {
+    try {
+      return realpathSync(p);
+    } catch {
+      return null;
+    }
+  };
+  const cwd = real(dir);
+  return (
+    !!cwd &&
+    worktrees.some((w) => {
+      const root = real(w.path) ?? w.path;
+      return cwd === root || cwd.startsWith(`${root}/`);
+    })
+  );
 }
 
 /** Empty when the folder is no git repository (or git is missing). */
