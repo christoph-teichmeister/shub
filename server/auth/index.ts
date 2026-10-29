@@ -527,6 +527,10 @@ export class AuthService implements Auth {
  * else: a secret in a synced file admits nobody, and no device raises itself.
  */
 const isLoopback = (req: IncomingMessage): boolean =>
+  ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '') &&
+  // `tailscale serve` connects from loopback and passes a tailnet peer's Host on unchanged (it routes by SNI), so a
+  // peer could name 127.0.0.1; it always adds X-Forwarded-Host. A proxied request is never the machine itself.
+  !['x-forwarded-host', 'x-forwarded-for', 'forwarded'].some((h) => h in req.headers) &&
   ['127.0.0.1', 'localhost', '[::1]'].includes((req.headers.host ?? '').toLowerCase().replace(/:\d+$/, ''));
 
 const deviceOf = (auth: AuthService, caller: Caller): Device | undefined =>

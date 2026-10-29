@@ -165,6 +165,11 @@ test('bootstrap: the first browser on the host joins with the access token and i
   assert.equal((await call('GET', '/api/projects')).status, 401);
   assert.equal((await bootstrapBrowser('desk', 'nope')).res.status, 401);
   assert.equal((await call('POST', '/api/auth/bootstrap', { token: accessToken, publicKey: {} })).status, 400);
+  // Through `tailscale serve` a tailnet peer can name 127.0.0.1 as Host; the proxy's header gives it away.
+  const proxied = { 'x-forwarded-host': '127.0.0.1' };
+  const key = generateKeyPairSync('ec', { namedCurve: 'P-256' }).publicKey.export({ format: 'jwk' });
+  const viaProxy = await call('POST', '/api/auth/bootstrap', { token: accessToken, publicKey: key }, proxied);
+  assert.equal(viaProxy.status, 403);
   const { res, privateKey } = await bootstrapBrowser('desk');
   assert.equal(res.status, 200);
   const { device } = await res.json();
