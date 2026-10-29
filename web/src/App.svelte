@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Button from './lib/components/Button/Button.svelte';
+  import EmptyState from './lib/components/EmptyState/EmptyState.svelte';
   import Toast from './lib/components/Toast/Toast.svelte';
   import UpdateCurtain from './lib/components/UpdateCurtain/UpdateCurtain.svelte';
   import { api } from './lib/stores/api.ts';
@@ -101,7 +103,12 @@
 {:else if route.name !== 'settings' && app.ready && !app.unreachable && app.projects.length === 0}
   <FirstRun firstRun />
 {:else if route.name === 'village' && !ui.phone}
-  {#await import('./lib/views/Village/Village.svelte') then { default: Village }}<Village />{/await}
+  {#await import('./lib/views/Village/Village.svelte') then { default: Village }}<Village />{:catch}
+    <!-- Its chunk did not load (offline, or an update replaced it): say so instead of a blank page. -->
+    <EmptyState title="The village did not load" body="The connection dropped or shub was updated meanwhile.">
+      <Button variant="primary" onclick={() => location.reload()}>Reload</Button>
+    </EmptyState>
+  {/await}
 {:else if ui.phone}
   <Phone />
 {:else}

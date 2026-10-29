@@ -380,9 +380,11 @@
   });
 
   $effect(() => {
-    void app.themeVersion;
+    void app.themeVersion; // bumped on every config change, most of which leave the colours alone
     void accent;
-    if (term) term.options.theme = theme();
+    const next = theme();
+    // Each set redraws the WebGL glyph atlas: only when a colour changed.
+    if (term && JSON.stringify(next) !== JSON.stringify(term.options.theme)) term.options.theme = next;
   });
 
   $effect(() => {
