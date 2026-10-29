@@ -1,5 +1,5 @@
 // Sessions module: HTTP routes, terminal WebSockets and startup restore around SessionsService.
-import { createReadStream, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import { ROUTES, type SessionKind, type SessionLink, type StartSessionRequest } from '../../shared/api.ts';
 import { HttpError, requireRight, requireUser, sendJson, type Caller, type Router } from '../api/router.ts';
@@ -8,7 +8,7 @@ import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
 import { chatSince, followTranscript } from './chat.ts';
-import { viewableImage } from './image.ts';
+import { sendImage, viewableImage } from './image.ts';
 import { buttonPrompt, isSimpleInput } from './launch.ts';
 import { noteFile, noteUrl } from './markdown.ts';
 import { findTranscript } from './old.ts';
@@ -251,8 +251,7 @@ function routes(sessions: SessionsService, services: Services, router: Router, c
     requireRight(req.caller, 'read');
     const image = viewableImage(req.query.get('path') ?? '', ctx.paths.stateDir);
     if (!image) throw new HttpError(404, 'no image shub may show');
-    res.writeHead(200, { 'content-type': image.type, 'cache-control': 'no-store' });
-    createReadStream(image.file).pipe(res);
+    sendImage(res, image);
   });
   router.add(ROUTES.markdownLink, (req) => {
     requireRight(req.caller, 'read');
