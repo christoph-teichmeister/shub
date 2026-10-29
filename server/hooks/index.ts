@@ -23,7 +23,7 @@ import {
 } from './transition.ts';
 
 /** Events after which the transcript has a new usage line or compact boundary. */
-const CONTEXT_EVENTS = new Set<string>(['Stop', 'PostToolUse', 'SessionStart']);
+const CONTEXT_EVENTS = new Set<string>(['Stop', 'PostToolUse', 'SessionStart', 'PostCompact']);
 const CONTEXT_DELAY_MS = 1000;
 /** Events after which the transcript has new lines the phone chat view shows. */
 const CHAT_EVENTS = new Set<string>([...CONTEXT_EVENTS, 'UserPromptSubmit']);
