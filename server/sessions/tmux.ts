@@ -4,13 +4,15 @@ import { writeFileSync } from 'node:fs';
 import { HttpError } from '../api/router.ts';
 
 // -f is only read when the server starts, which is exactly when these must apply (history-limit only
-// affects panes created after it is set).
+// affects panes created after it is set). The hyperlinks feature makes tmux hand OSC 8 links on to the browser's
+// terminal; without it Claude's links reach xterm as plain text and a click does nothing.
 const CONF = `set -g window-size latest
 set -g mouse on
 set -g history-limit 50000
 set -s escape-time 0
 set -g status off
 set -g default-terminal tmux-256color
+set -as terminal-features ',xterm*:hyperlinks'
 `;
 
 export const TMUX_MISSING =
