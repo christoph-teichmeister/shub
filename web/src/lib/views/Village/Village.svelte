@@ -241,6 +241,10 @@
       [p.x, p.y] = [ws[i].x, ws[i].y];
       p.moving = Math.hypot(c.x - p.x, c.y - p.y) > 3;
     });
+    // A closed session's crab leaves no position or route behind.
+    const live = new Set(sessions.map((s) => s.id));
+    for (const id of Object.keys(pos)) if (!live.has(id)) delete pos[id];
+    for (const id of routes.keys()) if (!live.has(id)) routes.delete(id);
     perf.step = Math.max(perf.step, performance.now() - t0);
   }
   // ---------- frame meter (P) ----------
@@ -283,6 +287,7 @@
       clearInterval(timer);
       cancelAnimationFrame(raf);
       removeEventListener('blur', blur);
+      void audio?.close();
     };
   });
 

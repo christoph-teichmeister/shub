@@ -325,6 +325,55 @@ test('a phone pairs with a code and waits for approval', async ({ page }) => {
   expect(errors.filter((e) => !e.includes('401') && !e.includes('409'))).toEqual([]);
 });
 
+test('the approval wait stops when the sign-in page closes', async ({ page }) => {
+  await page.clock.install();
+  const { errors, calls } = await mockApi(page, {
+    'POST /api/auth/pairing/redeem': { device: { id: 'phone-1', state: 'pending', level: 'prompts' } },
+    'POST /api/auth/challenge': { status: 409, json: { error: 'waiting for approval' } },
+  });
+  await page.goto('/pair/abc123');
+  await page.getByLabel('Device name').fill('Pixel');
+  await page.getByRole('button', { name: 'Pair this device' }).click();
+  await expect(page.getByText(/Now approve Pixel/)).toBeVisible();
+  // Back later: the sign-in page waits again, then the user leaves it.
+  await page.goto('/#/login');
+  await expect(page.getByText(/Now approve/)).toBeVisible();
+  await page.evaluate(() => (location.hash = '#/styleguide'));
+  await expect(page.getByRole('heading', { name: 'Drawer' })).toBeVisible();
+  const asked = () => calls.filter((c) => c.path === '/api/auth/challenge').length;
+  const before = asked();
+  await page.clock.fastForward(10_000);
+  await page.waitForTimeout(300);
+  expect(asked()).toBe(before);
+  expect(errors.filter((e) => !e.includes('401') && !e.includes('409'))).toEqual([]);
+});
+
+test('a village that does not load says so instead of a blank page', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  await page.route(/\/assets\/Village-[^/]*\.js$/, (r) => r.abort());
+  await page.goto('/#/village');
+  await expect(page.getByRole('heading', { name: 'The village did not load' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reload' })).toBeVisible();
+  expect(errors.filter((e) => !e.includes('net::ERR_FAILED'))).toEqual([]);
+});
+
+test('leaving the village closes the audio of its chime', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  await page.addInitScript(() => {
+    const close = AudioContext.prototype.close;
+    AudioContext.prototype.close = function () {
+      (window as { audioClosed?: number }).audioClosed = ((window as { audioClosed?: number }).audioClosed ?? 0) + 1;
+      return close.call(this);
+    };
+  });
+  await page.goto('/#/village');
+  await page.getByRole('button', { name: 'Chime' }).click(); // the first beep makes the AudioContext
+  await page.keyboard.press('Alt+KeyV');
+  await expect(page.getByRole('navigation', { name: 'Projects' })).toBeVisible();
+  expect(await page.evaluate(() => (window as { audioClosed?: number }).audioClosed)).toBe(1);
+  expect(errors).toEqual([]);
+});
+
 test('app settings and project settings', async ({ page }) => {
   const { errors, calls } = await mockApi(page, {
     'PATCH /api/settings': { ...config, activeTheme: 'dracula' },
