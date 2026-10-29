@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 // @ts-expect-error plain JS module shared with the service worker
 import { compareVersions, parseSums, pickNewest, verifyOffer } from '../web/public/loader.js';
 
@@ -71,4 +74,38 @@ test('every self-hosted font that fonts.css or index.html names exists in web/pu
   );
   assert.ok(urls.length > 0);
   for (const u of urls) assert.ok(existsSync('web/public' + u.replace(/^.*?(\/fonts\/)/, '$1')), u);
+});
+
+test('a check for other machines waits for a check of this one in flight instead of taking its answer', async () => {
+  // sw.js imports the built release-keys.js: load a copy next to a stub of it, in a service worker's globals.
+  const dir = mkdtempSync(join(tmpdir(), 'shub-sw-'));
+  for (const f of ['sw.js', 'loader.js']) copyFileSync(join('web/public', f), join(dir, f));
+  writeFileSync(join(dir, 'release-keys.js'), 'export const RELEASE_KEYS = [];\n');
+  const on: Record<string, (e: unknown) => void> = {};
+  const asked: string[] = [];
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
+  Object.assign(globalThis, {
+    self: { addEventListener: (type: string, fn: (e: unknown) => void) => (on[type] = fn) },
+    location: { origin: 'https://pc' },
+    caches: { open: async () => ({ match: async () => undefined }) },
+    fetch: async (url: string) => {
+      asked.push(url);
+      if (asked.length === 1) await held; // the page load's check of this machine is still running
+      return { ok: false, status: 404 };
+    },
+  });
+  await import(pathToFileURL(join(dir, 'sw.js')).href);
+  const done: Promise<unknown>[] = [];
+  const check = (origins: string[]) =>
+    on.message({
+      data: { type: 'update-check', origins },
+      ports: [{ postMessage() {} }],
+      waitUntil: (p: Promise<unknown>) => done.push(p),
+    });
+  check([]);
+  check(['https://laptop']);
+  release();
+  await Promise.all(done);
+  assert.deepEqual(asked, ['https://pc/api/bundle', 'https://pc/api/bundle', 'https://laptop/api/bundle']);
 });
