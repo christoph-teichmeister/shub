@@ -1,23 +1,12 @@
 // Session records in sqlite plus their tmux sessions. One tmux session `shub-<id>` per shub session.
 import { randomUUID } from 'node:crypto';
-import {
-  chmodSync,
-  createWriteStream,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
-import { extname, join } from 'node:path';
+import { join } from 'node:path';
 import type { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
 import type {
   ClientKind,
   ContextFill,
-  HandedCommand,
   OldSession,
   PermissionMode,
   Session,
@@ -32,8 +21,12 @@ import { HttpError } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import { hookSettings, userStatusLine } from '../hooks/index.ts';
 import type { Services, Sessions } from '../services.ts';
-import { defaultMrLookup, findMr, mrName, type MrLookup } from './mr.ts';
+import { defaultMrLookup, type MrLookup } from './mr.ts';
+import { AutoNamer } from './naming.ts';
+import { checkKeys, checkText, NAMED_KEYS, prunePastes, savePaste } from './paste.ts';
+import { MIGRATIONS, toSession, type Row } from './rows.ts';
 import { defaultTitler, type Titler } from './title.ts';
+import { newWaitCheck, WaitChecks } from './wait.ts';
 import { defaultWaitChecker, type WaitChecker } from './waitcheck.ts';
 import {
   autoName,
@@ -49,132 +42,17 @@ import { claudeDir, encodeCwd, findTranscript, listOldSessions, summarizeTranscr
 import { Tmux } from './tmux.ts';
 import { claimSession, remoteSessions, resumeGuard } from '../group/transcripts.ts';
 
-const MIGRATIONS = [
-  `CREATE TABLE sessions (
-     id TEXT PRIMARY KEY, kind TEXT NOT NULL, project_id TEXT, name TEXT NOT NULL, cwd TEXT NOT NULL,
-     status TEXT NOT NULL, claude_session_id TEXT, permission_mode TEXT NOT NULL, started_by TEXT NOT NULL,
-     parent_id TEXT, links TEXT NOT NULL, created_at TEXT NOT NULL, last_activity_at TEXT NOT NULL,
-     pending_permission TEXT, token TEXT)`,
-  `ALTER TABLE sessions ADD COLUMN waiting_for TEXT`,
-  `ALTER TABLE sessions ADD COLUMN wait_check TEXT`,
-  'ALTER TABLE sessions ADD COLUMN position INTEGER',
-  `ALTER TABLE sessions ADD COLUMN pending_commands TEXT`,
-  'ALTER TABLE sessions ADD COLUMN shells INTEGER NOT NULL DEFAULT 0',
-  'ALTER TABLE sessions ADD COLUMN background_until INTEGER',
-  'ALTER TABLE sessions ADD COLUMN tab_position INTEGER',
-  'ALTER TABLE sessions ADD COLUMN agents TEXT',
-  'ALTER TABLE sessions ADD COLUMN context TEXT',
-  'ALTER TABLE sessions ADD COLUMN status_since TEXT',
-  'UPDATE sessions SET status_since = last_activity_at',
-];
-const WAIT_EVERY_MIN = 5;
+export { FILE_PASTE_MAX, NAMED_KEYS, prunePastes } from './paste.ts';
+
 const COMPACT_PAUSE_CAP_MS = 5 * 60_000;
-/** Failed checks in a row before the user hears the check does not work. */
-const WAIT_FAILS_NOTIFY = 3;
 
 const GLOBAL_ID = 'global';
 const LIVE: SessionStatus[] = ['new', 'working', 'needs-you', 'your-turn', 'waiting'];
-export const NAMED_KEYS = new Set(['Escape', 'C-c', 'Up', 'Down', 'PageUp', 'PageDown', 'Tab', 'Enter']);
-const LITERAL_MAX = 2000;
-const TEXT_PASTE_MAX = 1024 * 1024;
-export const FILE_PASTE_MAX = 500 * 1024 * 1024;
-/** Pasted files older than this are deleted when shub starts; the session read them long before. */
-const PASTE_KEEP_MS = 7 * 24 * 3600_000;
-
-/** Deletes pasted files older than PASTE_KEEP_MS; nothing else ever cleans <stateDir>/pastes. */
-export function prunePastes(stateDir: string, now = Date.now()): void {
-  const dir = join(stateDir, 'pastes');
-  let names: string[];
-  try {
-    names = readdirSync(dir);
-  } catch {
-    return; // nothing pasted yet
-  }
-  for (const name of names) {
-    const file = join(dir, name);
-    const stat = statSync(file, { throwIfNoEntry: false });
-    if (stat?.isFile() && stat.mtimeMs < now - PASTE_KEEP_MS) rmSync(file, { force: true });
-  }
-}
-const PASTE_TYPES: Record<string, string> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/gif': 'gif',
-  'image/webp': 'webp',
-  'image/heic': 'heic',
-  'application/pdf': 'pdf',
-  'text/csv': 'csv',
-  'text/markdown': 'md',
-  'application/zip': 'zip',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
-};
 const RECONCILE_MS = 3000;
 /** Gap between sessions a restore brings back: all Claudes at once freeze the machine and the window. */
 const RESTORE_GAP_MS = 4000;
 /** After SessionStart, until Claude's input box takes keys. */
 const STARTED_GAP_MS = 1500;
-
-interface Row {
-  id: string;
-  kind: Session['kind'];
-  project_id: string | null;
-  name: string;
-  cwd: string;
-  status: SessionStatus;
-  claude_session_id: string | null;
-  permission_mode: Session['permissionMode'];
-  started_by: string;
-  parent_id: string | null;
-  links: string;
-  created_at: string;
-  last_activity_at: string;
-  pending_permission: string | null;
-  pending_commands: string | null;
-  shells: number;
-  /** Epoch ms: a turn that ended on background work is handed back then if no hook came first. */
-  background_until: number | null;
-  token: string | null;
-  waiting_for: string | null;
-  wait_check: string | null;
-  position: number | null;
-  tab_position: number | null;
-  agents: string | null;
-  context: string | null;
-  status_since: string;
-}
-
-const toSession = (r: Row): Session => ({
-  id: r.id,
-  kind: r.kind,
-  projectId: r.project_id,
-  name: r.name,
-  cwd: r.cwd,
-  status: r.status,
-  claudeSessionId: r.claude_session_id,
-  permissionMode: r.permission_mode,
-  startedBy: r.started_by,
-  parentId: r.parent_id,
-  links: JSON.parse(r.links),
-  createdAt: r.created_at,
-  lastActivityAt: r.last_activity_at,
-  statusSince: r.status_since,
-  pendingPermission: r.pending_permission ? JSON.parse(r.pending_permission) : null,
-  waitingFor: r.waiting_for,
-  waitCheck: r.wait_check ? JSON.parse(r.wait_check) : null,
-  position: r.position,
-  tabPosition: r.tab_position,
-  // Rows from before targets stored plain strings.
-  pendingCommands: r.pending_commands
-    ? (JSON.parse(r.pending_commands) as (string | HandedCommand)[]).map((c) =>
-        typeof c === 'string' ? { command: c } : c,
-      )
-    : null,
-  shells: r.shells,
-  background: r.background_until !== null,
-  agents: r.agents ? JSON.parse(r.agents) : [],
-  context: r.context ? JSON.parse(r.context) : null,
-});
 
 export const tmuxName = (id: string): string => `shub-${id}`;
 const BOOT_CAP_MS = 30_000;
@@ -200,14 +78,8 @@ export class SessionsService implements Sessions {
   #ctx: Context;
   #services: Services;
   #launcher: Launcher;
-  #titler: Titler;
-  #mrLookup: MrLookup;
-  /** The last name shub itself gave each session; any other name (button, user, skill) is never overwritten.
-   *  ponytail: in memory, so after a shub restart only "Session N" names follow an MR link. */
-  #autoNames = new Map<string, string>();
-  #waitChecker: WaitChecker;
-  /** Sessions whose background check is running right now. */
-  #checking = new Set<string>();
+  #naming: AutoNamer;
+  #waits: WaitChecks;
   #tmux!: Tmux;
   #binDir: string;
   #shellRc: string;
@@ -226,9 +98,22 @@ export class SessionsService implements Sessions {
     this.#ctx = ctx;
     this.#services = services;
     this.#launcher = options.launcher ?? defaultLauncher;
-    this.#titler = options.titler ?? defaultTitler;
-    this.#mrLookup = options.mrLookup ?? defaultMrLookup;
-    this.#waitChecker = options.waitChecker ?? defaultWaitChecker;
+    this.#naming = new AutoNamer(this, options.titler ?? defaultTitler, options.mrLookup ?? defaultMrLookup);
+    this.#waits = new WaitChecks(
+      {
+        get: (id) => this.get(id),
+        endWait: (id) => this.wait(id, null, 'shub:wait-check'),
+        saveCheck: (id, check) =>
+          this.#db.prepare('UPDATE sessions SET wait_check = ? WHERE id = ?').run(JSON.stringify(check), id),
+        emitUpdated: (id) => this.#emitUpdated(id),
+        typeInto: (id, type) => this.#typeInto(id, 'shub:wait-check', type),
+        pasteText: (id, text) => this.pasteText(id, text),
+        sendKeys: (id, keys) => this.sendKeys(id, keys),
+        resendIfDropped: (id) => this.#resendIfDropped(id),
+        notify: () => this.#services.notify,
+      },
+      options.waitChecker ?? defaultWaitChecker,
+    );
     this.#restoreGapMs = options.restoreGapMs ?? RESTORE_GAP_MS;
     this.#startedGapMs = options.startedGapMs ?? STARTED_GAP_MS;
     this.#binDir = join(ctx.paths.stateDir, 'bin');
@@ -404,49 +289,16 @@ export class SessionsService implements Sessions {
     const session = this.get(id)!;
     this.#ctx.bus.emit({ type: 'session.started', session, from: request.from });
     this.#services.permissions.log({ actor: startedBy, action: 'session.start', detail: `${id}: ${session.name}` });
-    if (namePrompt) this.#retitle(id, namePrompt, session.name);
+    if (namePrompt) this.#naming.retitle(id, namePrompt, session.name);
     return session;
   }
 
   nameFromPrompt(id: string, prompt: string): void {
-    const quick = autoName({ prompt, n: 0 });
-    this.rename(id, quick, 'shub');
-    this.#retitle(id, prompt, quick);
-  }
-
-  /** The quick name stays until the model's title arrives, and stays for good if the user renamed meanwhile. */
-  #retitle(id: string, prompt: string, quick: string): void {
-    this.#autoNames.set(id, quick);
-    void this.#titler(prompt)
-      .then((title) => {
-        if (title && this.#autoNamed(id) && this.get(id)?.name === quick) this.#autoRename(id, title);
-      })
-      .catch((err) => console.error(`shub: title for ${id}`, err));
+    this.#naming.nameFromPrompt(id, prompt);
   }
 
   nameFromMr(id: string, prompt: string): void {
-    const ref = findMr(prompt);
-    const session = this.get(id);
-    if (!ref || !session || session.links.some((l) => l.url === ref.url)) return;
-    this.addLink(id, { source: 'shub', url: ref.url, label: ref.label });
-    if (!this.#autoNamed(id)) return;
-    void this.#mrLookup(ref)
-      .then((mr) => {
-        if (mr && this.#autoNamed(id)) this.#autoRename(id, mrName(ref, mr));
-      })
-      .catch((err) => console.error(`shub: MR name for ${id}`, err));
-  }
-
-  /** A closed session keeps its name: a title or MR lookup that arrives late is dropped. */
-  #autoNamed(id: string): boolean {
-    const session = this.get(id);
-    if (!session || session.status === 'exited') return false;
-    return /^Session \d+$/.test(session.name) || this.#autoNames.get(id) === session.name;
-  }
-
-  #autoRename(id: string, name: string): void {
-    this.rename(id, name, 'shub');
-    this.#autoNames.set(id, this.get(id)!.name);
+    this.#naming.nameFromMr(id, prompt);
   }
 
   /** An old conversation of this folder that no live shub session holds. */
@@ -527,7 +379,7 @@ export class SessionsService implements Sessions {
     this.#booting.delete(row.id);
     this.#afterStart.delete(row.id);
     this.#compacting.delete(row.id);
-    this.#autoNames.delete(row.id);
+    this.#naming.forget(row.id);
     this.#ctx.bus.emit({ type: 'session.closed', sessionId: row.id });
   }
 
@@ -559,18 +411,7 @@ export class SessionsService implements Sessions {
     if (session.kind === 'shell') throw new HttpError(400, 'shells cannot wait');
     const clean = reason?.trim().slice(0, 200) || null;
     if (reason !== null && !clean) throw new HttpError(400, 'waitingFor must not be empty');
-    const prompt = clean && check?.prompt.trim().slice(0, 2000);
-    const waitCheck = prompt
-      ? {
-          prompt,
-          everyMinutes: Math.max(WAIT_EVERY_MIN, Math.round(check?.everyMinutes ?? 30)),
-          // Runs at once, so the user sees right away whether the check makes sense.
-          checkedAt: null,
-          last: null,
-          onDone: check?.onDone?.trim().slice(0, 2000) || null,
-          failures: 0,
-        }
-      : null;
+    const waitCheck = newWaitCheck(clean, check);
     this.#db
       .prepare('UPDATE sessions SET waiting_for = ?, wait_check = ? WHERE id = ?')
       .run(clean, waitCheck && JSON.stringify(waitCheck), id);
@@ -791,11 +632,7 @@ export class SessionsService implements Sessions {
 
   sendKeys(id: string, keys: string[]): void {
     this.#requireRunning(id);
-    for (const key of keys) {
-      if (typeof key !== 'string' || key.length === 0 || key.length > LITERAL_MAX) {
-        throw new HttpError(400, `keys must be named keys or text up to ${LITERAL_MAX} chars`);
-      }
-    }
+    checkKeys(keys);
     for (const key of keys) {
       if (NAMED_KEYS.has(key)) this.#tmux.sendKey(tmuxName(id), key);
       else this.#tmux.sendLiteral(tmuxName(id), key);
@@ -867,38 +704,14 @@ export class SessionsService implements Sessions {
 
   pasteText(id: string, text: string): void {
     this.#requireRunning(id);
-    if (!text || text.length > TEXT_PASTE_MAX) throw new HttpError(400, 'text must be 1 byte to 1 MB');
+    checkText(text);
     this.#tmux.paste(tmuxName(id), text);
   }
 
   /** Streams any file to <stateDir>/pastes and pastes its absolute path (Claude picks up image paths). */
   async pasteFile(id: string, contentType: string, body: Readable, name = ''): Promise<string> {
     this.#requireRunning(id);
-    const nameExt = extname(name).slice(1).toLowerCase();
-    const ext =
-      PASTE_TYPES[contentType.split(';')[0].trim().toLowerCase()] ??
-      (/^[a-z0-9]{1,10}$/.test(nameExt) ? nameExt : 'bin');
-    const tooLarge = new HttpError(413, 'file must be 1 byte to 500 MB');
-    const dir = join(this.#ctx.paths.stateDir, 'pastes');
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const file = join(dir, `${randomUUID()}.${ext}`);
-    let size = 0;
-    try {
-      await pipeline(
-        body,
-        async function* (chunks: AsyncIterable<Buffer>) {
-          for await (const chunk of chunks) {
-            if ((size += chunk.length) > FILE_PASTE_MAX) throw tooLarge;
-            yield chunk;
-          }
-        },
-        createWriteStream(file, { mode: 0o600 }),
-      );
-      if (size === 0) throw tooLarge;
-    } catch (err) {
-      rmSync(file, { force: true });
-      throw err;
-    }
+    const file = await savePaste(this.#ctx.paths.stateDir, contentType, body, name);
     this.#tmux.paste(tmuxName(id), file);
     return file;
   }
@@ -980,49 +793,8 @@ export class SessionsService implements Sessions {
   }
 
   /** Runs the session's background check when it is due (or `force`); ends the wait once it happened. */
-  async checkWait(id: string, force = false): Promise<void> {
-    const before = this.get(id);
-    const check = before?.status === 'waiting' ? before.waitCheck : null;
-    if (!check || this.#checking.has(id)) return;
-    const due = !check.checkedAt || Date.now() - Date.parse(check.checkedAt) >= check.everyMinutes * 60_000;
-    if (!due && !force) return;
-    this.#checking.add(id);
-    try {
-      const result = await this.#waitChecker(check.prompt, before!.cwd).catch(() => null);
-      const current = this.get(id);
-      // The wait changed or ended meanwhile: this answer belongs to an old check.
-      if (current?.waitCheck?.prompt !== check.prompt || current.waitingFor !== before!.waitingFor) return;
-      const last = result ? `${result.done ? 'DONE' : 'NOT YET'}: ${result.summary}` : 'Check failed';
-      const failures = result ? 0 : (check.failures ?? 0) + 1;
-      const updated = { ...check, checkedAt: now(), last, failures };
-      this.#db.prepare('UPDATE sessions SET wait_check = ? WHERE id = ?').run(JSON.stringify(updated), id);
-      if (result?.done && current.status === 'waiting') {
-        const session = this.wait(id, null, 'shub:wait-check');
-        if (check.onDone) this.#resumeAfterWait(session, check.onDone.replaceAll('{summary}', result.summary));
-        else this.#services.notify.needsYou(session, result.summary);
-      } else {
-        const session = this.#emitUpdated(id);
-        if (failures === WAIT_FAILS_NOTIFY) {
-          this.#services.notify.needsYou(session, `Wait check failed ${failures} times in a row: ${check.prompt}`);
-        }
-      }
-    } finally {
-      this.#checking.delete(id);
-    }
-  }
-
-  /** The wait is over: Claude goes on with `text`; when that cannot be typed, the user hears of it instead. */
-  #resumeAfterWait(session: Session, text: string): void {
-    try {
-      this.#typeInto(session.id, 'shub:wait-check', () => {
-        this.pasteText(session.id, text);
-        this.sendKeys(session.id, ['Enter']);
-        this.#resendIfDropped(session.id);
-      });
-    } catch (err) {
-      console.error(`shub: wait follow-up for ${session.id}`, err);
-      this.#services.notify.needsYou(session, `Done waiting, but shub could not send: ${text}`);
-    }
+  checkWait(id: string, force = false): Promise<void> {
+    return this.#waits.check(id, force);
   }
 
   /** The cache-tax mod drops the first send into a cold cache and keeps the text in the input box: nobody is there
