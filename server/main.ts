@@ -62,3 +62,5 @@ async function shutdown(): Promise<void> {
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+// A stray rejected promise (a late callback, a failed lookup) is logged instead of taking the whole server down.
+process.on('unhandledRejection', (err) => console.error('shub: unhandled rejection', err));
