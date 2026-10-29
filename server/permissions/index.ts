@@ -54,7 +54,11 @@ export function create(
 ): { module: ShubModule; service: Permissions & PermissionsExtra } {
   let migrated = false;
   const db = () => {
-    if (!migrated) services.state.migrate('permissions', SCHEMA);
+    if (!migrated) {
+      services.state.migrate('permissions', SCHEMA);
+      // Waiters live in memory: what the last run left pending can never go ahead, so it counts as rejected.
+      services.state.db.prepare(`UPDATE approvals SET state = 'rejected' WHERE state = 'pending'`).run();
+    }
     migrated = true;
     return services.state.db;
   };
