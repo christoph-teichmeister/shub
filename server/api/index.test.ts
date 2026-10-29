@@ -4,6 +4,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
+import type { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { generateKeyPairSync, sign, type KeyObject } from 'node:crypto';
@@ -515,6 +516,17 @@ test('events WebSocket says hello and forwards bus events; needs the device toke
     ['hello', 'plugins.changed'],
   );
   ws.close();
+});
+
+test('a bad WebSocket frame closes that socket, not the server', async () => {
+  const ws = new WebSocket(base.replace('http', 'ws') + '/api/events', ['shub', `bearer.${userToken}`], {
+    headers: { origin: base },
+  });
+  await new Promise((r) => ws.on('open', r));
+  // Opcode 3 is reserved: the server's ws emits 'error' on the socket.
+  (ws as unknown as { _socket: Socket })._socket.write(Buffer.from([0x83, 0x80, 0, 0, 0, 0]));
+  await new Promise((r) => ws.on('close', r));
+  assert.equal((await call('GET', '/api/health')).status, 200);
 });
 
 test('events SSE stream', async () => {
