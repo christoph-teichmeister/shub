@@ -8,6 +8,7 @@
   import { STATUS_LABEL } from '../../status.ts';
   import { tabKeys } from '../../tabKeys.ts';
   import { beside, clampRect, type Rect } from '../../village/chats.ts';
+  import { store, storedJson } from '../../stored.ts';
 
   interface Props {
     tabs: Session[];
@@ -32,10 +33,8 @@
   const accent = (s: Session) => app.projects.find((p) => p.id === s.projectId)?.accent;
 
   function load(): Rect {
-    try {
-      const r = JSON.parse(localStorage.getItem(KEY) ?? '');
-      if ([r.x, r.y, r.w, r.h].every(Number.isFinite)) return r;
-    } catch {}
+    const r = storedJson(KEY) as Rect | null;
+    if (r && [r.x, r.y, r.w, r.h].every(Number.isFinite)) return r;
     const w = Math.min(720, innerWidth - 48);
     const h = Math.min(460, innerHeight - 48);
     if (near) return beside(near, w, h, innerWidth, innerHeight);
@@ -76,9 +75,7 @@
     const { moved } = grab;
     grab = null;
     if (!moved) return;
-    try {
-      localStorage.setItem(KEY, JSON.stringify(rect));
-    } catch {}
+    store(KEY, JSON.stringify(rect));
   }
 </script>
 

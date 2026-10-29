@@ -4,6 +4,7 @@
   import { app } from '../../stores/state.svelte.ts';
   import { toast } from '../../stores/toasts.svelte.ts';
   import Wordmark from '../Wordmark/Wordmark.svelte';
+  import { store, stored } from '../../stored.ts';
 
   interface Props {
     /** Version being installed: the curtain fades in while the page reloads. */
@@ -12,19 +13,16 @@
   let { version = null }: Props = $props();
 
   /** Set by the page that reloaded for an update; this page starts covered and fades the curtain out. */
-  let stored: string | null = null;
-  try {
-    stored = sessionStorage.getItem('shub-updated');
-    sessionStorage.removeItem('shub-updated');
-  } catch {}
-  let arrived = $state(stored);
+  const updated = stored('shub-updated', 'session');
+  store('shub-updated', null, 'session');
+  let arrived = $state(updated);
 
   /** Opaque while this page is still building underneath; stays through the fade-out. */
-  let landing = $state(!!stored);
+  let landing = $state(!!updated);
 
   /** Never trap the page behind the curtain if loading hangs or fails. */
   let gaveUp = $state(false);
-  if (stored) setTimeout(() => (gaveUp = true), 5000);
+  if (updated) setTimeout(() => (gaveUp = true), 5000);
 
   // Stay covered until the data and fonts are in, so the UI does not visibly fill in and shift;
   // two frames after that so the settled layout paints before the fade starts.

@@ -46,6 +46,7 @@
   import NewProject from './NewProject.svelte';
   import NewSession from './NewSession.svelte';
   import Yard from './Yard.svelte';
+  import { store, stored } from '../../stored.ts';
 
   const STEP_MS = 140;
   const WALK = 8; // px per step
@@ -118,10 +119,7 @@
   // ---------- chime ----------
   // Off by default; the AudioContext is made on the toggle, since audio needs a user gesture.
   const CHIME_KEY = 'shub-village-chime';
-  let chime = $state(false);
-  try {
-    chime = localStorage.getItem(CHIME_KEY) === '1';
-  } catch {}
+  let chime = $state(stored(CHIME_KEY) === '1');
   let audio: AudioContext | null = null;
   function beep() {
     try {
@@ -144,9 +142,7 @@
   }
   function toggleChime() {
     chime = !chime;
-    try {
-      localStorage.setItem(CHIME_KEY, chime ? '1' : '0');
-    } catch {}
+    store(CHIME_KEY, chime ? '1' : '0');
     if (chime) beep();
   }
   // A crab joining the line chimes; the line the village opens with does not.
@@ -159,17 +155,11 @@
   // ---------- time of day ----------
   // "Now" follows the clock; a pinned time stays in localStorage.
   const TIME_KEY = 'shub-village-time';
-  let pinnedTime = $state<TimeOfDay | null>(null);
-  try {
-    const v = localStorage.getItem(TIME_KEY);
-    pinnedTime = TIMES.find((x) => x === v) ?? null;
-  } catch {}
+  const kept = stored(TIME_KEY);
+  let pinnedTime = $state<TimeOfDay | null>(TIMES.find((x) => x === kept) ?? null);
   function setTime(v: TimeOfDay | null) {
     pinnedTime = v;
-    try {
-      if (v) localStorage.setItem(TIME_KEY, v);
-      else localStorage.removeItem(TIME_KEY);
-    } catch {}
+    store(TIME_KEY, v);
   }
   const clockTime = $derived(timeOfDay(new Date(now).getHours()));
   const tod = $derived(pinnedTime ?? clockTime);

@@ -24,15 +24,17 @@
     app,
     loadProjects,
     needsYouCount,
+    openChild,
     placeRolled,
     rolledUp,
     sessionHref,
     sessionsOf,
-    startSession,
     ui,
     unpinSession,
   } from '../../stores/state.svelte.ts';
   import { toastError } from '../../stores/toasts.svelte.ts';
+  import { mmss } from '../../format.ts';
+  import { store, stored, storedJson } from '../../stored.ts';
 
   interface Props {
     /** The open project, its session open in the control center and the focused pane. */
@@ -78,22 +80,8 @@
   // ---------- Active group: projects with a session, kept ACTIVE_GRACE after the last one closes ----------
   const ACTIVE_GRACE = 10 * 60_000;
   // Kept per browser so a reload keeps the countdown; storage can be missing or throw (private window).
-  let leftAt = $state<Record<string, number>>(
-    (() => {
-      try {
-        return JSON.parse(localStorage.getItem('shub.active.leftAt') ?? '{}') as Record<string, number>;
-      } catch {
-        return {};
-      }
-    })(),
-  );
-  $effect(() => {
-    try {
-      localStorage.setItem('shub.active.leftAt', JSON.stringify(leftAt));
-    } catch {
-      // not remembered, the countdown still runs
-    }
-  });
+  let leftAt = $state((storedJson('shub.active.leftAt') as Record<string, number> | null) ?? {});
+  $effect(() => store('shub.active.leftAt', JSON.stringify(leftAt)));
   let now = $state(Date.now());
   let wasActive = new Set<string>();
   $effect(() => {
@@ -129,8 +117,7 @@
   function grace(id: string) {
     if (!(id in leftAt)) return null;
     const left = Math.max(0, ACTIVE_GRACE - (now - leftAt[id]));
-    const text = `${Math.floor(left / 60_000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`;
-    return { text, opacity: 0.4 + 0.6 * (left / ACTIVE_GRACE) };
+    return { text: mmss(left), opacity: 0.4 + 0.6 * (left / ACTIVE_GRACE) };
   }
 
   /** What a folded group still shows: who needs you, else what is working. */
@@ -153,11 +140,6 @@
   /** What a session's fold hides: its worktrees and its running subagents. */
   const foldLabel = (kids: ChildWorktree[], agents: unknown[]) =>
     [kids.length && worktreeCount(kids), agents.length && plural(agents.length, 'subagent')].filter(Boolean).join(', ');
-  async function openChild(w: ChildWorktree) {
-    const request = childStart(w);
-    const s = request && (await startSession(request));
-    if (s) location.hash = sessionHref(s);
-  }
 
   const pluginSections = $derived(
     app.plugins
@@ -225,20 +207,10 @@
   }
 
   // Remembered per browser; storage can be missing or throw (private window).
-  let sidebarCollapsed = $state(false);
-  try {
-    sidebarCollapsed = localStorage.getItem('shub.sidebar.collapsed') === '1';
-  } catch {
-    // starts open
-  }
+  let sidebarCollapsed = $state(stored('shub.sidebar.collapsed') === '1');
   export function toggleSidebar() {
     sidebarCollapsed = !sidebarCollapsed;
-    try {
-      if (sidebarCollapsed) localStorage.setItem('shub.sidebar.collapsed', '1');
-      else localStorage.removeItem('shub.sidebar.collapsed');
-    } catch {
-      // not remembered, still toggles
-    }
+    store('shub.sidebar.collapsed', sidebarCollapsed ? '1' : null);
   }
 </script>
 

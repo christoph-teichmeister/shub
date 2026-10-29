@@ -8,7 +8,7 @@
   import Icon from '../../components/Icon/Icon.svelte';
   import Section from '../../components/Section/Section.svelte';
   import TextField from '../../components/TextField/TextField.svelte';
-  import { when } from '../../format.ts';
+  import { mmss, when } from '../../format.ts';
   import { api } from '../../stores/api.ts';
   import { fleet, removeMachine, renameMachine } from '../../stores/machines.svelte.ts';
   import { app, ui } from '../../stores/state.svelte.ts';
@@ -34,7 +34,7 @@
   let newName = $state('');
 
   const left = $derived(pairing ? Math.max(0, Date.parse(pairing.expiresAt) - now) : 0);
-  const countdown = $derived(`${Math.floor(left / 60_000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`);
+  const countdown = $derived(mmss(left));
 
   /** Approving and changing levels work on a trusted host and from a phone at level Control. */
   const local = $derived(!!app.me?.local);
