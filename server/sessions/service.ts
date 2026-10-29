@@ -760,11 +760,15 @@ export class SessionsService implements Sessions {
   /**
    * A command Claude handed over: "run" types `!` (Claude's bash mode), pastes it and presses Enter, in
    * the session it names (resumed first when it is down) or else this one; both actions clear the list and hand
-   * the turn back.
+   * the turn back. `command` is the text the client showed at `index`: another one there means the list changed
+   * since, so nothing unseen runs.
    */
-  answerCommand(id: string, index: number, action: 'run' | 'dismiss'): void {
+  answerCommand(id: string, index: number, action: 'run' | 'dismiss', command?: string): void {
     const handed = this.get(id)?.pendingCommands?.[index];
     if (handed === undefined) throw new HttpError(404, 'no such command waiting');
+    if (command !== undefined && command !== handed.command) {
+      throw new HttpError(409, 'Claude handed over other commands meanwhile: look again');
+    }
     if (action === 'run') {
       const target = commandTarget(handed, this.list(), id);
       if (target.kind === 'folder' || target.kind === 'unknown') {

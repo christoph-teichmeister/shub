@@ -558,7 +558,7 @@ export const ROUTE_LEVELS: Partial<Record<keyof typeof ROUTES, DeviceLevel>> = {
   pushTest: 'view',
   presence: 'view',
   approvalDecide: 'prompts',
-  sessionCommand: 'prompts', // by index only: runs a command Claude handed over, never text from the phone
+  sessionCommand: 'prompts', // by index: runs a command Claude handed over; the text sent along is only compared
   sessionKeys: 'prompts', // prompts: named keys and single digits only, see sessions
   // A browser just approved here joins at Prompts; the real gate is the join mark set by that approval (server/group).
   groupJoinOffer: 'prompts',
@@ -743,7 +743,7 @@ export const ROUTES = {
   sessionClaudeHere: 'POST /api/sessions/:id/claude-here', // shell id, { prompt? } -> Session | { approval }: Claude in the shell's current folder
   sessionPause: 'POST /api/sessions/:id/pause',
   sessionResume: 'POST /api/sessions/:id/resume',
-  sessionCommand: 'POST /api/sessions/:id/command', // { index, action: 'run' | 'dismiss' } pendingCommands
+  sessionCommand: 'POST /api/sessions/:id/command', // { index, command?, action: 'run' | 'dismiss' } pendingCommands; 409 when command is no longer at index
   sessionKeys: 'POST /api/sessions/:id/keys', // { keys: "1" | "Escape" | ... } phone quick keys
   sessionPaste: 'POST /api/sessions/:id/paste', // text or multipart image -> path inserted
   sessionMessages: 'GET /api/sessions/:id/messages', // -> ChatMessage[]: the last messages of the Claude transcript (phone chat view); with ?after=<offset> (empty: first call) -> ChatDelta

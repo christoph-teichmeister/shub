@@ -620,6 +620,11 @@ test('phone runs a command Claude handed over after a second tap', async ({ page
   const pendingCommands = [{ command: 'cd ~ && git pull' }, { command: 'make', session: 's2' }];
   const handing = { ...session, status: 'needs-you', pendingCommands };
   const { errors, calls } = await mockApi(page, { '/api/sessions': [handing, other] });
+  let events: { send(m: string): void } | undefined;
+  await page.routeWebSocket('**/api/events', (ws) => {
+    events = ws;
+    ws.send(JSON.stringify({ type: 'hello', apiVersion: 1 }));
+  });
   await page.goto('/#/');
   await expect(page.getByText('▶ 2 commands').first()).toBeVisible();
   await page.getByRole('link', { name: 'Open', exact: true }).first().click();
@@ -629,10 +634,29 @@ test('phone runs a command Claude handed over after a second tap', async ({ page
   await expect(chip.getByRole('button', { name: 'Run in Other one' })).toBeVisible();
   await chip.getByRole('button', { name: 'Run in session' }).click();
   expect(calls.some((c) => c.path === '/api/sessions/s1/command')).toBe(false);
+  // Claude hands over another list between the taps: the first tap no longer counts.
+  const changed = [{ command: 'rm -rf build' }, ...pendingCommands];
+  events!.send(JSON.stringify({ type: 'session.updated', session: { ...handing, pendingCommands: changed } }));
+  await expect(chip.locator('code')).toHaveText(['rm -rf build', 'cd ~ && git pull', 'make']);
+  await expect(chip.getByRole('button', { name: 'Tap again to run' })).toHaveCount(0);
+  await chip.getByRole('button', { name: 'Run in session' }).first().click();
   await chip.getByRole('button', { name: 'Tap again to run' }).click();
   await expect
     .poll(() => calls.find((c) => c.path === '/api/sessions/s1/command')?.body)
-    .toEqual({ index: 0, action: 'run' });
+    .toEqual({ index: 0, command: 'rm -rf build', action: 'run' });
+  expect(errors).toEqual([]);
+});
+
+test('Copy says Copied only when the clipboard took the command', async ({ page }) => {
+  const pendingCommands = [{ command: 'make' }];
+  const { errors } = await mockApi(page, { '/api/sessions': [{ ...session, pendingCommands }] });
+  await page.addInitScript(() => {
+    navigator.clipboard.writeText = () => Promise.reject(new Error('Clipboard blocked'));
+  });
+  await page.goto('/#/p/ai-portal/s1');
+  await page.getByRole('region', { name: 'Commands from Claude' }).getByRole('button', { name: 'Copy' }).click();
+  await expect(page.getByText('Clipboard blocked')).toBeVisible();
+  expect(await page.locator('.toast').allInnerTexts()).not.toContain('Copied'); // no retry: it would wait it out
   expect(errors).toEqual([]);
 });
 
@@ -1497,7 +1521,9 @@ test('the crab village draws every session as a crab, queues the ones that need 
   await page.keyboard.press('j');
   await expect(page.getByRole('dialog', { name: 'Prompt theme' }).getByRole('button', { name: 'Run R' })).toBeVisible();
   await page.keyboard.press('r');
-  await expect.poll(() => posted('/api/sessions/s7/command')).toEqual([{ index: 0, action: 'run' }]);
+  await expect
+    .poll(() => posted('/api/sessions/s7/command'))
+    .toEqual([{ index: 0, command: 'sudo systemctl restart x', action: 'run' }]);
   await page.keyboard.press('ArrowUp');
   await expect(page.getByRole('dialog', { name: 'Export CSV fix' })).toBeVisible();
   await page.keyboard.press('Escape');
