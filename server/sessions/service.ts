@@ -890,6 +890,7 @@ export class SessionsService implements Sessions {
     else if (!global || global.status === 'exited') {
       this.start({ kind: 'global', projectId: null }, 'shub').catch((err) => console.error('shub: global Claude', err));
     }
+    this.stop(); // a second startup must not leave the first timer running past stop()
     this.#timer = setInterval(() => this.reconcile(), RECONCILE_MS);
     this.#timer.unref();
   }
