@@ -55,12 +55,16 @@ function desktop(title: string, body: string): void {
   execFile('notify-send', ['-a', 'shub', title, body], () => {});
 }
 
+/** Heartbeats come every 30 s; one missed beat is still "in use". */
+const DESKTOP_ACTIVE_MS = 75_000;
+
 const sessionUrl = (session: Session): string => `/?session=${encodeURIComponent(session.id)}`;
 
 export class NotifyService implements Notify {
   #ctx: Context;
   #services: Services;
   #vapid: Vapid | undefined;
+  #desktopSeen = 0;
   #migrated = false;
 
   constructor(ctx: Context, services: Services) {
@@ -102,6 +106,18 @@ export class NotifyService implements Notify {
       );
     // The devices table belongs to auth; this flag only drives the "push on" label in Settings.
     if (deviceId) this.#db.prepare('UPDATE devices SET push = 1 WHERE id = ?').run(deviceId);
+  }
+
+  desktopActive(): void {
+    this.#desktopSeen = Date.now();
+  }
+
+  /** The phone stays quiet while the desktop UI is in use. */
+  #phoneQuiet(): boolean {
+    return (
+      this.#services.config.get().notifications.noPushWhileDesktopFocused &&
+      Date.now() - this.#desktopSeen < DESKTOP_ACTIVE_MS
+    );
   }
 
   devicePending(name: string): void {
@@ -146,12 +162,12 @@ export class NotifyService implements Notify {
     const settings = this.#services.config.get().notifications;
     const title = session.name;
     if (settings.desktopNeedsYou) desktop(title, text);
-    if (settings.pushNeedsYou)
+    if (settings.pushNeedsYou && !this.#phoneQuiet())
       void this.push({ title, body: text, url: sessionUrl(session), tag: `session-${session.id}` });
   }
 
   yourTurn(session: Session): void {
-    if (!this.#services.config.get().notifications.pushYourTurn) return;
+    if (!this.#services.config.get().notifications.pushYourTurn || this.#phoneQuiet()) return;
     const title = session.name;
     void this.push({ title, body: 'Claude finished.', url: sessionUrl(session), tag: `session-${session.id}` });
   }
@@ -159,7 +175,13 @@ export class NotifyService implements Notify {
   approval(approval: Approval): void {
     const title = 'shub: approval needed';
     desktop(title, approval.summary);
-    void this.push({ title, body: approval.summary, url: `/?approval=${approval.id}`, tag: `approval-${approval.id}` });
+    if (!this.#phoneQuiet())
+      void this.push({
+        title,
+        body: approval.summary,
+        url: `/?approval=${approval.id}`,
+        tag: `approval-${approval.id}`,
+      });
   }
 
   /** Pushes to that device only; without one (cli) to all devices. */
@@ -197,6 +219,11 @@ function routes(notify: NotifyService, services: Services, router: Router): void
       throw new HttpError(400, 'vapid: { publicKey, privateKey } as base64url P-256 keys');
     }
     notify.subscribe({ endpoint: body.endpoint, keys: body.keys }, req.caller.deviceId ?? null, body.vapid);
+    return { ok: true };
+  });
+  router.add(ROUTES.presence, (req) => {
+    requireUser(req.caller);
+    notify.desktopActive();
     return { ok: true };
   });
   router.add(ROUTES.pushTest, async (req) => {

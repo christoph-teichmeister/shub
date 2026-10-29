@@ -132,6 +132,8 @@ export interface Notify {
   test(deviceId?: string): Promise<void>;
   /** The device was signed out or removed: drop its push subscriptions. */
   forgetDevice(deviceId: string): void;
+  /** A person is using the desktop UI right now: phones get no push for a short while (setting noPushWhileDesktopFocused). */
+  desktopActive(): void;
   /** A phone paired and waits for approval on this machine. */
   devicePending(name: string): void;
 }
