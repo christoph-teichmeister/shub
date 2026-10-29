@@ -38,7 +38,7 @@
     startSession,
     ui,
   } from '../stores/state.svelte.ts';
-  import { serviceAction, serviceInspect, serviceLogs } from '../stores/services.ts';
+  import { serviceAction, serviceInspect, serviceLogs, watchServices } from '../stores/services.ts';
   import { pushEnabled, pushSupported, subscribePush } from '../stores/push.ts';
   import { toast, toastError } from '../stores/toasts.svelte.ts';
 
@@ -117,15 +117,7 @@
   let services = $state<ServiceContainer[]>([]);
   let message = $state('');
 
-  $effect(() => {
-    const id = showServices && open?.kind === 'claude' ? open.id : null;
-    void (id && app.servicesVersion[id]);
-    if (!id) return;
-    api<ServiceContainer[]>('services', { params: { id } }).then(
-      (list) => (services = list),
-      () => (services = []),
-    );
-  });
+  $effect(() => watchServices(showServices && open?.kind === 'claude' ? open.id : null, (list) => (services = list)));
 
   const age = (iso: string) => {
     const min = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));

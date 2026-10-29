@@ -65,7 +65,7 @@
     startSession,
     ui,
   } from '../stores/state.svelte.ts';
-  import { serviceAction, serviceInspect, serviceLogs } from '../stores/services.ts';
+  import { serviceAction, serviceInspect, serviceLogs, watchServices } from '../stores/services.ts';
   import { toast, toastError } from '../stores/toasts.svelte.ts';
 
   // Settings pages render here instead of the project, so the sidebar stays.
@@ -345,18 +345,7 @@
   let services = $state<ServiceContainer[]>([]);
   let dragId: string | null = null;
 
-  $effect(() => {
-    const id = root?.kind === 'claude' ? root.id : null;
-    void (id && app.servicesVersion[id]);
-    if (!id) {
-      services = [];
-      return;
-    }
-    api<ServiceContainer[]>('services', { params: { id } }).then(
-      (list) => (services = list),
-      () => (services = []),
-    );
-  });
+  $effect(() => watchServices(root?.kind === 'claude' ? root.id : null, (list) => (services = list)));
 
   onMount(() => {
     api<Session[]>('restorable').then(

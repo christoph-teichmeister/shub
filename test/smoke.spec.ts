@@ -932,6 +932,46 @@ test('the tab bar + menu starts a session, a terminal or a project button; the t
   expect(errors).toEqual([]);
 });
 
+test("a quick switch never shows the previous session's containers", async ({ page }) => {
+  const other: Session = { ...session, id: 's2', name: 'Docs pass', status: 'your-turn' };
+  const container = (name: string) => ({
+    id: name,
+    name,
+    project: 'ai-portal',
+    workingDir: project.path,
+    image: name,
+    kind: 'other',
+    state: 'running',
+    status: 'Up 1 minute',
+    ports: [],
+  });
+  const { errors } = await mockApi(page, {
+    '/api/sessions': [session, other],
+    '/api/sessions/s2/services': [container('docs-web')],
+    '/api/services/docs-web/logs': { lines: [] },
+  });
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
+  let asked!: () => void;
+  const s1Asked = new Promise<void>((r) => (asked = r));
+  // MR 2136 review's containers answer late, after the switch to Docs pass.
+  await page.route('**/api/sessions/s1/services', async (r) => {
+    asked();
+    await held;
+    await r.fulfill({ json: [container('review-web')] });
+  });
+  await page.goto('/#/p/ai-portal/s1');
+  await page.keyboard.press('Alt+KeyD');
+  await s1Asked;
+  await page.goto('/#/p/ai-portal/s2');
+  await expect(page.getByText('docs-web').first()).toBeVisible();
+  release();
+  await page.waitForTimeout(500);
+  await expect(page.getByText('docs-web').first()).toBeVisible();
+  await expect(page.getByText('review-web')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('update curtain stays opaque until the reloaded page has its data', async ({ page }) => {
   const { errors } = await mockApi(page);
   let release!: () => void;
