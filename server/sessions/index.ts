@@ -6,7 +6,7 @@ import { HttpError, requireRight, requireUser, sendJson, type Caller, type Route
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
-import { listWorktrees } from '../projects/worktrees.ts';
+import { insideWorktree, listWorktrees } from '../projects/worktrees.ts';
 import { chatSince, followTranscript } from './chat.ts';
 import { viewableImage } from './image.ts';
 import { buttonPrompt, isSimpleInput } from './launch.ts';
@@ -58,12 +58,15 @@ async function startRoute(
   if (request.takeOver && !isUser(caller)) throw new HttpError(403, 'only the user takes a conversation over');
   const project = request.projectId ? services.config.project(request.projectId) : undefined;
   const button = request.buttonId ? project?.buttons.find((b) => b.id === request.buttonId) : undefined;
-  // Without a parent, a cwd must lie inside one of the project's worktrees (the main checkout included).
-  if (request.cwd && !request.parentId) {
-    if (!project) throw new HttpError(400, 'a cwd needs a project');
-    const cwd = request.cwd;
-    if (!(await listWorktrees(project.path)).some((w) => cwd === w.path || cwd.startsWith(`${w.path}/`)))
-      throw new HttpError(400, `not inside a worktree of ${project.name}: ${cwd}`);
+  // A cwd must lie inside one of the project's worktrees (the main checkout included); a pane's project is its
+  // parent's. Only the user opens a pane in any folder (a command handed over in the chat may name one).
+  if (request.cwd && !(request.parentId && isUser(caller))) {
+    const parent = request.parentId ? sessions.get(request.parentId) : undefined;
+    const homeId = parent?.projectId ?? request.projectId;
+    const home = homeId ? services.config.project(homeId) : undefined;
+    if (!home) throw new HttpError(400, 'a cwd needs a project');
+    if (!insideWorktree(request.cwd, await listWorktrees(home.path)))
+      throw new HttpError(400, `not inside a worktree of ${home.name}: ${request.cwd}`);
   }
   const decision = services.permissions.decide(caller, {
     kind: 'session.start',

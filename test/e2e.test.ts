@@ -186,6 +186,8 @@ test('health, bootstrap login, project, session, terminal, hooks, close', { time
 
   // Hooks with the session's own token move the status.
   const bearer = { authorization: `Bearer ${sessionToken}` };
+  const pane = { kind: 'shell', parentId: started.id, cwd: dirs.state };
+  assert.equal((await api('POST', '/api/sessions', pane, bearer)).status, 400, "a session's pane stays in the project");
   await json('POST', '/api/hooks/UserPromptSubmit', { prompt: 'hi' }, bearer);
   assert.equal((await session(started.id))?.status, 'working');
   await json('POST', '/api/hooks/Stop', { stop_hook_active: false }, bearer);
