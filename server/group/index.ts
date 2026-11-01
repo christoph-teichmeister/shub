@@ -195,6 +195,9 @@ export class GroupStore {
 
   /** Add or change an item as this host: its counter goes up by one. */
   put(key: string, body: unknown): GroupItem {
+    // A revoke is final: a plain write never brings a revoked device back (a new key is a new device id).
+    const have = this.get(key);
+    if (have?.deleted && kindOf(key) === 'device') return have;
     return this.#write(key, body, false);
   }
 
@@ -207,8 +210,12 @@ export class GroupStore {
   #write(key: string, body: unknown, deleted: boolean): GroupItem {
     const version = { ...this.get(key)?.version };
     version[this.hostId] = (version[this.hostId] ?? 0) + 1;
+    // An open conflict stays open (theirs is kept) until it is settled.
     this.#db
-      .prepare('INSERT OR REPLACE INTO group_items (key, body, version, deleted, theirs) VALUES (?, ?, ?, ?, NULL)')
+      .prepare(
+        `INSERT INTO group_items (key, body, version, deleted) VALUES (?, ?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET body = excluded.body, version = excluded.version, deleted = excluded.deleted`,
+      )
       .run(key, deleted ? null : JSON.stringify(body), JSON.stringify(version), deleted ? 1 : 0);
     this.#listeners.forEach((l) => l(key));
     return { key, body: deleted ? null : body, version, deleted };
@@ -220,6 +227,7 @@ export class GroupStore {
    */
   merge(incoming: GroupItem): Order {
     const ours = this.get(incoming.key);
+    if (ours && kindOf(incoming.key) === 'device' && !this.#deviceMayChange(ours, incoming)) return 'older';
     let order = ours ? compareItems(incoming, ours) : 'newer';
     // Both hosts made the same change (e.g. imported the same config.json): not a conflict, the versions just join.
     if (
@@ -247,6 +255,22 @@ export class GroupStore {
       this.#db.prepare('UPDATE group_items SET theirs = ? WHERE key = ?').run(JSON.stringify(incoming), incoming.key);
     }
     return order;
+  }
+
+  /** A device keeps its key (a new key is a new device) and a revoke is never undone; anything else is refused and logged. */
+  #deviceMayChange(ours: GroupItem, incoming: GroupItem): boolean {
+    const key = (i: GroupItem) => canon((i.body as { publicKey?: unknown } | null)?.publicKey);
+    const refused =
+      ours.deleted && !incoming.deleted
+        ? 'revoked'
+        : ours.body && incoming.body && key(ours) !== key(incoming)
+          ? 'key'
+          : '';
+    if (refused)
+      console.warn(
+        `shub: refused ${incoming.key} from another host (${refused === 'key' ? 'different public key' : 'it was revoked here'})`,
+      );
+    return !refused;
   }
 
   /** Items with an open conflict, with the other side's version. */

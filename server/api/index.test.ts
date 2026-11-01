@@ -74,6 +74,7 @@ before(async () => {
     waitForDecision: () => new Promise(() => {}),
     log: () => ({}),
   } as unknown as Services['permissions'];
+  services.sessions = { list: () => [], pause() {} } as unknown as Services['sessions']; // the group sync reads them
   const modules: ShubModule[] = [];
   for (const [key, mod] of [
     ['state', state],
@@ -111,8 +112,8 @@ const asUser = (method: string, path: string, body?: unknown) =>
 
 /** Signs a challenge with the device's key, as a browser does, and returns its short-lived token. */
 async function signInWith(deviceId: string, privateKey: KeyObject): Promise<string> {
-  const { nonce } = await (await call('POST', '/api/auth/challenge', { deviceId })).json();
-  const signature = sign('sha256', Buffer.from(`shub-login:${nonce}`), {
+  const { nonce, hostId } = await (await call('POST', '/api/auth/challenge', { deviceId })).json();
+  const signature = sign('sha256', Buffer.from(`shub-login:${hostId}:${nonce}`), {
     key: privateKey,
     dsaEncoding: 'ieee-p1363',
   }).toString('base64url');
@@ -555,4 +556,51 @@ test('rotate signs out other devices but keeps the caller', async () => {
   assert.ok(!(await me.text()).includes(token), 'not retrievable later');
   assert.equal((await bootstrapBrowser('x')).res.status, 401, 'the old token is dead');
   assert.equal((await bootstrapBrowser('x', token)).res.status, 200);
+});
+
+test('group join over HTTP: the machine offers itself, adds a host, and a phone may not', async () => {
+  const offer = await asUser('POST', '/api/group/join/offer');
+  assert.equal(offer.status, 200);
+  const info = await offer.json();
+  assert.match(info.id, /^[\w-]{8,64}$/);
+  assert.equal(info.publicKey.crv, 'P-256');
+
+  const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const host = {
+    id: 'other-host-1',
+    name: 'Laptop',
+    url: 'http://127.0.0.1:1',
+    publicKey: publicKey.export({ format: 'jwk' }),
+  };
+  assert.equal((await asUser('POST', '/api/group/join', { host: { ...host, id: 'x' } })).status, 400);
+  assert.equal((await asUser('POST', '/api/group/join', { host: { ...host, id: info.id } })).status, 409);
+  assert.equal((await asUser('POST', '/api/group/join', { host })).status, 200);
+  assert.deepEqual(
+    (await (await asUser('GET', '/api/group/peers')).json()).map((p: { id: string }) => p.id),
+    ['other-host-1'],
+  );
+
+  // A phone at Prompts is neither trusted host nor an approved browser.
+  const phone = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const code = (await (await asUser('POST', '/api/auth/pairing')).json()).code;
+  const { device } = await (
+    await call('POST', '/api/auth/pairing/redeem', {
+      code,
+      deviceName: 'p',
+      publicKey: phone.publicKey.export({ format: 'jwk' }),
+    })
+  ).json();
+  await asUser('POST', `/api/devices/${device.id}/approve`);
+  const token = await signInWith(device.id, phone.privateKey);
+  const asPhone = (method: string, path: string, body?: unknown) =>
+    call(method, path, body, { authorization: `Bearer ${token}` });
+  assert.equal((await asPhone('POST', '/api/group/join/offer')).status, 403);
+  assert.equal((await asPhone('POST', '/api/group/join', { host })).status, 403);
+  void privateKey;
+});
+
+test('settings: sync or notifications set to null is a 400, not a 500', async () => {
+  assert.equal((await asUser('PATCH', '/api/settings', { sync: null })).status, 400);
+  assert.equal((await asUser('PATCH', '/api/settings', { notifications: null })).status, 400);
+  assert.equal((await asUser('PATCH', '/api/settings', { sync: [] })).status, 400);
 });

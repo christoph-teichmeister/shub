@@ -333,3 +333,59 @@ test('join refuses a revoked host', async () => {
   assert.throws(() => a.sync.join(b.sync.info()), { status: 409 });
   assert.ok(a.group.get(`device:${b.group.hostId}`)!.deleted);
 });
+
+test('a host nonce relayed from another host is refused', async () => {
+  const { a, b } = await pair();
+  const { challengeMessage } = await import('../../shared/api.ts');
+  const { sign, createPrivateKey } = await import('node:crypto');
+  const { nonce, hostId } = a.sync.handle('challenge', { hostId: b.group.hostId }) as { nonce: string; hostId: string };
+  assert.equal(hostId, a.group.hostId);
+  const key = createPrivateKey(b.group.meta('hostKey')!);
+  const signed = (id: string) =>
+    sign('sha256', Buffer.from(challengeMessage(id, nonce)), { key, dsaEncoding: 'ieee-p1363' }).toString('base64url');
+  // b signed for another host (as if the nonce came from there): a refuses it.
+  assert.throws(
+    () => a.sync.handle('session', { hostId: b.group.hostId, nonce, signature: signed('other-host') }),
+    /bad signature/,
+  );
+  const { nonce: again } = a.sync.handle('challenge', { hostId: b.group.hostId }) as { nonce: string };
+  const ok = sign('sha256', Buffer.from(challengeMessage(a.group.hostId, again)), { key, dsaEncoding: 'ieee-p1363' });
+  assert.ok(a.sync.handle('session', { hostId: b.group.hostId, nonce: again, signature: ok.toString('base64url') }));
+});
+
+test('a later device item with another key for a known id is refused, a revoke is not undone', () => {
+  const { a } = hosts('a');
+  const body = (x: string) => ({ name: 'Pixel', kind: 'phone', publicKey: JSON.stringify({ kty: 'EC', x }) });
+  a.group.put('device:d1', body('one'));
+  const seen = a.group.get('device:d1')!.version;
+  const swapped = { key: 'device:d1', body: body('two'), version: { ...seen, other: 5 }, deleted: false };
+  assert.equal(a.group.merge(swapped), 'older');
+  assert.equal((a.group.get('device:d1')!.body as { publicKey: string }).publicKey, body('one').publicKey);
+  // Same key, new level: fine.
+  assert.equal(
+    a.group.merge({ ...swapped, body: { ...body('one'), level: 'view' }, version: { ...seen, other: 6 } }),
+    'newer',
+  );
+  a.group.remove('device:d1');
+  a.group.put('device:d1', body('one')); // a plain write does not bring it back
+  assert.equal(a.group.get('device:d1')!.deleted, true);
+  assert.equal(a.group.merge({ ...swapped, body: body('one'), version: { ...seen, other: 99 } }), 'older');
+  assert.equal(a.group.get('device:d1')!.deleted, true);
+});
+
+test('a local write keeps an open conflict open', async () => {
+  const { a, b } = await conflicted();
+  assert.equal(a.group.conflicts().length, 1);
+  a.group.put('theme:t', { id: 't', name: 'again' });
+  assert.equal(a.group.conflicts().length, 1);
+  void b;
+});
+
+test('merging a plugin item without env keeps our own env', async () => {
+  const { a, b } = await pair();
+  a.group.put('plugin:x', { name: 'x', env: { K: 'mine' } });
+  await a.sync.round(); // b gets it without env
+  b.group.put('plugin:x', { name: 'x', v: 2 });
+  await b.sync.round();
+  assert.deepEqual(a.group.get('plugin:x')?.body, { name: 'x', v: 2, env: { K: 'mine' } });
+});

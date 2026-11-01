@@ -6,13 +6,16 @@ import {
   deviceToken,
   forgetDevice,
   here,
+  hiddenHosts,
   machines,
   newKeys,
+  normalizeOrigin,
   PendingError,
   rememberDevice,
   renameDevice,
   select,
   selectedOrigin,
+  setHidden,
 } from './device.ts';
 import { pushEnabled, sharePush } from './push.ts';
 
@@ -36,16 +39,17 @@ let polling: ReturnType<typeof setInterval> | undefined;
 /**
  * The chips come from the group: every other host it lists gets this browser's own key and device id (the group
  * carries the device to that host), so one pairing is enough. Hosts known already stay as they are; when this
- * host cannot be asked the per-browser list is all there is.
+ * host cannot be asked the per-browser list is all there is. A host removed here stays hidden in this browser.
  */
 async function addGroupHosts(): Promise<void> {
   const own = (await machines()).find((m) => m.origin === here);
   if (!own) return;
   const peers = await api<HostPeer[]>('groupPeers', { origin: here }).catch(() => []);
-  const known = new Set((await machines()).map((m) => m.origin));
-  for (const { url, name } of peers) {
-    if (!url || known.has(url)) continue;
-    await rememberDevice({ origin: url, deviceId: own.deviceId, keys: own.keys, name });
+  const skip = hiddenHosts();
+  for (const m of await machines()) skip.add(normalizeOrigin(m.origin));
+  for (const { url, name, id } of peers) {
+    if (!url || skip.has(normalizeOrigin(url))) continue;
+    await rememberDevice({ origin: normalizeOrigin(url), deviceId: own.deviceId, keys: own.keys, name, hostId: id });
   }
 }
 
@@ -114,6 +118,7 @@ export async function addMachine(address: string, code: string, deviceName: stri
   const data = (await res.json().catch(() => ({}))) as { device?: { id: string }; error?: string };
   if (!res.ok || !data.device) throw new Error(data.error ?? `Pairing failed (${res.status})`);
   const name = health.machine ?? new URL(target.origin).hostname.split('.')[0];
+  setHidden(target.origin, false);
   await rememberDevice({ origin: target.origin, deviceId: data.device.id, keys, name });
   await loadMachines();
   return target.origin;
@@ -148,9 +153,15 @@ export async function joinHosts(origin: string): Promise<void> {
   await api('groupJoin', { origin, body: { host: ours } });
 }
 
-/** Forgets a machine on this phone and signs the phone out there (when reachable). */
+/**
+ * Forgets a machine in this browser. A host of the group is only hidden here (signing out would revoke this device,
+ * which is one device in the whole group); any other machine also signs the phone out there (when reachable).
+ */
 export async function removeMachine(origin: string): Promise<void> {
-  await api('logout', { origin }).catch(() => {});
+  const peers = await api<HostPeer[]>('groupPeers', { origin: here }).catch(() => undefined);
+  if (peers && !peers.some((p) => p.url && normalizeOrigin(p.url) === normalizeOrigin(origin)))
+    await api('logout', { origin }).catch(() => {});
+  setHidden(origin, true);
   await forgetDevice(origin);
   if (origin === fleet.selected) select(here);
   await loadMachines();

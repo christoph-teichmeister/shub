@@ -208,8 +208,18 @@ export class FileConfigStore implements ConfigStore {
 
   #load(): Config {
     // A broken config.json is not imported and not marked done, so fixing it and restarting still imports it.
-    if (!this.#group.imported())
-      this.#group.importConfig(existsSync(this.#file) ? JSON.parse(readFileSync(this.#file, 'utf8')) : {});
+    if (!this.#group.imported()) {
+      const old = existsSync(this.#file) ? JSON.parse(readFileSync(this.#file, 'utf8')) : {};
+      const lists = ['projects', 'groups', 'themes', 'plugins'];
+      if (
+        !old ||
+        typeof old !== 'object' ||
+        Array.isArray(old) ||
+        lists.some((k) => old[k] !== undefined && !Array.isArray(old[k]))
+      )
+        throw new Error('config.json must be an object whose projects, groups, themes and plugins are lists');
+      this.#group.importConfig(old);
+    }
     this.#local = this.#readLocal();
     this.#shared = this.#group.config();
     return this.#merge();

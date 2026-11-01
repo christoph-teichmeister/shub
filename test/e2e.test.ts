@@ -137,8 +137,13 @@ test('health, bootstrap login, project, session, terminal, hooks, close', { time
     deviceName: 'e2e',
     publicKey: jwk,
   });
-  const { nonce } = await json<{ nonce: string }>('POST', '/api/auth/challenge', { deviceId: boot.device.id });
-  const signature = sign('sha256', Buffer.from(`shub-login:${nonce}`), { key: privateKey, dsaEncoding: 'ieee-p1363' });
+  const { nonce, hostId } = await json<{ nonce: string; hostId: string }>('POST', '/api/auth/challenge', {
+    deviceId: boot.device.id,
+  });
+  const signature = sign('sha256', Buffer.from(`shub-login:${hostId}:${nonce}`), {
+    key: privateKey,
+    dsaEncoding: 'ieee-p1363',
+  });
   browserToken = (
     await json<{ token: string }>('POST', '/api/auth/session', {
       deviceId: boot.device.id,
