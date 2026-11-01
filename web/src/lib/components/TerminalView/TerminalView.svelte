@@ -189,6 +189,7 @@
     let ws: WebSocket | undefined;
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
+    let watchdog: ReturnType<typeof setTimeout> | undefined; // armed by the first server ping (older servers send none)
     let delay = 1000;
     let opened = false;
     let gen = 0; // a resume while a connect is in flight must not leave two sockets
@@ -235,13 +236,17 @@
       ws.onmessage = (m) => {
         if (typeof m.data === 'string' && m.data.startsWith('\u0000')) {
           const msg = JSON.parse(m.data.slice(1)) as TerminalControl;
-          if (msg.type === 'size') {
+          if (msg.type === 'ping') {
+            clearTimeout(watchdog);
+            watchdog = setTimeout(() => ws?.close(), 50_000); // silent socket = dead path, reconnect
+          } else if (msg.type === 'size') {
             t.resize(msg.cols, msg.rows);
             requestAnimationFrame(rescale); // xterm updates its DOM size after resize
           }
         } else t.write(typeof m.data === 'string' ? m.data : new Uint8Array(m.data as ArrayBuffer));
       };
       ws.onclose = () => {
+        clearTimeout(watchdog);
         if (closed) return;
         reconnecting = true;
         retry = setTimeout(() => void connect(), delay);
@@ -252,6 +257,7 @@
     // Back from sleep: a socket can look open and be dead, so reconnect now instead of waiting for the backoff.
     const off = onResume(() => {
       clearTimeout(retry);
+      clearTimeout(watchdog);
       if (ws) ws.onclose = null;
       ws?.close();
       delay = 1000;
