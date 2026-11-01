@@ -810,6 +810,8 @@ export const ROUTES = {
 
 export type ServerEvent =
   | { type: 'hello'; apiVersion: number }
+  /** Heartbeat every 20 s; the web app drops a socket that goes silent (browsers cannot see WebSocket pings). */
+  | { type: 'ping' }
   | { type: 'session.started'; session: Session; from?: string }
   | { type: 'session.updated'; session: Session }
   /** statusSince missing from servers before it existed. */

@@ -371,38 +371,64 @@ async function announcePending(): Promise<void> {
   }
 }
 
-/** Connects /api/events and reconnects with backoff (1 s .. 30 s). Reloads everything after a reconnect. */
+const RETRY_MAX_MS = 5000;
+const SILENT_MS = 50_000; // the server beats every 20 s
+
+/** Connects /api/events and reconnects with backoff (1 s .. 5 s). Reloads everything after a reconnect. */
 export function connectEvents(): () => void {
   let ws: WebSocket | null = null;
   let delay = 1000;
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let watchdog: ReturnType<typeof setTimeout> | undefined;
   let everOpen = false;
   let gen = 0; // a resume while a connect is in flight must not leave two sockets
 
+  const retry = () => {
+    app.connected = false;
+    if (stopped || app.authRequired) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => void open(), delay);
+    delay = Math.min(delay * 2, RETRY_MAX_MS);
+  };
+  // Armed by the first server heartbeat (older servers send none): a socket silent for too long is dead, drop it.
+  const arm = () => {
+    clearTimeout(watchdog);
+    watchdog = setTimeout(() => ws?.close(), SILENT_MS);
+  };
+
   const open = async () => {
     const mine = ++gen;
-    const { url, protocols } = await wsTarget('/api/events');
+    let target: Awaited<ReturnType<typeof wsTarget>>;
+    try {
+      target = await wsTarget('/api/events');
+    } catch {
+      if (!stopped && mine === gen) retry(); // sign-in failed (network): without this the badge stays Offline for good
+      return;
+    }
     if (stopped || mine !== gen) return;
-    ws = new WebSocket(url, protocols);
-    ws.onopen = () => {
+    const sock = new WebSocket(target.url, target.protocols);
+    ws = sock;
+    sock.onopen = () => {
       app.connected = true;
       delay = 1000;
       if (everOpen) void loadAll();
       everOpen = true;
     };
-    ws.onmessage = (msg) => {
+    sock.onmessage = (msg) => {
       try {
-        handleEvent(JSON.parse(String(msg.data)) as ServerEvent);
+        const event = JSON.parse(String(msg.data)) as ServerEvent;
+        if (event.type === 'ping' || watchdog) arm();
+        handleEvent(event);
       } catch (err) {
         console.warn('Bad event', err);
       }
     };
-    ws.onclose = () => {
-      app.connected = false;
-      if (stopped || app.authRequired) return;
-      timer = setTimeout(() => void open(), delay);
-      delay = Math.min(delay * 2, 30_000);
+    sock.onclose = () => {
+      if (ws !== sock) return;
+      clearTimeout(watchdog);
+      watchdog = undefined;
+      retry();
     };
   };
   void open();
@@ -410,6 +436,8 @@ export function connectEvents(): () => void {
   const off = onResume(() => {
     if (stopped || app.authRequired) return;
     clearTimeout(timer);
+    clearTimeout(watchdog);
+    watchdog = undefined;
     if (ws) ws.onclose = null;
     ws?.close();
     delay = 1000;
@@ -419,6 +447,7 @@ export function connectEvents(): () => void {
     stopped = true;
     off();
     clearTimeout(timer);
+    clearTimeout(watchdog);
     ws?.close();
   };
 }

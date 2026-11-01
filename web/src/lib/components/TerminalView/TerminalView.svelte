@@ -209,7 +209,19 @@
       const mine = ++gen;
       // Re-attach (seed=1): the server sends recent output before the live repaint.
       const query = new URLSearchParams({ ...(follow && { follow: '1' }), ...(opened && { seed: '1' }) });
-      const { url, protocols } = await wsTarget(`/api/terminals/${encodeURIComponent(sessionId)}?${query}`);
+      let target: Awaited<ReturnType<typeof wsTarget>>;
+      try {
+        target = await wsTarget(`/api/terminals/${encodeURIComponent(sessionId)}?${query}`);
+      } catch {
+        // sign-in failed (network): retry, or the terminal stays dead
+        if (!closed && mine === gen) {
+          reconnecting = true;
+          retry = setTimeout(() => void connect(), delay);
+          delay = Math.min(delay * 2, 5000);
+        }
+        return;
+      }
+      const { url, protocols } = target;
       if (closed || mine !== gen) return;
       ws = new WebSocket(url, protocols);
       ws.binaryType = 'arraybuffer';
@@ -233,7 +245,7 @@
         if (closed) return;
         reconnecting = true;
         retry = setTimeout(() => void connect(), delay);
-        delay = Math.min(delay * 2, 30_000);
+        delay = Math.min(delay * 2, 5000);
       };
     };
     void connect();
