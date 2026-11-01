@@ -97,7 +97,14 @@ export function attachTerminals(server: Server, sessions: SessionsService): void
       ws.on('message', (data, isBinary) => {
         inbound((data as Buffer).toString('utf8'), isBinary, { follow, typing }, pty); // default binaryType 'nodebuffer'
       });
-      ws.on('close', () => pty.kill());
+      const beat = setInterval(
+        () => ws.send('\u0000' + JSON.stringify({ type: 'ping' } satisfies TerminalControl)),
+        20_000,
+      );
+      ws.on('close', () => {
+        clearInterval(beat);
+        pty.kill();
+      });
     });
   });
 }

@@ -101,6 +101,8 @@ function eventsRoutes(ctx: Context, router: Router, version: string): void {
   });
 }
 
+const EVENTS_BEAT_MS = 20_000;
+
 function attachEventsSocket(ctx: Context, server: Server): void {
   const wss = new WebSocketServer({ noServer: true });
   onUpgrade(server, /^\/api\/events$/, (req, socket, head, caller) => {
@@ -108,7 +110,11 @@ function attachEventsSocket(ctx: Context, server: Server): void {
       ws.send(JSON.stringify({ type: 'hello', apiVersion: API_VERSION } satisfies ServerEvent));
       const off = ctx.bus.on((event) => mayRead(caller, event) && ws.send(JSON.stringify(event)));
       keepAlive(ws);
-      ws.on('close', off);
+      const beat = setInterval(() => ws.send(JSON.stringify({ type: 'ping' } satisfies ServerEvent)), EVENTS_BEAT_MS);
+      ws.on('close', () => {
+        off();
+        clearInterval(beat);
+      });
     });
   });
   server.on('close', () => wss.close());

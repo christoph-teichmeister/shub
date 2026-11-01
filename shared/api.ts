@@ -810,6 +810,8 @@ export const ROUTES = {
 
 export type ServerEvent =
   | { type: 'hello'; apiVersion: number }
+  /** Heartbeat every 20 s; the web app drops a socket that goes silent (browsers cannot see WebSocket pings). */
+  | { type: 'ping' }
   | { type: 'session.started'; session: Session; from?: string }
   | { type: 'session.updated'; session: Session }
   /** statusSince missing from servers before it existed. */
@@ -850,7 +852,10 @@ export type ChatMessage =
  */
 export type ChatDelta = { messages: ChatMessage[]; offset: number; reset: boolean };
 
-/** resize: client to server. size: server to a `follow` client (query `follow=1`, `seed=1` replays recent output first). */
-export type TerminalControl = { type: 'resize' | 'size'; cols: number; rows: number };
+/**
+ * resize: client to server. size: server to a `follow` client (query `follow=1`, `seed=1` replays recent output first).
+ * ping: server heartbeat every 20 s; the web app drops a socket that goes silent (browsers cannot see WebSocket pings).
+ */
+export type TerminalControl = { type: 'resize' | 'size'; cols: number; rows: number } | { type: 'ping' };
 
 export const STATUS_ORANGE_TOKEN = 'status-needs-you';

@@ -65,3 +65,10 @@ test('inbound: a follower ignores resizes, a watcher cannot type', () => {
   inbound('y', false, { follow: true, typing: true }, pty);
   assert.deepEqual(calls, ['resize 50x20', 'write y']);
 });
+
+test('inbound: a ping control frame never reaches the pty', () => {
+  const calls: string[] = [];
+  const pty = { resize: () => calls.push('resize'), write: () => calls.push('write') };
+  inbound('\u0000' + JSON.stringify({ type: 'ping' }), false, { follow: false, typing: true }, pty);
+  assert.deepEqual(calls, []);
+});
