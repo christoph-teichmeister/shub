@@ -161,6 +161,13 @@ export interface SessionsOptions {
   startedGapMs?: number;
 }
 
+/** shub's bin dir first, then PATH, with ~/.local/bin appended when missing: a bare systemd PATH hides `claude` there. */
+export function sessionPath(binDir: string, path = '/usr/bin:/bin'): string {
+  const local = join(homedir(), '.local', 'bin');
+  const parts = path.split(':');
+  return [binDir, ...parts, ...(parts.includes(local) ? [] : [local])].join(':');
+}
+
 export class SessionsService implements Sessions {
   #ctx: Context;
   #services: Services;
@@ -434,7 +441,7 @@ export class SessionsService implements Sessions {
       SHUB_URL: `http://127.0.0.1:${this.#ctx.port}`,
       // Shells get it too (no token: the CLI there signs in as you), so `shub claude` knows its terminal.
       SHUB_SESSION_ID: row.id,
-      PATH: `${this.#binDir}:${process.env.PATH ?? '/usr/bin:/bin'}`,
+      PATH: sessionPath(this.#binDir, process.env.PATH),
     };
     const settingsFile = join(this.#ctx.paths.stateDir, 'sessions', row.id, 'settings.json');
     if (row.kind !== 'shell') {
