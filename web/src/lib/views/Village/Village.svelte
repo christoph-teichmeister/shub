@@ -495,8 +495,9 @@
   const vy1 = $derived(Math.ceil(((vh - pan.y) / zoom + MARGIN) / CULL) * CULL);
   const view = $derived({ x: vx0, y: vy0, w: vx1 - vx0, h: vy1 - vy0 });
   const onScreen = (x: number, y: number) => x >= vx0 && x <= vx1 && y >= vy0 && y <= vy1;
-  /** Decoration standing in the view: index and sprite. The far and the flat decoration is painted into the ground canvas. */
-  const decor = $derived(world.decor.flatMap((d, i) => (!d.far && !d.flat && onScreen(d.x, d.y) ? [{ d, i }] : [])));
+  /** Decoration standing in the view: index and sprite. What no walker can stand behind or in front of is painted into
+   * the ground canvas (below the crabs) or the over canvas (above them); only the rest sorts with the crabs. */
+  const decor = $derived(world.decor.flatMap((d, i) => (d.layer === 'sort' && onScreen(d.x, d.y) ? [{ d, i }] : [])));
 
   let drag: { id: number; x: number; y: number; px: number; py: number; on: boolean } | null = null;
   let dragged = false;
@@ -795,7 +796,7 @@
   $effect(() => {
     const canvas = ground;
     const g = world.ground;
-    const far = world.decor.filter((d) => d.far || d.flat).sort((a, b) => a.y - b.y);
+    const far = world.decor.filter((d) => d.layer === 'below').sort((a, b) => a.y - b.y);
     if (!canvas) return;
     let gone = false;
     void Promise.all([
@@ -818,6 +819,29 @@
       canvas.dataset.drawMs = String(Math.round(performance.now() - t0));
       canvas.dataset.drawn = '';
     });
+    return () => (gone = true);
+  });
+  // The over canvas: sprites a crab can only stand behind (trees beside the north side of a road), drawn once over
+  // every object, so they hide it without being an element that sorts.
+  let over = $state<HTMLCanvasElement>();
+  $effect(() => {
+    const canvas = over;
+    const above = world.decor.filter((d) => d.layer === 'above').sort((a, b) => a.y - b.y);
+    if (!canvas) return;
+    let gone = false;
+    void Promise.all([...new Set(above.map((d) => d.sprite))].map(async (n) => [n, await bitmap(n)] as const)).then(
+      (used) => {
+        const ctx = canvas.getContext('2d');
+        if (gone || !ctx) return;
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const sprites = new Map(used);
+        for (const d of above) {
+          const img = sprites.get(d.sprite)!;
+          ctx.drawImage(img, Math.round((d.x - d.w / 2) / 2), Math.round((d.y - d.h) / 2), img.width, img.height);
+        }
+      },
+    );
     return () => (gone = true);
   });
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -1090,6 +1114,7 @@
             />
           {/if}
         {/each}
+        <canvas class="over" bind:this={over} width={world.W / 2} height={world.H / 2}></canvas>
         <Ambience {world} {tod} {t} {lights} {view} />
       </div>
       {#if meter}
@@ -1405,6 +1430,17 @@
     position: absolute;
     inset: 0;
     z-index: 1;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    pointer-events: none;
+  }
+
+  /* Above every object on the map (their z-index is their y), below the ambience. */
+  .over {
+    position: absolute;
+    inset: 0;
+    z-index: 50000;
     width: 100%;
     height: 100%;
     image-rendering: pixelated;

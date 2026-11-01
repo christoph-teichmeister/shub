@@ -366,6 +366,14 @@ test('decoration is deterministic, dense, and far from every road and building w
   // Two flower fields and a lake at least: the noise shows more than one kind of meadow.
   assert.ok(w.decor.filter((d) => d.sprite === 'flowers').length > 20);
   assert.ok(w.decor.filter((d) => d.sprite === 'rock').length > 3);
+  // Layers: far and flat things go below the crabs; a sprite with a walkway behind it only goes above; one with a
+  // walkway on both sides keeps sorting. Few stay elements, and trees do get baked above.
+  for (const d of w.decor) if (d.far || d.flat) assert.equal(d.layer, 'below', `${d.sprite} far or flat`);
+  assert.ok(
+    w.decor.some((d) => d.layer === 'above' && d.sprite.startsWith('tree')),
+    'a tree goes above the crabs',
+  );
+  assert.ok(w.decor.filter((d) => d.layer === 'sort').length < w.decor.filter((d) => !d.far).length / 2);
   // Only ground clutter is flat; trees and bushes stay elements so crabs walk behind them.
   assert.ok(w.decor.some((d) => d.flat && !d.far));
   for (const d of w.decor)

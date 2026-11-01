@@ -73,6 +73,12 @@ export interface Decor {
   far: boolean;
   /** Flat on the ground, nothing walks behind it: painted into the ground canvas wherever it stands. */
   flat: boolean;
+  /**
+   * Where the view draws it: `below` the crabs (into the ground canvas), `above` them (a second canvas over every
+   * object), or `sort` (stays an element that sorts with the crabs by y). Crabs only walk on paths and in districts,
+   * so a sprite no walker can stand behind or in front of needs no sorting.
+   */
+  layer: 'below' | 'above' | 'sort';
 }
 
 export interface Rect {
@@ -217,6 +223,9 @@ const FIELD: [string, number, number][] = [
   ['bush-yellow', 44, 30],
   ['tallgrass', 28, 22],
 ];
+/** A crab's size on the map, for which sprites it can stand behind or in front of. */
+const CRAB_W = 40;
+const CRAB_H = 40;
 /** Sprites that lie on the grass (no height to hide a crab behind). */
 const FLAT = new Set(['flowers', 'tallgrass', 'rock', 'mushroom', 'stump']);
 const DECOR: [number, string, number, number][] = [
@@ -477,11 +486,32 @@ export function buildWorld({ groups, projects, active, activeOnly, crabs = {} }:
     districts.some((d) => inRect(px, py, d, 150)) ||
     inRect(px, py, plaza, 150) ||
     inRect(px, py, hallBox, 150);
+  const matAt = (px: number, py: number) => cells[Math.floor(py / TILE) * cols + Math.floor(px / TILE)];
+  /** Can a crab stand anywhere in this box (a path tile or a district)? Sampled every 16 px. */
+  const walked = (x0: number, y0: number, x1: number, y1: number) => {
+    for (let py = y0; py <= y1; py += 16)
+      for (let px = x0; px <= x1; px += 16)
+        if (
+          districts.some((d) => inRect(px, py, d)) ||
+          (px >= 0 && py >= 0 && px < W && py < H && isPath(matAt(px, py)))
+        )
+          return true;
+    return false;
+  };
+  /** A crab at (px, py) with its feet behind the sprite hides behind it; in front of it, it hides the sprite's foot. */
+  const layerOf = (x: number, y: number, w: number, h: number, below: boolean): Decor['layer'] => {
+    if (below) return 'below';
+    const reach = w / 2 + CRAB_W / 2;
+    const behind = walked(x - reach, y - h + 1, x + reach, y);
+    const front = walked(x - reach, y + 1, x + reach, y + CRAB_H);
+    return behind && front ? 'sort' : behind ? 'above' : 'below';
+  };
   const add = (sprite: string, w: number, h: number, px: number, py: number) => {
     const [x, y] = [Math.round(px), Math.round(py)];
-    decor.push({ sprite, w, h, x, y, far: !near(x, y), flat: FLAT.has(sprite) });
+    const far = !near(x, y);
+    const flat = FLAT.has(sprite);
+    decor.push({ sprite, w, h, x, y, far, flat, layer: layerOf(x, y, w, h, far || flat) });
   };
-  const matAt = (px: number, py: number) => cells[Math.floor(py / TILE) * cols + Math.floor(px / TILE)];
   for (let r = 0; r < rows; r++)
     for (let c = 0; c < cols; c++) {
       if (cells[r * cols + c] !== FOREST) continue;
