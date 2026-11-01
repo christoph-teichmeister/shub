@@ -71,6 +71,8 @@ export interface Decor {
   y: number;
   /** Far from every road and building: painted into the ground canvas instead of standing as an element. */
   far: boolean;
+  /** Flat on the ground, nothing walks behind it: painted into the ground canvas wherever it stands. */
+  flat: boolean;
 }
 
 export interface Rect {
@@ -215,6 +217,8 @@ const FIELD: [string, number, number][] = [
   ['bush-yellow', 44, 30],
   ['tallgrass', 28, 22],
 ];
+/** Sprites that lie on the grass (no height to hide a crab behind). */
+const FLAT = new Set(['flowers', 'tallgrass', 'rock', 'mushroom', 'stump']);
 const DECOR: [number, string, number, number][] = [
   // cumulative chance, sprite, width, height
   [0.1, 'tree-oak', 68, 88],
@@ -475,7 +479,7 @@ export function buildWorld({ groups, projects, active, activeOnly, crabs = {} }:
     inRect(px, py, hallBox, 150);
   const add = (sprite: string, w: number, h: number, px: number, py: number) => {
     const [x, y] = [Math.round(px), Math.round(py)];
-    decor.push({ sprite, w, h, x, y, far: !near(x, y) });
+    decor.push({ sprite, w, h, x, y, far: !near(x, y), flat: FLAT.has(sprite) });
   };
   const matAt = (px: number, py: number) => cells[Math.floor(py / TILE) * cols + Math.floor(px / TILE)];
   for (let r = 0; r < rows; r++)

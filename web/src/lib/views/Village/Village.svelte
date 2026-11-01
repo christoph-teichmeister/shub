@@ -495,8 +495,8 @@
   const vy1 = $derived(Math.ceil(((vh - pan.y) / zoom + MARGIN) / CULL) * CULL);
   const view = $derived({ x: vx0, y: vy0, w: vx1 - vx0, h: vy1 - vy0 });
   const onScreen = (x: number, y: number) => x >= vx0 && x <= vx1 && y >= vy0 && y <= vy1;
-  /** Decoration standing in the view: index and sprite. The far decoration is painted into the ground canvas. */
-  const decor = $derived(world.decor.flatMap((d, i) => (!d.far && onScreen(d.x, d.y) ? [{ d, i }] : [])));
+  /** Decoration standing in the view: index and sprite. The far and the flat decoration is painted into the ground canvas. */
+  const decor = $derived(world.decor.flatMap((d, i) => (!d.far && !d.flat && onScreen(d.x, d.y) ? [{ d, i }] : [])));
 
   let drag: { id: number; x: number; y: number; px: number; py: number; on: boolean } | null = null;
   let dragged = false;
@@ -795,7 +795,7 @@
   $effect(() => {
     const canvas = ground;
     const g = world.ground;
-    const far = world.decor.filter((d) => d.far).sort((a, b) => a.y - b.y);
+    const far = world.decor.filter((d) => d.far || d.flat).sort((a, b) => a.y - b.y);
     if (!canvas) return;
     let gone = false;
     void Promise.all([
