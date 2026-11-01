@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { WebSocket } from 'ws';
 import type { Config, Project, ServerEvent } from '../../shared/api.ts';
@@ -17,7 +17,7 @@ import { GroupStore } from '../group/index.ts';
 import { openState } from '../state/index.ts';
 import type { LaunchSpec } from './launch.ts';
 import { encodeCwd } from './old.ts';
-import { SessionsService, tmuxName } from './service.ts';
+import { SessionsService, sessionPath, tmuxName } from './service.ts';
 import { attachTerminals } from './terminal.ts';
 import type { CheckResult } from './waitcheck.ts';
 
@@ -551,4 +551,10 @@ test('a pause still follows when the fill drops before the compact turn ends', a
   svc.setStatus(s.id, 'your-turn'); // its Stop hook
   assert.equal(svc.get(s.id)?.status, 'paused', 'paused once the turn ended');
   svc.close(s.id, 'chris');
+});
+
+test('sessionPath appends ~/.local/bin once when PATH lacks it', () => {
+  const local = join(homedir(), '.local', 'bin');
+  assert.equal(sessionPath('/b', '/usr/bin'), `/b:/usr/bin:${local}`);
+  assert.equal(sessionPath('/b', `${local}:/usr/bin`), `/b:${local}:/usr/bin`);
 });
