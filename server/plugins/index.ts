@@ -123,7 +123,7 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
         const token = services.auth.issueClientToken({ kind: 'plugin', id: `plugin:${name}`, rights });
         return {
           vars: {
-            // config.json env (shared between machines) only fills what shub's own environment leaves unset.
+            // The plugin env from the config (only synced when Settings > Sync allows it) only fills what shub's own environment leaves unset.
             ...Object.fromEntries(
               Object.entries(entryFor(name)?.env ?? {}).filter(([k]) => process.env[k] === undefined),
             ),
@@ -146,7 +146,7 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
 
   /** Bring running processes in line with config: start enabled ones, stop disabled or removed ones. */
   async function reconcileNow(): Promise<void> {
-    // config.json is shared between machines; install what it lists but this machine lacks.
+    // The plugin list is synced between machines; install what it lists but this machine lacks.
     let found = discover(pluginsDir);
     const missing = services.config
       .get()

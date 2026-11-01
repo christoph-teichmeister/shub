@@ -437,12 +437,15 @@ function settingsRoutes(services: Services, router: Router): void {
       const error = terminalSettingsError(body.terminal);
       if (error) bad(error);
     }
+    const isObject = (v: unknown) => !!v && typeof v === 'object' && !Array.isArray(v);
     if (body.sync !== undefined) {
+      if (!isObject(body.sync)) bad('sync must be an object');
       for (const [k, v] of Object.entries(body.sync)) {
         if (!(SYNC_CATEGORIES as readonly string[]).includes(k) || typeof v !== 'boolean') bad(`sync.${k} is invalid`);
       }
     }
     if (body.notifications !== undefined) {
+      if (!isObject(body.notifications)) bad('notifications must be an object');
       const known = Object.keys(current.notifications);
       for (const [k, v] of Object.entries(body.notifications)) {
         if (!known.includes(k) || typeof v !== 'boolean') bad(`notifications.${k} is invalid`);

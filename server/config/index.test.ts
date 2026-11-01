@@ -189,6 +189,12 @@ test('first start imports config.json once; local.json stays machine-only', () =
   const broken = new FileConfigStore(dir, new EventBus(), g);
   assert.match(broken.get().problem!, /not readable/);
   assert.equal(g.imported(), false); // a broken file is retried on the next start
+  for (const wrong of ['[]', 'null', '{"projects":"abc"}', '{"groups":{"a":1}}']) {
+    writeFileSync(file, wrong);
+    const refused = new FileConfigStore(dir, new EventBus(), g);
+    assert.match(refused.get().problem!, /must be an object/, wrong);
+    assert.equal(g.list().length, 0);
+  }
   writeFileSync(
     file,
     JSON.stringify({

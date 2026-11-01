@@ -13,7 +13,15 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage } from 'node:http';
 import { join } from 'node:path';
 import QRCode from 'qrcode';
-import { DEVICE_LEVELS, ROUTES, type ClientKind, type Device, type DeviceLevel, type Right } from '../../shared/api.ts';
+import {
+  DEVICE_LEVELS,
+  ROUTES,
+  challengeMessage,
+  type ClientKind,
+  type Device,
+  type DeviceLevel,
+  type Right,
+} from '../../shared/api.ts';
 import { publicUrl } from '../config/index.ts';
 import { kindOf } from '../group/index.ts';
 import { machineName } from '../notify/index.ts';
@@ -31,8 +39,6 @@ export const DEVICE_TOKEN_TTL_MS = 5 * 60 * 1000;
 const CHALLENGE_TTL_MS = 60 * 1000;
 /** An approved browser may join its host to another host's group within this long. */
 const JOIN_TTL_MS = 30 * 60 * 1000;
-/** What a phone signs: the nonce bound to its purpose. */
-export const challengeMessage = (nonce: string): string => `shub-login:${nonce}`;
 
 const MIGRATIONS = [
   `CREATE TABLE devices (
@@ -386,7 +392,7 @@ export class AuthService implements Auth {
     return device;
   }
 
-  challenge(deviceId: unknown): { nonce: string } {
+  challenge(deviceId: unknown): { nonce: string; hostId: string } {
     const row = typeof deviceId === 'string' ? this.#row(deviceId) : undefined;
     if (!row?.public_key) throw new HttpError(404, 'unknown device');
     if (row.state !== 'active') throw new HttpError(409, 'waiting for approval');
@@ -394,7 +400,7 @@ export class AuthService implements Auth {
     for (const [n, c] of this.#challenges) if (c.expires < now) this.#challenges.delete(n);
     const nonce = randomBytes(32).toString('base64url');
     this.#challenges.set(nonce, { deviceId: row.id, expires: now + CHALLENGE_TTL_MS });
-    return { nonce };
+    return { nonce, hostId: this.#services.group.hostId };
   }
 
   /** Checks the device's signature over the challenge and hands out a short-lived token. */
@@ -410,7 +416,7 @@ export class AuthService implements Auth {
       typeof signature === 'string' &&
       verify(
         'sha256',
-        Buffer.from(challengeMessage(nonce as string)),
+        Buffer.from(challengeMessage(this.#services.group.hostId, nonce as string)),
         { key: createPublicKey({ key: JSON.parse(row.public_key), format: 'jwk' }), dsaEncoding: 'ieee-p1363' },
         Buffer.from(signature, 'base64url'),
       );

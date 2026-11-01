@@ -36,7 +36,7 @@ test('plugin rights are granted AND requested by the manifest', () => {
 
 test('a phone pairs with its key, waits for approval and signs in with short-lived tokens', async () => {
   const { generateKeyPairSync, sign } = await import('node:crypto');
-  const { challengeMessage } = await import('./index.ts');
+  const { challengeMessage } = await import('../../shared/api.ts');
   const stateDir = mkdtempSync(join(tmpdir(), 'shub-auth-'));
   const services = {
     state: openState(stateDir),
@@ -48,9 +48,10 @@ test('a phone pairs with its key, waits for approval and signs in with short-liv
   auth.init();
   const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
   const signNonce = (nonce: string) =>
-    sign('sha256', Buffer.from(challengeMessage(nonce)), { key: privateKey, dsaEncoding: 'ieee-p1363' }).toString(
-      'base64url',
-    );
+    sign('sha256', Buffer.from(challengeMessage(services.group.hostId, nonce)), {
+      key: privateKey,
+      dsaEncoding: 'ieee-p1363',
+    }).toString('base64url');
   const bearer = (token: string) => ({ headers: { authorization: `Bearer ${token}` } }) as IncomingMessage;
 
   const { code } = await auth.startPairing();
@@ -121,7 +122,7 @@ function host() {
 
 test('a revoke syncs to a host that was offline and ends the device there at once', async () => {
   const { generateKeyPairSync, sign } = await import('node:crypto');
-  const { challengeMessage } = await import('./index.ts');
+  const { challengeMessage } = await import('../../shared/api.ts');
   const [a, b] = [host(), host()];
   const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
   const { code } = await a.auth.startPairing();
@@ -133,8 +134,9 @@ test('a revoke syncs to a host that was offline and ends the device there at onc
   for (const item of a.group.list()) b.group.merge(item);
   b.auth.applyGroup();
   assert.equal(b.auth.devices()[0]?.state, 'active');
-  const { nonce } = b.auth.challenge(device.id);
-  const signature = sign('sha256', Buffer.from(challengeMessage(nonce)), {
+  const { nonce, hostId } = b.auth.challenge(device.id);
+  assert.equal(hostId, b.group.hostId);
+  const signature = sign('sha256', Buffer.from(challengeMessage(hostId, nonce)), {
     key: privateKey,
     dsaEncoding: 'ieee-p1363',
   }).toString('base64url');
@@ -226,4 +228,34 @@ test('the group hosts may call this host cross-origin; a revoked host may not', 
   h.group.remove('device:host-2');
   assert.deepEqual(h.auth.appOrigins(), []);
   h.close();
+});
+
+test('a second host refuses a pending or revoked device, and a nonce relayed from the first host', async () => {
+  const { generateKeyPairSync, sign } = await import('node:crypto');
+  const { challengeMessage } = await import('../../shared/api.ts');
+  const [a, b] = [host(), host()];
+  const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const device = a.auth.redeemPairing((await a.auth.startPairing()).code, 'Pixel', publicKey.export({ format: 'jwk' }));
+  const sync = () => (a.group.list().forEach((i) => b.group.merge(i)), b.auth.applyGroup());
+  sync();
+  assert.throws(() => b.auth.challenge(device.id), /waiting for approval/); // pending stays pending there
+
+  a.auth.approve(device.id);
+  sync();
+  const fromA = a.auth.challenge(device.id);
+  const signFor = (hostId: string, nonce: string) =>
+    sign('sha256', Buffer.from(challengeMessage(hostId, nonce)), {
+      key: privateKey,
+      dsaEncoding: 'ieee-p1363',
+    }).toString('base64url');
+  // The signature made for A's nonce on A is no use on B, even if B knew the nonce.
+  const onB = b.auth.challenge(device.id);
+  assert.throws(() => b.auth.signIn(device.id, onB.nonce, signFor(a.group.hostId, onB.nonce)), /bad signature/);
+  assert.equal(a.auth.signIn(device.id, fromA.nonce, signFor(fromA.hostId, fromA.nonce)).token.length > 0, true);
+
+  a.auth.deleteDevice(device.id);
+  sync();
+  assert.throws(() => b.auth.challenge(device.id), /unknown device/);
+  a.close();
+  b.close();
 });

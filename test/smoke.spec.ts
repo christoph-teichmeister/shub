@@ -281,7 +281,7 @@ test('the machine chips come from the group: one pairing signs the browser in on
 }) => {
   const { calls, errors } = await mockApi(page, {
     'POST /api/auth/bootstrap': { device: { id: 'desk-1', state: 'active', level: 'control' } },
-    'POST /api/auth/challenge': { nonce: 'n1' },
+    'POST /api/auth/challenge': { nonce: 'n1', hostId: 'host-1' },
     'POST /api/auth/session': { token: 't1', expiresAt: '2099-01-01T00:00:00Z' },
   });
   await page.route('https://laptop.tail.ts.net/api/sessions', (r) => r.fulfill({ json: [], headers: CORS }));
@@ -306,6 +306,33 @@ test('the machine chips come from the group: one pairing signs the browser in on
     .toEqual({ deviceId: 'desk-1' });
   expect(calls.some((c) => c.path === '/api/auth/pairing/redeem')).toBe(false);
   expect(errors.filter((e) => !e.includes('401'))).toEqual([]);
+
+  // Remove hides the host in this browser only: no sign-out (that would revoke the device group-wide), and it stays
+  // hidden after a reload although the group still lists it.
+  await page.goto('/#/settings/devices');
+  await page.getByRole('listitem').filter({ hasText: 'Laptop' }).getByRole('button', { name: 'Remove' }).click();
+  await expect(chips.getByRole('button', { name: /Laptop/ })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible();
+  await expect(chips.getByRole('button', { name: /Laptop/ })).toHaveCount(0);
+  expect(calls.some((c) => c.path === '/api/auth/logout')).toBe(false);
+  expect(calls.filter((c) => c.path === '/api/group/peers').length).toBeGreaterThan(1);
+});
+
+test('when the group cannot be asked, the per-browser machines are all there is', async ({ page }) => {
+  await mockApi(page, {
+    '/api/group/peers': { status: 500, json: { error: 'boom' } },
+    'POST /api/auth/bootstrap': { device: { id: 'desk-1', state: 'active', level: 'control' } },
+    'POST /api/auth/challenge': { nonce: 'n1', hostId: 'host-1' },
+    'POST /api/auth/session': { token: 't1', expiresAt: '2099-01-01T00:00:00Z' },
+  });
+  await page.route('**/api/config', (r) => r.fulfill({ status: 401, json: { error: 'login required' } }), { times: 1 });
+  await page.goto('/#/');
+  await page.getByLabel('Access token').fill('secret');
+  const reloaded = page.waitForEvent('load');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await reloaded;
+  await expect(page.getByRole('navigation', { name: 'Machines' }).getByRole('button')).toHaveCount(0);
 });
 
 test('a phone pairs with a code and waits for approval', async ({ page }) => {
@@ -1059,7 +1086,7 @@ test('a pane that needs you moves its session up the sidebar and shows on the ph
 test('a phone app adds a second machine by address and typed code', async ({ page }) => {
   const { calls, errors } = await mockApi(page, {
     'POST /api/auth/pairing/redeem': { device: { id: 'phone-1', state: 'pending', level: 'prompts' } },
-    'POST /api/auth/challenge': { nonce: 'n1' },
+    'POST /api/auth/challenge': { nonce: 'n1', hostId: 'host-1' },
     'POST /api/auth/session': { token: 't1', expiresAt: '2099-01-01T00:00:00Z' },
   });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1093,7 +1120,7 @@ test('a desktop browser pairs, adds a host, switches between hosts and starts ov
     '/api/group/peers': [], // a group of one host until the second is paired
     'POST /api/auth/bootstrap': { device: { id: 'desk-1', state: 'active', level: 'control' } },
     'POST /api/auth/pairing/redeem': { device: { id: 'dev-1', state: 'pending', level: 'control' } },
-    'POST /api/auth/challenge': { nonce: 'n1' },
+    'POST /api/auth/challenge': { nonce: 'n1', hostId: 'host-1' },
     'POST /api/auth/session': { token: 't1', expiresAt: '2099-01-01T00:00:00Z' },
   });
   // Each host answers the join offer with its own info (one route table: the answer follows the caller's origin).

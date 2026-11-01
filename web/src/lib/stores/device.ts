@@ -1,7 +1,7 @@
 // A browser's or phone's sign-in on each of its machines (docs/SECURITY.md): per machine a P-256 key pair whose private half
 // cannot be read out, kept in IndexedDB; every few minutes the app signs a challenge and gets a short-lived
 // token, held in memory only.
-import { ROUTES } from '../../../../shared/api.ts';
+import { challengeMessage, ROUTES } from '../../../../shared/api.ts';
 
 export interface Machine {
   /** https://host[:port] of that machine's shub; this page's own origin for the machine the app came from. */
@@ -10,6 +10,8 @@ export interface Machine {
   keys: CryptoKeyPair;
   /** Its hostname (GET /api/health `machine`), or the host part of the origin. */
   name: string;
+  /** The shub host's id, pinned on the first sign-in (or taken from the group); a challenge from another host is refused. */
+  hostId?: string;
 }
 
 /** The device exists but nobody approved it yet. */
@@ -109,8 +111,9 @@ const b64url = (buf: ArrayBuffer) =>
     .replace(/\//g, '_')
     .replace(/=+$/, '');
 
-async function signIn({ origin, deviceId, keys }: Machine): Promise<string> {
-  const challenge = await post<{ nonce?: string }>(origin, ROUTES.authChallenge, { deviceId });
+async function signIn(machine: Machine): Promise<string> {
+  const { origin, deviceId, keys } = machine;
+  const challenge = await post<{ nonce?: string; hostId?: string }>(origin, ROUTES.authChallenge, { deviceId });
   if (challenge.status === 409) throw new PendingError('waiting for approval');
   if (challenge.status === 404) {
     // Unpaired on that machine: drop the key so the app offers to pair again.
@@ -118,11 +121,13 @@ async function signIn({ origin, deviceId, keys }: Machine): Promise<string> {
     throw new Error('this phone is no longer paired with that machine');
   }
   if (!challenge.data.nonce) throw new Error(`sign-in failed (${challenge.status})`);
-  const nonce = challenge.data.nonce;
+  const { nonce, hostId } = challenge.data;
+  if (!hostId || (machine.hostId && machine.hostId !== hostId))
+    throw new Error('that machine is not the host it was paired with');
   const raw = await crypto.subtle.sign(
     { name: 'ECDSA', hash: 'SHA-256' },
     keys.privateKey,
-    new TextEncoder().encode(`shub-login:${nonce}`),
+    new TextEncoder().encode(challengeMessage(hostId, nonce)),
   );
   const session = await post<{ token?: string; expiresAt?: string }>(origin, ROUTES.authSession, {
     deviceId,
@@ -130,6 +135,7 @@ async function signIn({ origin, deviceId, keys }: Machine): Promise<string> {
     signature: b64url(raw),
   });
   if (!session.data.token || !session.data.expiresAt) throw new Error(`sign-in failed (${session.status})`);
+  if (!machine.hostId) await rememberDevice({ ...machine, hostId });
   tokens.set(origin, { value: session.data.token, expires: Date.parse(session.data.expiresAt) });
   return session.data.token;
 }
@@ -146,6 +152,33 @@ export async function deviceToken(origin = here, fresh = false): Promise<string 
     signingIn.set(origin, pending);
   }
   return pending;
+}
+
+const HIDDEN = 'shub.hiddenHosts';
+/** https://host[:port] without a trailing slash, the way the group lists a host and the way chips are compared. */
+export const normalizeOrigin = (url: string): string => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return url.replace(/\/+$/, '').toLowerCase();
+  }
+};
+
+/** Group hosts this browser's user removed from the chips; kept only in this browser. */
+export function hiddenHosts(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(HIDDEN) ?? '[]') as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+export function setHidden(origin: string, hidden: boolean): void {
+  const set = hiddenHosts();
+  hidden ? set.add(normalizeOrigin(origin)) : set.delete(normalizeOrigin(origin));
+  try {
+    localStorage.setItem(HIDDEN, JSON.stringify([...set]));
+  } catch {}
 }
 
 export async function deviceId(origin = here): Promise<string | null> {

@@ -11,18 +11,15 @@ import {
   verify,
 } from 'node:crypto';
 import { hostname } from 'node:os';
-import type { HostInfo, HostPeer, SyncSettings } from '../../shared/api.ts';
+import { challengeMessage, type HostInfo, type HostPeer, type SyncSettings } from '../../shared/api.ts';
 import { HttpError } from '../api/router.ts';
-import { forSync, type GroupItem, type GroupStore } from './index.ts';
+import { categoryOf, forSync, syncOn, type GroupItem, type GroupStore } from './index.ts';
 
 export const ROUND_MS = 5 * 60_000;
 const CHALLENGE_TTL_MS = 60_000;
 const TOKEN_TTL_MS = 5 * 60_000;
 const PUSH_DELAY_MS = 300;
 const REQUEST_TIMEOUT_MS = 10_000;
-
-/** What a host signs: the nonce bound to its purpose. */
-export const hostChallenge = (nonce: string): string => `shub-host:${nonce}`;
 
 /** The body of a host's `device:<id>` item. */
 interface HostBody {
@@ -177,7 +174,7 @@ export class HostSync {
       for (const [n, c] of this.#challenges) if (c.expires < now) this.#challenges.delete(n);
       const nonce = randomBytes(32).toString('base64url');
       this.#challenges.set(nonce, { hostId: body.hostId as string, expires: now + CHALLENGE_TTL_MS });
-      return { nonce };
+      return { nonce, hostId: this.hostId };
     }
     if (action === 'session') {
       const nonce = typeof body.nonce === 'string' ? body.nonce : '';
@@ -190,7 +187,7 @@ export class HostSync {
         typeof body.signature === 'string' &&
         verify(
           'sha256',
-          Buffer.from(hostChallenge(nonce)),
+          Buffer.from(challengeMessage(this.hostId, nonce)),
           { key: createPublicKey({ key: member.publicKey, format: 'jwk' }), dsaEncoding: 'ieee-p1363' },
           Buffer.from(body.signature, 'base64url'),
         );
@@ -225,8 +222,12 @@ export class HostSync {
         raw.version &&
         Object.values(raw.version).every((n) => Number.isInteger(n));
       if (!valid) throw new HttpError(400, 'bad item');
-      const item = forSync(raw, this.#deps.sync());
+      let item = forSync(raw, this.#deps.sync());
       if (!item) continue;
+      // The sender's plugin has no env (switched off here): the env we have stays.
+      const ours = this.#group.get(item.key)?.body as { env?: unknown } | null | undefined;
+      if (categoryOf(item.key) === 'plugins' && !syncOn(this.#deps.sync(), 'pluginEnv') && ours?.env && item.body)
+        item = { ...item, body: { ...(item.body as object), env: ours.env } };
       const order = this.#group.merge(item);
       if (order === 'newer') changed++;
       if (order === 'conflict') conflicts++;
@@ -266,8 +267,10 @@ export class HostSync {
     for (let retry = 0; ; retry++) {
       let token = this.#out.get(peer.id);
       if (!token) {
-        const { nonce } = await this.#post(peer.url!, 'challenge', { hostId: this.hostId });
-        const signature = sign('sha256', Buffer.from(hostChallenge(nonce)), {
+        const { nonce, hostId } = await this.#post(peer.url!, 'challenge', { hostId: this.hostId });
+        // The group says who lives at that URL; an answer from another host would be a relay.
+        if (hostId !== peer.id) throw new HttpError(502, 'the host at that URL is not the one the group lists');
+        const signature = sign('sha256', Buffer.from(challengeMessage(peer.id, nonce)), {
           key: this.#key,
           dsaEncoding: 'ieee-p1363',
         }).toString('base64url');

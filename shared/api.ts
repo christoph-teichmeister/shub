@@ -63,7 +63,7 @@ export interface ProjectView extends Project {
   resolvedIcon: ResolvedIcon;
   /** Underscore / cursor colour; project colour, default pink for auto icons. Never the status orange. */
   accent: string;
-  /** The folder does not exist on this machine (config.json is shared between machines). */
+  /** The folder does not exist on this machine (the project list is synced between machines). */
   missing?: boolean;
   /** Browser URL of the `origin` remote (GitHub, GitLab, ...), when there is one. */
   remoteUrl?: string;
@@ -688,6 +688,9 @@ export interface ReleaseNotes {
 // ---------- HTTP routes ----------
 // All under /api, JSON in and out, auth by cookie (browser) or `Authorization: Bearer <token>`.
 
+/** What a device or host signs to sign in: bound to the host it signs in on, so a nonce relayed from another host is refused. */
+export const challengeMessage = (hostId: string, nonce: string): string => `shub-login:${hostId}:${nonce}`;
+
 export const ROUTES = {
   health: 'GET /api/health',
   usage: 'GET /api/usage', // -> Usage | {}: the last 5h/7d limits any session's status line reported
@@ -697,7 +700,7 @@ export const ROUTES = {
   me: 'GET /api/auth/me',
   pairingStart: 'POST /api/auth/pairing', // -> { code, url, qrSvg, expiresAt }
   pairingRedeem: 'POST /api/auth/pairing/redeem', // { code, deviceName, publicKey: JWK, kind?: 'browser' } -> { device } (pending)
-  authChallenge: 'POST /api/auth/challenge', // { deviceId } -> { nonce }; 409 while the device is pending
+  authChallenge: 'POST /api/auth/challenge', // { deviceId } -> { nonce, hostId }; sign challengeMessage(hostId, nonce); 409 while the device is pending
   authSession: 'POST /api/auth/session', // { deviceId, nonce, signature } -> { token, expiresAt }
   devices: 'GET /api/devices',
   deviceUpdate: 'PATCH /api/devices/:id', // { name } rename, { level } from a trusted host or a Control phone, never on itself -> Device
@@ -706,7 +709,7 @@ export const ROUTES = {
   rotateToken: 'POST /api/auth/rotate',
 
   // Host-to-host sync (server/group/sync.ts): no login, hosts sign a challenge with their key from the group.
-  groupChallenge: 'POST /api/group/challenge', // { hostId } -> { nonce }; 403 unless that host is in the group
+  groupChallenge: 'POST /api/group/challenge', // { hostId } -> { nonce, hostId: the answering host }; 403 unless that host is in the group
   groupSession: 'POST /api/group/session', // { hostId, nonce, signature } -> { token }
   groupPull: 'POST /api/group/pull', // Bearer -> { items }
   groupPush: 'POST /api/group/push', // Bearer, { items } -> { changed, conflicts }

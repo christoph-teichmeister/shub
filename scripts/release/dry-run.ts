@@ -194,11 +194,11 @@ try {
     deviceName: 'dry-run',
     publicKey: await webcrypto.subtle.exportKey('jwk', publicKey),
   });
-  const { nonce } = await post('/api/auth/challenge', { deviceId: device.id });
+  const { nonce, hostId } = await post('/api/auth/challenge', { deviceId: device.id });
   const signature = await webcrypto.subtle.sign(
     { name: 'ECDSA', hash: 'SHA-256' },
     privateKey,
-    new TextEncoder().encode(`shub-login:${nonce}`),
+    new TextEncoder().encode(`shub-login:${hostId}:${nonce}`),
   );
   const session = await post('/api/auth/session', {
     deviceId: device.id,
