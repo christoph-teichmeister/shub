@@ -366,4 +366,8 @@ test('decoration is deterministic, dense, and far from every road and building w
   // Two flower fields and a lake at least: the noise shows more than one kind of meadow.
   assert.ok(w.decor.filter((d) => d.sprite === 'flowers').length > 20);
   assert.ok(w.decor.filter((d) => d.sprite === 'rock').length > 3);
+  // Only ground clutter is flat; trees and bushes stay elements so crabs walk behind them.
+  assert.ok(w.decor.some((d) => d.flat && !d.far));
+  for (const d of w.decor)
+    assert.equal(d.flat, ['flowers', 'tallgrass', 'rock', 'mushroom', 'stump'].includes(d.sprite));
 });
