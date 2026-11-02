@@ -958,11 +958,30 @@ export class SessionsService implements Sessions {
       this.#typeInto(session.id, 'shub:wait-check', () => {
         this.pasteText(session.id, text);
         this.sendKeys(session.id, ['Enter']);
+        this.#resendIfDropped(session.id);
       });
     } catch (err) {
       console.error(`shub: wait follow-up for ${session.id}`, err);
       this.#services.notify.needsYou(session, `Done waiting, but shub could not send: ${text}`);
     }
+  }
+
+  /** The cache-tax mod drops the first send into a cold cache and keeps the text in the input box: nobody is there
+   *  to resend a wake-up, so press Enter again once. */
+  #resendIfDropped(id: string): void {
+    // ponytail: fixed pause, then a look at the last screen lines; poll if the hook ever answers slower
+    setTimeout(() => {
+      try {
+        const tail = this.#tmux
+          .run(['capture-pane', '-p', '-t', `=${tmuxName(id)}:`])
+          .trimEnd()
+          .split('\n')
+          .slice(-25);
+        if (tail.some((l) => l.includes('Prompt dropped by a hook: cache-tax'))) this.sendKeys(id, ['Enter']);
+      } catch {
+        // session gone
+      }
+    }, 3000).unref();
   }
 
   stop(): void {
