@@ -50,7 +50,7 @@ const UI_TOKEN_NAMES = [
 
 type UiTokens = Record<(typeof UI_TOKEN_NAMES)[number], string>;
 
-/** Terminal colours follow these UI tokens until a theme sets them itself (keeps older themes looking the same). */
+/** Terminal colours (and the waiting status) follow these UI tokens until a theme sets them itself (keeps older themes looking the same). */
 export const TERMINAL_DEFAULTS = {
   'term-fg': 'fg-2',
   'term-cursor': 'pink', // a project's own colour wins
@@ -70,6 +70,7 @@ export const TERMINAL_DEFAULTS = {
   'term-bright-magenta': 'purple',
   'term-bright-cyan': 'link',
   'term-bright-white': 'fg',
+  'status-waiting': 'muted', // waiting for something outside; clock icon
 } as const satisfies Record<string, keyof UiTokens>;
 
 type TerminalToken = keyof typeof TERMINAL_DEFAULTS;
@@ -126,6 +127,7 @@ export const TOKEN_GROUPS: { title: string; tokens: { name: TokenName; label: st
       { name: 'status-needs-you-fg', label: 'Needs-you row text' },
       { name: 'status-working', label: 'Working' },
       { name: 'status-your-turn', label: 'Your turn' },
+      { name: 'status-waiting', label: 'Waiting' },
     ],
   },
   {

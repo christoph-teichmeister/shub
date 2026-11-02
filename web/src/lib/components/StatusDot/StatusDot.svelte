@@ -69,8 +69,11 @@
     color: var(--status-your-turn);
   }
 
-  .paused,
-  .waiting {
+  .paused {
     color: var(--muted);
+  }
+
+  .waiting {
+    color: var(--status-waiting);
   }
 </style>
