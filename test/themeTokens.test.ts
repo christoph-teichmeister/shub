@@ -32,3 +32,9 @@ test('terminal colours follow their UI colour until set', () => {
   assert.equal(resolveTokens(monokai, { pink: '#123456' })['term-red'], '#123456');
   assert.equal(resolveTokens(monokai, { pink: '#123456', 'term-red': '#ff0000' })['term-red'], '#ff0000');
 });
+
+test('the waiting status follows muted text until a theme sets its own colour', () => {
+  const monokai = BUILT_IN_THEMES[0];
+  assert.equal(resolveTokens(monokai)['status-waiting'], monokai.tokens.muted);
+  assert.equal(resolveTokens(monokai, { 'status-waiting': '#e2c08d' })['status-waiting'], '#e2c08d');
+});

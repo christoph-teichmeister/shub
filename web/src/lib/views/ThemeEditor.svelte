@@ -289,6 +289,7 @@
             <Wordmark size="sm" />
             <span class="p-row selected">ai-portal</span>
             <span class="p-row">listo</span>
+            <span class="p-row waiting">listo · waiting</span>
             <span class="p-row needs">dotfiles · Allow?</span>
             <span class="p-muted">Muted text sample</span>
           </div>
@@ -545,6 +546,10 @@
   .p-row.needs {
     background: var(--status-needs-you-bg);
     color: var(--status-needs-you-fg);
+  }
+
+  .p-row.waiting {
+    color: var(--status-waiting);
   }
 
   .p-muted {
