@@ -91,7 +91,7 @@ function readDeviceTerminal(): Partial<TerminalSettings> | null {
     return null;
   }
 }
-/** This browser's own terminal settings over the shared ones (Settings > Terminal); null follows config.json. */
+/** This browser's own terminal settings over the active theme's (Settings > Terminal); null follows the theme. */
 export const deviceTerminal = $state({ value: readDeviceTerminal() });
 export function setDeviceTerminal(value: Partial<TerminalSettings> | null): void {
   deviceTerminal.value = value;
@@ -102,9 +102,12 @@ export function setDeviceTerminal(value: Partial<TerminalSettings> | null): void
     // No storage (private window): keeps working until reload.
   }
 }
-/** The terminal look in effect here: defaults, then config.json, then this device's own settings. */
+/** Terminal settings the active theme sets itself. */
+export const themeTerminal = (): Partial<TerminalSettings> =>
+  app.config?.themes.find((t) => t.id === app.config?.activeTheme)?.terminal ?? {};
+/** The terminal look in effect here: defaults, then the active theme's, then this device's own settings. */
 export function terminalSettings(): TerminalSettings {
-  return { ...TERMINAL_SETTINGS_DEFAULTS, ...app.config?.terminal, ...deviceTerminal.value };
+  return { ...TERMINAL_SETTINGS_DEFAULTS, ...themeTerminal(), ...deviceTerminal.value };
 }
 
 export const sessionHref = (s: Session) => (s.projectId ? href('p', s.projectId, s.id) : href('g'));

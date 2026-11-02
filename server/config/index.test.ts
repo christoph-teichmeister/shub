@@ -211,11 +211,27 @@ test('first start imports config.json once; local.json stays machine-only', () =
   const config = store.get();
   assert.deepEqual(config.groups, ['Work', 'Home']);
   assert.equal(config.projects[0].path, '/home/u/a');
-  assert.equal(config.themes.at(-1)!.id, 'mine');
-  assert.equal(config.terminal?.fontSize, 15);
+  assert.ok(config.themes.some((t) => t.id === 'mine'));
+  // The old global terminal block moved into a copy of the active (built-in) theme.
+  assert.equal(config.activeTheme, 'monokai-custom');
+  const copy = config.themes.find((t) => t.id === 'monokai-custom');
+  assert.deepEqual([copy?.base, copy?.builtIn, copy?.terminal], ['monokai', false, { fontSize: 15 }]);
+  assert.equal('terminal' in config, false);
   assert.equal(config.plugins[0].env?.KEY, 'v');
   assert.equal(config.defaultPermissionMode, 'plan');
   assert.equal(readFileSync(join(dir, 'local.json'), 'utf8'), JSON.stringify({ updateMode: 'off' }));
   writeFileSync(file, JSON.stringify({ groups: ['Later'] }));
   assert.deepEqual(new FileConfigStore(dir, new EventBus(), g, '/home/u').get().groups, ['Work', 'Home']);
+});
+
+test('a global terminal item from before folds into the active custom theme, which keeps what it sets', () => {
+  const g = group();
+  g.importConfig({
+    themes: [{ id: 'mine', name: 'Mine', builtIn: false, tokens: {}, terminal: { fontSize: 16 } }],
+    activeTheme: 'mine',
+  });
+  g.put('setting:terminal', { fontSize: 15, fontFamily: 'X' });
+  const config = new FileConfigStore(tmp(), new EventBus(), g, '/home/u').get();
+  assert.deepEqual(config.themes.find((t) => t.id === 'mine')?.terminal, { fontSize: 16, fontFamily: 'X' });
+  assert.equal(g.get('setting:terminal')?.deleted, true);
 });

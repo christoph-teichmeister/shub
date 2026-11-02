@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, watch, writeFileSync, type FSWatcher } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, sep } from 'node:path';
-import type { Config, Project, ProjectView, ResolvedIcon, ThemeDef } from '../../shared/api.ts';
+import type { Config, Project, ProjectView, ResolvedIcon, TerminalSettings, ThemeDef } from '../../shared/api.ts';
 import type { Context, EventBus } from '../context.ts';
 import { HttpError } from '../api/router.ts';
 import type { ShubModule } from '../module.ts';
@@ -36,6 +36,41 @@ export function defaultConfig(): Config {
   };
 }
 
+/**
+ * Writes terminal settings into the active theme (null clears a field). A built-in theme cannot change, so its
+ * first edit saves a copy ("<id>-custom") with the same colours and makes that the active theme.
+ */
+export function setThemeTerminal(c: { themes: ThemeDef[]; activeTheme: string }, patch: Record<string, unknown>): void {
+  let theme = c.themes.find((t) => t.id === c.activeTheme);
+  if (!theme) return;
+  if (theme.builtIn) {
+    const taken = new Set(c.themes.map((t) => t.id));
+    let id = `${theme.id}-custom`;
+    for (let n = 2; taken.has(id); n++) id = `${theme.id}-custom-${n}`;
+    theme = { id, name: `${theme.name} (custom)`, builtIn: false, base: theme.id, tokens: {} };
+    c.themes.push(theme);
+    c.activeTheme = id;
+  }
+  const t: Record<string, unknown> = { ...theme.terminal, ...patch };
+  for (const k of Object.keys(t)) if (t[k] === null) delete t[k];
+  if (Object.keys(t).length) theme.terminal = t as Partial<TerminalSettings>;
+  else delete theme.terminal;
+}
+
+/** Terminal settings used to be global. Folds a leftover global block into the active theme (fields the theme
+ *  already sets win) and drops it. */
+export function migrateTerminal<T extends Partial<Config>>(shared: T & { terminal?: unknown }): T {
+  const { terminal, ...rest } = shared;
+  if (!terminal || typeof terminal !== 'object') return rest as unknown as T;
+  const c = {
+    themes: [...structuredClone(BUILT_IN_THEMES), ...(rest.themes ?? [])],
+    activeTheme: rest.activeTheme ?? 'monokai',
+  };
+  const own = c.themes.find((t) => t.id === c.activeTheme);
+  setThemeTerminal(c, { ...terminal, ...(own?.builtIn ? {} : own?.terminal) });
+  return { ...rest, themes: c.themes.filter((t) => !t.builtIn), activeTheme: c.activeTheme } as unknown as T;
+}
+
 /** Fills in fields a hand-edited or older file lacks; built-in themes are always present and unchanged. */
 function normalize(raw: Partial<Config>): Config {
   const base = defaultConfig();
@@ -52,6 +87,7 @@ function normalize(raw: Partial<Config>): Config {
   if (!['auto', 'ask', 'off'].includes(config.updateMode!)) delete config.updateMode;
   if (config.trustSessions !== true) delete config.trustSessions;
   if (!/^https:\/\/\S+$/.test(config.publicUrl ?? '')) delete config.publicUrl;
+  delete (config as { terminal?: unknown }).terminal;
   delete config.problem;
   return config;
 }
@@ -218,10 +254,14 @@ export class FileConfigStore implements ConfigStore {
         lists.some((k) => old[k] !== undefined && !Array.isArray(old[k]))
       )
         throw new Error('config.json must be an object whose projects, groups, themes and plugins are lists');
-      this.#group.importConfig(old);
+      this.#group.importConfig(migrateTerminal(old));
     }
     this.#local = this.#readLocal();
     this.#shared = this.#group.config();
+    if ('terminal' in this.#shared) {
+      this.#group.setConfig(migrateTerminal(this.#shared));
+      this.#shared = this.#group.config();
+    }
     return this.#merge();
   }
 

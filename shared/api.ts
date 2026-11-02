@@ -76,6 +76,8 @@ export interface ThemeDef {
   builtIn: boolean;
   /** Token name -> CSS colour. Only tokens listed in web/src/lib/tokens/tokens.ts are valid. */
   tokens: Record<string, string>;
+  /** Terminal look of this theme; a missing field keeps its default (TERMINAL_SETTINGS_DEFAULTS). */
+  terminal?: Partial<TerminalSettings>;
 }
 
 export interface Config {
@@ -101,8 +103,6 @@ export interface Config {
   }[];
   /** Sidebar shows an "Active" group on top: every project with a session, kept 10 minutes after its last one. */
   activeGroup?: boolean;
-  /** Terminal look; a missing field keeps its default (TERMINAL_SETTINGS_DEFAULTS). */
-  terminal?: Partial<TerminalSettings>;
   /** Mode for sessions the user starts and the global Claude; a button's own mode wins. Default: "default". */
   defaultPermissionMode: LaunchPermissionMode;
   /** Release channel for updates. Absent: "beta" while a beta runs, else "stable". */
@@ -126,7 +126,6 @@ export interface Config {
 export const SYNC_CATEGORIES = [
   'projects',
   'themes',
-  'terminal',
   'notifications',
   'permissionMode',
   'plugins',

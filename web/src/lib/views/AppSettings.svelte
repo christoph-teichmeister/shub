@@ -38,6 +38,7 @@
     loadUpdate,
     setDeviceTerminal,
     terminalSettings,
+    themeTerminal,
     ui,
   } from '../stores/state.svelte.ts';
   import { toast, toastError } from '../stores/toasts.svelte.ts';
@@ -74,7 +75,6 @@
   const SYNC: { key: SyncCategory; label: string; hint?: string; off?: boolean }[] = [
     { key: 'projects', label: 'Projects and groups', hint: 'Folders stay per machine; one missing here shows dimmed.' },
     { key: 'themes', label: 'Themes' },
-    { key: 'terminal', label: 'Terminal' },
     { key: 'notifications', label: 'Notifications' },
     { key: 'permissionMode', label: 'Default permission mode' },
     { key: 'plugins', label: 'Plugins' },
@@ -201,7 +201,7 @@
 
   const terminal = $derived(terminalSettings());
   /** Fields the reset button clears: this device's own, or the shared ones. */
-  const terminalOwn = $derived(deviceTerminal.value ?? app.config?.terminal ?? {});
+  const terminalOwn = $derived(deviceTerminal.value ?? themeTerminal());
 
   const themes = $derived([...BUILT_IN_THEMES, ...(app.config?.themes ?? []).filter((t) => !t.builtIn)]);
   const active = $derived(app.config?.activeTheme ?? 'monokai');
@@ -319,7 +319,7 @@
     else void loadConfig();
   }
 
-  /** null resets a field (to the shared value on a device with its own settings, else to the default). */
+  /** null resets a field (to the theme's value on a device with its own settings, else to the default). */
   async function setTerminal(patch: { [K in keyof TerminalSettings]?: TerminalSettings[K] | null }) {
     if (deviceTerminal.value) {
       const error = terminalSettingsError(patch);
@@ -612,8 +612,7 @@
       {#snippet aside()}
         <span class="segment" role="group" aria-label="Terminal settings apply to">
           <span>Applies to</span>
-          <ChoiceButton pressed={!deviceTerminal.value} onclick={() => setDeviceTerminal(null)}
-            >All devices</ChoiceButton
+          <ChoiceButton pressed={!deviceTerminal.value} onclick={() => setDeviceTerminal(null)}>This theme</ChoiceButton
           >
           <ChoiceButton pressed={!!deviceTerminal.value} onclick={() => deviceTerminal.value || setDeviceTerminal({})}
             >This device only</ChoiceButton
@@ -622,8 +621,8 @@
       {/snippet}
       <p class="muted small">
         {deviceTerminal.value
-          ? 'Changes stay in this browser. Fields you have not changed follow the settings of all devices.'
-          : 'Changes apply on every device. Pick "This device only" to give this browser, e.g. the phone, its own font or size.'}
+          ? 'Changes stay in this browser. Fields you have not changed follow the theme.'
+          : 'Changes are saved in the active theme (a built-in one is copied first) and apply on every device. Pick "This device only" to give this browser, e.g. the phone, its own font or size.'}
       </p>
       <div class="split">
         <div class="stack gap fields">
@@ -725,7 +724,7 @@
               <Button
                 size="sm"
                 onclick={() => setTerminal(Object.fromEntries(Object.keys(terminalOwn).map((k) => [k, null])))}
-                >{deviceTerminal.value ? 'Reset to shared' : 'Reset to defaults'}</Button
+                >{deviceTerminal.value ? 'Reset to theme' : 'Reset to defaults'}</Button
               >
             </div>
           {/if}
