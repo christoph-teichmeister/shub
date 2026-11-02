@@ -167,7 +167,11 @@
         >
       {/if}
       {#if onclose}
-        <span role="presentation" onpointerenter={() => (closeHot = true)} onpointerleave={() => (closeHot = false)}
+        <span
+          class="close"
+          role="presentation"
+          onpointerenter={() => (closeHot = true)}
+          onpointerleave={() => (closeHot = false)}
           ><IconButton
             label="Close {session.name}"
             icon="close"
@@ -216,6 +220,7 @@
   }
 
   .tab:not(.selected):hover {
+    padding-right: var(--space-1);
     background: var(--raised);
     color: var(--fg);
   }
@@ -325,8 +330,9 @@
     align-items: center;
   }
 
-  /* Only the open tab has buttons: on a shrunk tab they would cover the name. Right-click still opens the menu. */
-  .tab:not(.selected) .actions {
+  /* Other tabs show only the ✕, and only under the pointer: more would cover the name. Right-click still opens the menu. */
+  .tab:not(.selected, :hover) .actions,
+  .tab:not(.selected) .actions > span:not(.close) {
     display: none;
   }
 </style>
