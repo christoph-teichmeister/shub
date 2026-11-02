@@ -696,6 +696,23 @@ test('theme editor blinks the colour you point at in the preview', async ({ page
   expect(errors).toEqual([]);
 });
 
+test('theme editor saves the terminal look with the theme and shows it in the preview', async ({ page }) => {
+  const { errors, calls } = await mockApi(page, { 'PUT /api/themes/my-theme': {}, 'PATCH /api/settings': config });
+  await page.goto('/#/settings/theme/new');
+  await page.getByLabel('Name', { exact: true }).fill('My theme');
+  const group = page.locator('details.group', { has: page.locator('summary', { hasText: /^Terminal$/ }) });
+  await group.getByLabel('Font', { exact: true }).fill("'IBM Plex Mono'");
+  await group.getByLabel('Font', { exact: true }).press('Tab');
+  await group.getByLabel('Size (px)').fill('16');
+  await group.getByLabel('Size (px)').press('Tab');
+  await expect(page.locator('.p-term')).toHaveCSS('font-size', '16px');
+  await page.getByRole('button', { name: 'Save and use' }).click();
+  await expect
+    .poll(() => calls.find((c) => c.path === '/api/themes/my-theme')?.body)
+    .toMatchObject({ name: 'My theme', terminal: { fontFamily: "'IBM Plex Mono'", fontSize: 16 } });
+  expect(errors).toEqual([]);
+});
+
 test('contrast ratio follows WCAG', () => {
   expect(contrastRatio('#000', '#fff')).toBeCloseTo(21, 1);
   expect(contrastRatio('#f8f8f2', '#272822')!).toBeGreaterThan(4.5);

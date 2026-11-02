@@ -1,6 +1,13 @@
 <script lang="ts">
-  import type { Config, ThemeDef } from '../../../../shared/api.ts';
+  import {
+    TERMINAL_SETTINGS_DEFAULTS,
+    terminalSettingsError,
+    type Config,
+    type TerminalSettings,
+    type ThemeDef,
+  } from '../../../../shared/api.ts';
   import Button from '../components/Button/Button.svelte';
+  import Checkbox from '../components/Checkbox/Checkbox.svelte';
   import Icon from '../components/Icon/Icon.svelte';
   import SelectField from '../components/SelectField/SelectField.svelte';
   import StatusBadge from '../components/StatusBadge/StatusBadge.svelte';
@@ -31,6 +38,19 @@
   let name = $state(custom?.name ?? (builtIn ? `${builtIn.name} copy` : ''));
   let base = $state(custom?.base ?? builtIn?.id ?? 'monokai');
   let overrides = $state<Record<string, string>>({ ...(custom?.tokens ?? {}) });
+  // Terminal look of this theme; a field that is not set keeps its default.
+  let term = $state<Partial<TerminalSettings>>({ ...(custom?.terminal ?? {}) });
+  const termNow = $derived({ ...TERMINAL_SETTINGS_DEFAULTS, ...term });
+  const termError = $derived(terminalSettingsError(term));
+  function setTerm(patch: { [K in keyof TerminalSettings]?: TerminalSettings[K] | null }) {
+    const next: Record<string, unknown> = { ...term, ...patch };
+    for (const k of Object.keys(next)) if (next[k] === null) delete next[k];
+    term = next as Partial<TerminalSettings>;
+  }
+  const termNumber = (key: 'fontSize' | 'lineHeight' | 'letterSpacing') => (e: Event) => {
+    const v = (e.currentTarget as HTMLInputElement).valueAsNumber;
+    setTerm({ [key]: Number.isNaN(v) ? null : v });
+  };
   // Token whose row is hovered (wins) or focused; it blinks in the preview.
   let hovered = $state<TokenName | null>(null);
   let focused = $state<TokenName | null>(null);
@@ -90,11 +110,18 @@
   }
 
   function def(): Omit<ThemeDef, 'builtIn' | 'id'> {
-    return { name: name.trim(), base, tokens: $state.snapshot(overrides) };
+    const terminal = $state.snapshot(term);
+    return {
+      name: name.trim(),
+      base,
+      tokens: $state.snapshot(overrides),
+      ...(Object.keys(terminal).length && { terminal }),
+    };
   }
 
   async function save(e: SubmitEvent) {
     e.preventDefault();
+    if (termError) return toastError(new Error(termError));
     saving = true;
     const ok = await api('themes', { params: { id: themeId }, body: def() }).then(() => true, toastError);
     const config = ok && (await api<Config>('settings', { body: { activeTheme: themeId } }).catch(toastError));
@@ -163,6 +190,77 @@
           </details>
         {/each}
 
+        <details class="group" open>
+          <summary>Terminal</summary>
+          <div class="colors">
+            <TextField
+              label="Font"
+              hint="CSS font list, first installed one wins. IBM Plex Mono and JetBrains Mono come with shub; any other font must be installed on the device."
+              value={termNow.fontFamily}
+              autocomplete="off"
+              onchange={(e) => setTerm({ fontFamily: e.currentTarget.value.trim() || null })}
+            />
+            <div class="trow">
+              <TextField
+                label="Size (px)"
+                type="number"
+                min="6"
+                max="40"
+                step="1"
+                value={termNow.fontSize}
+                onchange={termNumber('fontSize')}
+              />
+              <TextField
+                label="Line height"
+                type="number"
+                min="1"
+                max="2"
+                step="0.05"
+                value={termNow.lineHeight}
+                onchange={termNumber('lineHeight')}
+              />
+              <TextField
+                label="Letter spacing (px)"
+                type="number"
+                min="-2"
+                max="10"
+                step="0.1"
+                value={termNow.letterSpacing}
+                onchange={termNumber('letterSpacing')}
+              />
+            </div>
+            <div class="trow">
+              <SelectField
+                label="Weight"
+                bind:value={
+                  () => termNow.fontWeight, (v) => setTerm({ fontWeight: v as TerminalSettings['fontWeight'] })
+                }
+                options={[
+                  { value: 'normal', label: 'Normal' },
+                  { value: 'bold', label: 'Bold' },
+                ]}
+              />
+              <SelectField
+                label="Cursor"
+                bind:value={
+                  () => termNow.cursorStyle, (v) => setTerm({ cursorStyle: v as TerminalSettings['cursorStyle'] })
+                }
+                options={[
+                  { value: 'underline', label: 'Underline' },
+                  { value: 'block', label: 'Block' },
+                  { value: 'bar', label: 'Bar' },
+                ]}
+              />
+              <Checkbox
+                label="Blinking cursor"
+                checked={termNow.cursorBlink}
+                onchange={(e) => setTerm({ cursorBlink: e.currentTarget.checked })}
+              />
+            </div>
+            {#if termError}<p class="hint">{termError}</p>{/if}
+          </div>
+        </details>
+
         <div class="checks" aria-live="polite">
           <span class="label">Readability on this background</span>
           {#each checks as c (c.label)}
@@ -205,7 +303,13 @@
               <StatusBadge text="done" tone="done" />
               <span class="p-link">github.com/…</span>
             </div>
-            <pre class="p-term"><span class="t-red">&gt;</span> /worktree-review 2136
+            <pre
+              class="p-term"
+              style:font-family="{termNow.fontFamily}, {termNow.fallbackFont}"
+              style:font-size="{termNow.fontSize}px"
+              style:font-weight={termNow.fontWeight}
+              style:line-height={termNow.lineHeight}
+              style:letter-spacing="{termNow.letterSpacing}px"><span class="t-red">&gt;</span> /worktree-review 2136
 <span class="t-green">●</span> Port slot 3 free · <span class="t-cyan">localhost:8003</span>
 1. <span class="t-yellow">core/views.py:88</span> swallows errors
 2. migration <span class="t-magenta">0042</span> drops a <span class="t-sel">column</span>
@@ -290,6 +394,13 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+  }
+
+  .trow {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: var(--space-2-5);
   }
 
   .color {
