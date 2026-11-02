@@ -301,11 +301,19 @@ test('settings and themes', async () => {
   assert.equal((await asUser('PATCH', '/api/settings', { terminal: { colour: 'red' } })).status, 400);
   assert.equal((await asUser('PATCH', '/api/settings', { terminal: { fallbackFont: '' } })).status, 400);
   await asUser('PATCH', '/api/settings', { terminal: { fontSize: 15 } });
-  const terminal = (await (await asUser('PATCH', '/api/settings', { terminal: { cursorStyle: 'bar' } })).json())
-    .terminal;
-  assert.deepEqual(terminal, { fontSize: 15, cursorStyle: 'bar' });
-  const reset = (await (await asUser('PATCH', '/api/settings', { terminal: { fontSize: null } })).json()).terminal;
-  assert.deepEqual(reset, { cursorStyle: 'bar' });
+  // Terminal settings are saved in the active theme ('mine', custom); a colour edit keeps them.
+  const terminalOf = (c: { themes: { id: string; terminal?: unknown }[]; activeTheme: string }) =>
+    c.themes.find((t) => t.id === c.activeTheme)?.terminal;
+  const patched = await (await asUser('PATCH', '/api/settings', { terminal: { cursorStyle: 'bar' } })).json();
+  assert.deepEqual(terminalOf(patched), { fontSize: 15, cursorStyle: 'bar' });
+  assert.equal(patched.terminal, undefined);
+  await asUser('PUT', '/api/themes/mine', { name: 'Mine', tokens: { bg: '#111111' } });
+  const kept = await (await asUser('PATCH', '/api/settings', { terminal: { fontSize: null } })).json();
+  assert.deepEqual(terminalOf(kept), { cursorStyle: 'bar' });
+  assert.equal(
+    (await asUser('PUT', '/api/themes/mine', { name: 'Mine', tokens: {}, terminal: { fontSize: 2 } })).status,
+    400,
+  );
 });
 
 test('pairing: a phone pairs with its key, waits for approval and then signs in by challenge', async () => {

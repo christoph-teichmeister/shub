@@ -84,7 +84,7 @@ test('config round trip: setConfig makes items, changes bump only what changed, 
   const base = {
     groups: ['A', 'B'],
     projects: [{ id: 'p', name: 'p', path: '~/p', order: 0 }],
-    terminal: { fontSize: 14 },
+    activeGroup: true,
     activeTheme: 'dracula',
     plugins: [{ name: 'x', enabled: true, grantedRights: [], env: { K: 'v' } }],
   } as never;
@@ -92,10 +92,10 @@ test('config round trip: setConfig makes items, changes bump only what changed, 
   assert.deepEqual(g.config().groups, ['A', 'B']);
   assert.equal(g.config().activeTheme, 'dracula');
   const before = g.get('project:p')!.version;
-  g.setConfig({ ...(base as object), groups: ['A'], terminal: undefined } as never);
+  g.setConfig({ ...(base as object), groups: ['A'], activeGroup: undefined } as never);
   assert.deepEqual(g.get('project:p')!.version, before); // unchanged items keep their version
   assert.deepEqual(g.config().groups, ['A']);
-  assert.equal(g.config().terminal, undefined);
+  assert.equal(g.config().activeGroup, undefined);
   assert.equal(g.get('group:B')?.deleted, true);
 });
 
@@ -114,9 +114,9 @@ test('sync switches: off categories are neither sent nor accepted; plugin env is
   assert.deepEqual(forSync(plugin, { pluginEnv: true })?.body, plugin.body);
   assert.equal(forSync(plugin, { plugins: false }), null);
   assert.equal(forSync(item('project:p', { a: 1 }), { projects: false }), null);
-  assert.equal(forSync(item('setting:terminal', { a: 1 }), { terminal: false }), null);
+  assert.equal(forSync(item('setting:notifications', { a: 1 }), { notifications: false }), null);
   assert.equal(forSync(item('setting:defaultPermissionMode', { a: 1 }), { permissionMode: false }), null);
-  assert.ok(forSync(item('setting:notifications', { a: 1 }), { terminal: false }));
+  assert.ok(forSync(item('setting:notifications', { a: 1 }), { projects: false }));
   assert.ok(forSync(item('device:d', { a: 1 }), { projects: false, plugins: false }));
 });
 

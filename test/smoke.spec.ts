@@ -420,7 +420,10 @@ test('app settings and project settings', async ({ page }) => {
 
 test('terminal settings send only the changed field and update the sample', async ({ page }) => {
   const { errors, calls } = await mockApi(page, {
-    'PATCH /api/settings': { ...config, terminal: { fontSize: 16 } },
+    'PATCH /api/settings': {
+      ...config,
+      themes: [{ id: 'monokai', name: 'Monokai', builtIn: true, tokens: {}, terminal: { fontSize: 16 } }],
+    },
   });
   await page.goto('/#/settings/appearance');
   const section = page.getByRole('region', { name: 'Terminal' });
@@ -437,7 +440,12 @@ test('terminal settings send only the changed field and update the sample', asyn
 });
 
 test('own terminal settings stay in this browser and win over the shared ones', async ({ page }) => {
-  const { errors, calls } = await mockApi(page, { '/api/config': { ...config, terminal: { fontSize: 15 } } });
+  const { errors, calls } = await mockApi(page, {
+    '/api/config': {
+      ...config,
+      themes: [{ id: 'monokai', name: 'Monokai', builtIn: true, tokens: {}, terminal: { fontSize: 15 } }],
+    },
+  });
   await page.goto('/#/settings/appearance');
   const section = page.getByRole('region', { name: 'Terminal' });
   await section.getByRole('button', { name: 'This device only' }).click();
@@ -447,9 +455,9 @@ test('own terminal settings stay in this browser and win over the shared ones', 
   expect(await page.evaluate(() => localStorage.getItem('shub.terminal.device'))).toBe('{"fontSize":11}');
   await page.reload();
   await expect(section.getByLabel('Size (px)')).toHaveValue('11');
-  await section.getByRole('button', { name: 'Reset to shared' }).click();
+  await section.getByRole('button', { name: 'Reset to theme' }).click();
   await expect(section.getByLabel('Size (px)')).toHaveValue('15');
-  await section.getByRole('button', { name: 'All devices' }).click();
+  await section.getByRole('button', { name: 'This theme' }).click();
   expect(await page.evaluate(() => localStorage.getItem('shub.terminal.device'))).toBeNull();
   expect(calls.filter((c) => c.path === '/api/settings')).toEqual([]);
   expect(errors).toEqual([]);

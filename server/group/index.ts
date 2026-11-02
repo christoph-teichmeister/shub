@@ -70,7 +70,6 @@ export function categoryOf(key: string): SyncCategory | null {
     case 'setting':
       return (
         ({
-          terminal: 'terminal',
           notifications: 'notifications',
           defaultPermissionMode: 'permissionMode',
           ui: 'themes',
@@ -100,7 +99,7 @@ export function forSync(item: GroupItem, sync: SyncSettings | undefined): GroupI
 }
 
 /** Config settings that are one item each. */
-const SINGLE = ['terminal', 'notifications', 'defaultPermissionMode'] as const;
+const SINGLE = ['notifications', 'defaultPermissionMode'] as const;
 
 /** The items the shared part of a config is made of. Built-in themes are code, not items. */
 function itemsOf(c: Partial<Config>): Map<string, unknown> {
@@ -314,6 +313,9 @@ export class GroupStore {
       const item = live.find((i) => i.key === `setting:${key}`);
       if (item) config[key] = item.body;
     }
+    // Read only, for the migration into the active theme (server/config); never written back.
+    const legacyTerminal = live.find((i) => i.key === 'setting:terminal');
+    if (legacyTerminal) config.terminal = legacyTerminal.body;
     Object.assign(config, live.find((i) => i.key === 'setting:ui')?.body);
     return config as Partial<Config>;
   }

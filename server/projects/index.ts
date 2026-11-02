@@ -15,10 +15,11 @@ import {
   type MainCheckout,
   type Project,
   type ProjectIcon,
+  type TerminalSettings,
   type ThemeDef,
   type Visibility,
 } from '../../shared/api.ts';
-import { remoteIcon } from '../config/index.ts';
+import { remoteIcon, setThemeTerminal } from '../config/index.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import { HttpError, requireRight, requireUser, type Caller, type Request, type Router } from '../api/router.ts';
@@ -397,6 +398,15 @@ function settingsRoutes(services: Services, router: Router): void {
     }
     const theme: ThemeDef = { id, name: str(body.name, 'name', 60), builtIn: false, tokens };
     if (body.base !== undefined) theme.base = str(body.base, 'base', 40);
+    if (body.terminal !== undefined) {
+      const error = terminalSettingsError(body.terminal);
+      if (error) bad(error);
+      theme.terminal = body.terminal;
+    } else {
+      // Editing the colours keeps the theme's terminal look.
+      const old = config.get().themes.find((t) => t.id === id)?.terminal;
+      if (old) theme.terminal = old;
+    }
     config.update((c) => {
       c.themes = [...c.themes.filter((t) => t.id !== id), theme];
     }, req.caller.id);
@@ -415,10 +425,9 @@ function settingsRoutes(services: Services, router: Router): void {
             | 'groups'
             | 'defaultPermissionMode'
             | 'activeGroup'
-            | 'terminal'
             | 'sync'
             | 'trustSessions'
-          >
+          > & { terminal: Partial<TerminalSettings> }
         >
       >();
     const current = config.get();
@@ -459,12 +468,8 @@ function settingsRoutes(services: Services, router: Router): void {
       if (body.activeGroup !== undefined) c.activeGroup = body.activeGroup;
       if (body.trustSessions !== undefined) c.trustSessions = body.trustSessions;
       if (body.sync !== undefined) c.sync = { ...c.sync, ...body.sync };
-      if (body.terminal !== undefined) {
-        // null resets a field to its default.
-        const t: Record<string, unknown> = { ...c.terminal, ...body.terminal };
-        for (const k of Object.keys(t)) if (t[k] === null) delete t[k];
-        c.terminal = t;
-      }
+      // Terminal settings belong to the active theme; null resets a field to its default.
+      if (body.terminal !== undefined) setThemeTerminal(c, body.terminal);
     }, req.caller.id);
   });
 }
