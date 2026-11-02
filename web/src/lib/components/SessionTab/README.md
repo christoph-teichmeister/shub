@@ -1,6 +1,6 @@
 # SessionTab
 
-One session in the tab bar: status mark, name (`role="tab"`, only the selected one is in the Tab order; arrows move along the `TabBar`), first link as a chip, menu button (`⋯`) and close button, both shown on the selected tab and on hover. Double-click (or Alt R from the view) renames in place; Enter saves, Escape cancels. Right-click or `⋯` opens the session menu.
+One session in the tab bar: status mark, name (`role="tab"`, only the selected one is in the Tab order; arrows move along the `TabBar`), first link as a chip, menu button (`⋯`), hide button and close button on the selected tab; other tabs show only the close button (`✕`), and only on hover. Double-click (or Alt R from the view) renames in place; Enter saves, Escape cancels. Right-click or `⋯` opens the session menu.
 
 | Prop          | Type                       | Notes                                        |
 | ------------- | -------------------------- | -------------------------------------------- |
