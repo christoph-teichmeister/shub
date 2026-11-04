@@ -445,7 +445,10 @@ test('a handed-over command runs in the session it names, resuming it first', as
     { command: 'echo nowhere', session: 'nope' },
   ]);
   assert.throws(() => svc.answerCommand(writer.id, 1, 'run'), /Open in terminal/);
-  svc.answerCommand(writer.id, 0, 'run');
+  // The list changed since the client showed it: index 0 holds another command now, so nothing runs.
+  assert.throws(() => svc.answerCommand(writer.id, 0, 'run', 'echo unseen'), /other commands meanwhile/);
+  assert.ok(svc.get(writer.id)?.pendingCommands, 'the list stays');
+  svc.answerCommand(writer.id, 0, 'run', 'echo routed-1');
   await waitFor(() => pane(target.id).includes('echo routed-1'), 'command in the target');
   assert.ok(!pane(writer.id).includes('echo routed-1'), 'not in the writing session');
   assert.equal(svc.get(writer.id)?.pendingCommands, null);

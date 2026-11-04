@@ -648,8 +648,8 @@
       const kind = commandTarget(c, app.sessions, s.id).kind;
       return kind === 'self' || kind === 'session' ? [{ index, command: c.command }] : [];
     });
-  const run = (s: Session, index: number) =>
-    call(api('sessionCommand', { params: { id: s.id }, body: { index, action: 'run' } }));
+  const run = (s: Session, index: number, command: string) =>
+    call(api('sessionCommand', { params: { id: s.id }, body: { index, command, action: 'run' } }));
 
   function actions(s: Session): CardAction[] {
     const out: CardAction[] = [];
@@ -666,7 +666,7 @@
         kbd: i === 0 ? 'R' : undefined,
         primary: !s.pendingPermission,
         title: command,
-        run: () => run(s, index),
+        run: () => run(s, index, command),
       }),
     );
     if (s.status === 'paused')
@@ -747,7 +747,7 @@
     if (k === 'Enter') open(s);
     else if (k === 'y' && s.pendingPermission) void sendKeys(s.id, ['1']);
     else if (k === 'n' && s.pendingPermission) void sendKeys(s.id, ['3']);
-    else if (k === 'r' && first) run(s, first.index);
+    else if (k === 'r' && first) run(s, first.index, first.command);
     else return;
     e.preventDefault();
   }

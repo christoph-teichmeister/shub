@@ -22,9 +22,17 @@
     (session.pendingCommands ?? []).map((c) => ({ ...c, target: commandTarget(c, app.sessions, session.id) })),
   );
   let armed = $state<number | null>(null);
+  // Claude handed over another list: the second tap must not run a command the first one did not see.
+  const listKey = $derived(JSON.stringify(session.pendingCommands ?? []));
+  $effect(() => {
+    void listKey;
+    armed = null;
+  });
 
+  /** Sends the command shown at `index` too: the server refuses when its list changed meanwhile. */
   function answer(index: number, action: 'run' | 'dismiss') {
-    void api('sessionCommand', { params: { id: session.id }, body: { index, action } }).catch(toastError);
+    const command = commands[index]?.command;
+    void api('sessionCommand', { params: { id: session.id }, body: { index, command, action } }).catch(toastError);
   }
 
   function run(index: number) {
@@ -56,9 +64,8 @@
     );
   }
 
-  async function copy(command: string) {
-    await navigator.clipboard.writeText(command).catch(toastError);
-    toast('Copied');
+  function copy(command: string) {
+    navigator.clipboard.writeText(command).then(() => toast('Copied'), toastError);
   }
 </script>
 
