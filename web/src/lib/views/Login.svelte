@@ -31,8 +31,11 @@
   /** Paired, but nobody approved this phone yet. */
   let waiting = $state(false);
 
+  let gone = false; // left the page: the approval loop stops
+
   /** Tries to sign in every 3 s until the machine approves this phone. */
   async function waitForApproval() {
+    if (gone) return;
     waiting = true;
     try {
       await deviceToken(here, true);
@@ -49,6 +52,7 @@
     void deviceId().then((id) => {
       if (id) void waitForApproval();
     });
+    return () => (gone = true);
   });
 
   const message = (err: unknown) =>

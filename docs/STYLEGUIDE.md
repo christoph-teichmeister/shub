@@ -34,7 +34,7 @@ UI: IBM Plex Sans (`--font-ui`); wordmark, paths, ports, terminal: JetBrains Mon
 
 ### Layers
 
-`--z-raised` 1 · `--z-sticky` 10 · `--z-menu` 100 · `--z-dialog` 200 (native `<dialog>` uses the top layer anyway) · `--z-toast` 300.
+`--z-raised` 1 · `--z-sticky` 10 · `--z-menu` 100 · `--z-toast` 300 (a native `<dialog>` sits in the top layer, above all of them).
 
 ## Status colours
 
