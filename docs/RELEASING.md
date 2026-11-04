@@ -23,9 +23,10 @@
 --target <sha>` creates the tag and the release (beta as pre-release).
 
 The `version` in `package.json` is not used for releases; it is what a git checkout reports. Releases run one at a
-time (`concurrency: release`). GitHub keeps only the newest waiting run, so if several merges queue up, the older
-waiting one is skipped and its changes ship with the next release. Tags are never moved or deleted (a ruleset forbids
-it): a broken release is fixed by the next one, and installed shubs roll back on their own if it does not start.
+time per branch (`concurrency: release-<ref>`). GitHub keeps only the newest waiting run of a branch, so if several
+merges into it queue up, the older waiting one is skipped and its changes ship with the next release; a develop merge
+never skips a waiting stable release. Tags are never moved or deleted (a ruleset forbids it): a broken release is
+fixed by the next one, and installed shubs roll back on their own if it does not start.
 
 ## Signing key
 
