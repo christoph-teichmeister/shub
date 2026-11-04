@@ -80,6 +80,7 @@ function decideBase(caller: Caller, action: PermissionAction, env: DecideEnv): D
       return isHuman(caller) ? allow : deny('only you can delete projects');
     case 'session.close':
       if (isHuman(caller) || caller.id === `session:${action.sessionId}`) return allow;
+      if (caller.kind === 'session') return ask('closing another session needs your OK');
       return deny('only you can close another session');
     case 'session.link':
       // A session may pin links to its own tab (e.g. its MR); other sessions' tabs still go by the right.

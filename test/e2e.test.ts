@@ -9,7 +9,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { WebSocket } from 'ws';
-import type { ProjectView, Session } from '../shared/api.ts';
+import type { Approval, ProjectView, Session } from '../shared/api.ts';
 
 const appDir = new URL('..', import.meta.url).pathname;
 const root = mkdtempSync(join(tmpdir(), 'shub-e2e-'));
@@ -201,14 +201,22 @@ test('health, bootstrap login, project, session, terminal, hooks, close', { time
   assert.equal(after?.status, 'your-turn');
   assert.equal(after?.claudeSessionId, cleared, '/clear moved the Claude session id');
 
-  // Close: a session may not close another one, only itself; you close any.
+  // Close: a session closes itself directly and another one after your OK; you close any.
   const other = await json<Session>('POST', '/api/sessions', { kind: 'claude', projectId: project.id });
   // Rename follows the same rule (`shub session rename` from inside a skill).
   assert.equal((await api('PATCH', `/api/sessions/${other.id}`, { name: 'x' }, bearer)).status, 403);
   assert.equal((await json<Session>('PATCH', `/api/sessions/${started.id}`, { name: ' Mine ' }, bearer)).name, 'Mine');
-  assert.equal((await api('DELETE', `/api/sessions/${other.id}`, undefined, bearer)).status, 403);
-  await json('DELETE', `/api/sessions/${other.id}`);
-  assert.equal(await session(other.id), undefined);
+  const closeOther = () => json<{ approval: Approval }>('DELETE', `/api/sessions/${other.id}`, undefined, bearer);
+  const rejected = await closeOther();
+  assert.equal(rejected.approval.action, 'session.close');
+  await json('POST', `/api/approvals/${rejected.approval.id}`, { approve: false });
+  assert.ok(await session(other.id), 'a rejected close keeps the session');
+  const approved = await closeOther();
+  await json('POST', `/api/approvals/${approved.approval.id}`, { approve: true });
+  await waitFor(async () => (await session(other.id)) === undefined, 'the approved close');
+  const last = await json<Session>('POST', '/api/sessions', { kind: 'claude', projectId: project.id });
+  await json('DELETE', `/api/sessions/${last.id}`);
+  assert.equal(await session(last.id), undefined);
   // Closing itself: tmux session gone, token revoked.
   await json('DELETE', `/api/sessions/${started.id}`, undefined, bearer);
   assert.equal(await session(started.id), undefined);

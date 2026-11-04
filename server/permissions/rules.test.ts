@@ -85,7 +85,7 @@ test('project session: reads only, every write asks, never allowed', () => {
     assert.equal(outcome(s, a), 'ask', a.kind);
   }
   assert.equal(outcome(s, { kind: 'projects.delete', projectId: 'p1' }), 'deny');
-  assert.equal(outcome(s, { kind: 'session.close', sessionId: 's9' }), 'deny');
+  assert.equal(outcome(s, { kind: 'session.close', sessionId: 's9' }), 'ask', 'closes another after your OK');
   assert.equal(outcome(s, { kind: 'session.close', sessionId: 's1' }), 'allow', 'may close itself');
   assert.equal(outcome(s, { kind: 'session.link', sessionId: 's1' }), 'allow', 'may link its own tab');
 });

@@ -478,7 +478,7 @@ export type Decision = { outcome: 'allow' } | { outcome: 'ask'; reason: string }
 export interface Approval {
   id: string;
   requestedBy: string;
-  action: 'session.start' | 'buttons.write' | 'projects.write';
+  action: 'session.start' | 'session.close' | 'buttons.write' | 'projects.write';
   projectId: string | null;
   summary: string;
   /** Full prompt or a diff of button prompts; shown verbatim. */
