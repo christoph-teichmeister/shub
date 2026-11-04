@@ -43,7 +43,10 @@
 
   async function poll() {
     if (saving || theirs) return;
+    const base = rev;
     const n = await fetchNotes();
+    // A save finished (or started) meanwhile: this answer is older than what we hold.
+    if (saving || theirs || rev !== base) return;
     path = n.path;
     if (n.rev === rev) return;
     if (dirty) theirs = { text: n.text, rev: n.rev };
