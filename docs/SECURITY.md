@@ -70,7 +70,7 @@ Every device is also an item (`device:<id>`: public key, kind, level, state, the
 ## Rules
 
 The rules live in `server/permissions/rules.ts` as one pure `decide()` function with tests next to it.
-Every decision is `allow`, `ask` (an approval card on the desktop and a push on the phone; the action waits up to 30 minutes, then counts as rejected) or `deny`.
+Every decision is `allow`, `ask` (an approval card on the desktop and a push on the phone; the action waits up to 30 minutes, then counts as rejected; a restart of shub rejects it too) or `deny`.
 
 - **user** may do everything. Only `user` can decide approvals, not even `cli`: the token file is readable by any process of your user, a device key is not.
 - **cli** is like the user, except that it cannot decide approvals, its `buttons.write` asks and its session starts count towards the rate limit.

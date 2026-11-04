@@ -64,6 +64,16 @@ test('approval times out as rejected', async () => {
   assert.equal(service.approvals()[0].state, 'rejected');
 });
 
+test('a restart rejects what the last run left pending', () => {
+  const { service, db } = setup();
+  const a = service.requestApproval(input);
+  const restarted = setup(db).service;
+  assert.equal(restarted.approvals()[0].state, 'rejected');
+  assert.throws(() => restarted.decideApproval(a.id, true), /already rejected/);
+  assert.equal(restarted.requestApproval(input).state, 'pending', 'new ones are not touched');
+  assert.equal(restarted.approvals().filter((x) => x.state === 'pending').length, 1);
+});
+
 test('decide counts automatic starts and asks after the limit', () => {
   const { service, db } = setup();
   const g = { kind: 'global-claude' as const, id: 'session:g', rights: service.rightsFor('global-claude') };
