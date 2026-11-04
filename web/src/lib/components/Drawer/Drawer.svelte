@@ -20,7 +20,15 @@
   }
   let { open, title, subtitle, closeLabel = 'Close', onclose, icon, actions, footer, children }: Props = $props();
   const id = `drawer-${Math.random().toString(36).slice(2, 8)}`;
-  let aside = $state<HTMLElement>();
+  let dialog = $state<HTMLDialogElement>();
+  // Modal like Dialog: focus moves in and stays, the page behind is inert. The panel mounts once the dialog is
+  // open, so a terminal inside keeps the focus it takes; the dialog closes when the panel has slid out.
+  let shown = $state(false);
+  $effect(() => {
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    shown = open;
+  });
   // Same timing as the sidebar fold; the token is 0ms under prefers-reduced-motion.
   // The CSS minifier rewrites 200ms as .2s, so read the unit too.
   const duration = () => {
@@ -29,39 +37,62 @@
   };
 </script>
 
-<svelte:window
-  onkeydown={(e) => {
-    if (open && e.key === 'Escape' && !e.defaultPrevented && aside?.contains(e.target as Node)) onclose();
+<dialog
+  bind:this={dialog}
+  class="layer"
+  aria-labelledby={id}
+  oncancel={(e) => {
+    e.preventDefault(); // Escape: slide out first, like the close button
+    onclose();
   }}
-/>
-
-{#if open}
-  <div class="backdrop" aria-hidden="true" onclick={onclose} transition:fade={{ duration: duration() }}></div>
-  <aside
-    bind:this={aside}
-    class="drawer"
-    aria-labelledby={id}
-    transition:fly={{ x: '100%', opacity: 1, duration: duration(), easing: cubicOut }}
-  >
-    <header class="head">
-      {#if icon}{@render icon()}{/if}
-      <div class="title">
-        <h2 {id}>{title}</h2>
-        {#if subtitle}<span class="subtitle">{subtitle}</span>{/if}
-      </div>
-      {#if actions}{@render actions()}{/if}
-      <IconButton label={closeLabel} icon="close" size="md" tone="muted" onclick={onclose} />
-    </header>
-    <div class="body">{@render children()}</div>
-    {#if footer}<footer class="foot">{@render footer()}</footer>{/if}
-  </aside>
-{/if}
+  onclose={() => open && onclose()}
+>
+  {#if shown}
+    <div class="backdrop" aria-hidden="true" onclick={onclose} transition:fade={{ duration: duration() }}></div>
+    <div
+      class="drawer"
+      transition:fly={{ x: '100%', opacity: 1, duration: duration(), easing: cubicOut }}
+      onoutroend={() => dialog?.close()}
+    >
+      <header class="head">
+        {#if icon}{@render icon()}{/if}
+        <div class="title">
+          <h2 {id}>{title}</h2>
+          {#if subtitle}<span class="subtitle">{subtitle}</span>{/if}
+        </div>
+        {#if actions}{@render actions()}{/if}
+        <IconButton label={closeLabel} icon="close" size="md" tone="muted" onclick={onclose} />
+      </header>
+      <div class="body">{@render children()}</div>
+      {#if footer}<footer class="foot">{@render footer()}</footer>{/if}
+    </div>
+  {/if}
+</dialog>
 
 <style>
+  /* The whole window in the top layer; the backdrop and the panel inside it draw. */
+  .layer {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    background: transparent;
+    color: inherit;
+  }
+
+  .layer::backdrop {
+    background: transparent;
+  }
+
   .backdrop {
     position: fixed;
     inset: 0;
-    z-index: var(--z-menu);
     background: var(--shadow);
   }
 
@@ -70,7 +101,6 @@
     top: 0;
     right: 0;
     bottom: 0;
-    z-index: var(--z-menu);
     width: min(var(--size-drawer), 100%);
     display: flex;
     flex-direction: column;

@@ -240,9 +240,25 @@ test('global Claude drawer slides in with the sidebar timing (Alt G)', async ({ 
   await page.keyboard.press('Alt+KeyG');
   // The minified CSS writes the 200ms token as .2s; the slide must still take 200ms.
   const durations = await page
-    .locator('aside.drawer')
+    .locator('.drawer')
     .evaluate((el) => el.getAnimations().map((a) => a.effect?.getComputedTiming().duration));
   expect(durations).toEqual([200]);
+  // A modal dialog: focus moves in, and Tab never reaches the page behind (past the last button it leaves for the
+  // browser's own controls, here the body, and comes back to the first). Escape closes it.
+  const drawer = page.getByRole('dialog', { name: 'Global Claude' });
+  const focus = () =>
+    drawer.evaluate((d) =>
+      d.contains(document.activeElement) ? 'drawer' : document.activeElement === document.body ? 'browser' : 'page',
+    );
+  await expect.poll(focus).toBe('drawer');
+  const seen: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    await page.keyboard.press('Tab');
+    seen.push(await focus());
+  }
+  expect(seen).toEqual(['drawer', 'drawer', 'drawer', 'browser', 'drawer']);
+  await page.keyboard.press('Escape');
+  await expect(drawer).toBeHidden();
   expect(errors).toEqual([]);
 });
 
