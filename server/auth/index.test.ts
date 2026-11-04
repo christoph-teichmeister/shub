@@ -30,6 +30,13 @@ test('plugin rights are granted AND requested by the manifest', () => {
   const token = auth.issueClientToken({ kind: 'plugin', id: 'plugin:demo', rights: [] });
   const req = { headers: { authorization: `Bearer ${token}` } } as IncomingMessage;
   assert.deepEqual(auth.resolve(req)?.rights, ['read', 'sessions.start']);
+  // After a crash (no release), the next start drops plugin tokens; sessions outlive shub and keep theirs.
+  const session = auth.issueClientToken({ kind: 'session', id: 'session:s1', rights: [] });
+  const restarted = new AuthService({ paths: { stateDir } } as Context, services);
+  restarted.init();
+  assert.equal(restarted.resolve(req), null);
+  const asSession = { headers: { authorization: `Bearer ${session}` } } as IncomingMessage;
+  assert.equal(restarted.resolve(asSession)?.id, 'session:s1');
   services.state.db.close();
   rmSync(stateDir, { recursive: true, force: true });
 });
