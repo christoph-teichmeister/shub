@@ -2,7 +2,26 @@
 import type { ServiceContainer, Session } from '../../../../shared/api.ts';
 import type { ServiceAction } from '../components/ServicesTree/ServicesTree.svelte';
 import { api } from './api.ts';
+import { app } from './state.svelte.ts';
 import { toast, toastError } from './toasts.svelte.ts';
+
+/**
+ * For an $effect: loads the containers of session `id` (none without one) into `set`, again on `services.changed`.
+ * Returns the cleanup, so after a quick switch the slower answer for the session left behind is dropped.
+ */
+export function watchServices(id: string | null, set: (list: ServiceContainer[]) => void): (() => void) | undefined {
+  void (id && app.servicesVersion[id]);
+  if (!id) {
+    set([]);
+    return;
+  }
+  let gone = false;
+  api<ServiceContainer[]>('services', { params: { id } }).then(
+    (list) => gone || set(list),
+    () => gone || set([]),
+  );
+  return () => (gone = true);
+}
 
 export async function serviceLogs(id: string): Promise<string> {
   const res = await api<unknown>('serviceLogs', { params: { containerId: id } });
