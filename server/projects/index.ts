@@ -86,7 +86,11 @@ function mainCheckout(value: unknown): MainCheckout | undefined {
   const v = value as MainCheckout;
   const minutes = v?.updateMinutes;
   if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440) bad('mainCheckout.updateMinutes must be 0 to 1440');
-  return { branch: str(v.branch, 'mainCheckout.branch', 200), updateMinutes: minutes };
+  return {
+    branch: str(v.branch, 'mainCheckout.branch', 200),
+    updateMinutes: minutes,
+    ...(v.protect === false && { protect: false }),
+  };
 }
 
 function slug(name: string, taken: Set<string>): string {

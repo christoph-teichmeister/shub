@@ -210,7 +210,11 @@
     visibility,
     icon: $state.snapshot(icon),
     buttons: $state.snapshot(buttons).map((b) => ({ ...b, label: b.label.trim() || label(b.skill ?? 'Prompt') })),
-    mainCheckout: mainCheckout && { branch: mainCheckout.branch.trim(), updateMinutes: mainCheckout.updateMinutes },
+    mainCheckout: mainCheckout && {
+      branch: mainCheckout.branch.trim(),
+      updateMinutes: mainCheckout.updateMinutes,
+      ...(mainCheckout.protect === false && { protect: false }),
+    },
   });
 
   /** Switching the protection on keeps the branch the folder is on now (develop when that is unknown). */
@@ -419,7 +423,7 @@
       {#if !isNew}
         <Section
           title="Main checkout"
-          description="Sessions still start in this folder but may not edit files or switch, commit or rebase here; they work in a worktree. shub fetches it and fast-forwards it when it is clean and on its branch."
+          description="Sessions still start in this folder but, while it is protected, may not edit files or switch, commit or rebase here; they work in a worktree. shub fetches it and fast-forwards it when it is clean and on its branch."
         >
           <Checkbox
             label="Protect this folder as the main checkout"
@@ -427,6 +431,11 @@
             onchange={(e) => void protect(e.currentTarget.checked)}
           />
           {#if mainCheckout}
+            <Checkbox
+              label="Block sessions from changing it (they work in a worktree)"
+              checked={mainCheckout.protect !== false}
+              onchange={(e) => (mainCheckout!.protect = e.currentTarget.checked ? undefined : false)}
+            />
             <div class="row tight end">
               <TextField label="Branch" bind:value={mainCheckout.branch} required mono autocomplete="off" />
               <TextField
