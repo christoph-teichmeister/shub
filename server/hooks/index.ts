@@ -126,7 +126,7 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
           const session = sessionId ? services.sessions.get(sessionId) : undefined;
           if (!session) throw new HttpError(403, 'the guard only answers shub sessions');
           const project = session.projectId ? services.config.project(session.projectId) : undefined;
-          if (!project?.mainCheckout) return {};
+          if (!project?.mainCheckout || project.mainCheckout.protect === false) return {};
           const input = await req.json<GuardInput>();
           const trees = (await listWorktrees(project.path)).map((w) => w.path);
           const reason = guard(project.path, trees, project.mainCheckout.branch, input);

@@ -149,6 +149,8 @@ test('the guard denies changes to a protected main checkout and stays quiet othe
   const denied = (await ask('git checkout -b fix/x')) as { hookSpecificOutput: Record<string, string> };
   assert.equal(denied.hookSpecificOutput.permissionDecision, 'deny');
   assert.deepEqual(await ask('git fetch'), {});
+  mainCheckout = { branch: 'develop', updateMinutes: 15, protect: false };
+  assert.deepEqual(await ask('git checkout -b fix/x'), {});
   mainCheckout = undefined;
   assert.deepEqual(await ask('git checkout -b fix/x'), {});
   await assert.rejects(ask('git status', 'user'), /only answers shub sessions/);

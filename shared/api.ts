@@ -41,7 +41,7 @@ export interface Project {
   order: number;
   icon: ProjectIcon;
   buttons: ButtonDef[];
-  /** `path` is the main checkout: sessions may not change it, shub fetches and fast-forwards it. */
+  /** `path` is the main checkout: shub fetches and fast-forwards it and, unless `protect` is false, sessions may not change it. */
   mainCheckout?: MainCheckout;
 }
 
@@ -49,6 +49,8 @@ export interface MainCheckout {
   branch: string;
   /** Fetch (and fast-forward when clean) every n minutes; 0 = never. */
   updateMinutes: number;
+  /** false = sessions may change the folder (only the fetch / fast-forward stays); absent = protected. */
+  protect?: boolean;
 }
 
 export interface ResolvedIcon {
