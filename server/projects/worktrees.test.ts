@@ -1,10 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listWorktrees, parseWorktrees, pruneWorktrees, removeWorktree, worktreeOverview } from './worktrees.ts';
+import {
+  insideWorktree,
+  listWorktrees,
+  parseWorktrees,
+  pruneWorktrees,
+  removeWorktree,
+  worktreeOverview,
+} from './worktrees.ts';
 
 test('parseWorktrees: branches shortened, detached is "", bare and prunable skipped', () => {
   const porcelain = [
@@ -32,6 +39,24 @@ test('listWorktrees runs git in the folder; not a repo gives []', async () => {
     { path: join(root, 'wt'), branch: 'feat-x' },
   ]);
   assert.deepEqual(await listWorktrees(root), []);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('insideWorktree resolves .. and symlinks before it compares', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'shub-wt-')));
+  const app = join(root, 'app');
+  mkdirSync(join(app, 'web'), { recursive: true });
+  mkdirSync(join(root, 'app2'));
+  symlinkSync(root, join(app, 'up'));
+  symlinkSync(app, join(root, 'link'));
+  const worktrees = [{ path: app, branch: 'main' }];
+  assert.ok(insideWorktree(app, worktrees));
+  assert.ok(insideWorktree(join(app, 'web'), worktrees));
+  assert.ok(insideWorktree(join(root, 'link', 'web'), worktrees), 'a symlink into the worktree');
+  assert.ok(!insideWorktree(`${app}/../app2`, worktrees), '.. out of it');
+  assert.ok(!insideWorktree(join(app, 'up'), worktrees), 'a symlink out of it');
+  assert.ok(!insideWorktree(join(root, 'app2'), worktrees), 'a sibling with the same prefix');
+  assert.ok(!insideWorktree(join(app, 'missing'), worktrees), 'a folder that does not exist');
   rmSync(root, { recursive: true, force: true });
 });
 

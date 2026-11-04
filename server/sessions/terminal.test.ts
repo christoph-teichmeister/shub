@@ -1,9 +1,39 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import type { WebSocket } from 'ws';
-import { keepAlive } from '../api/upgrade.ts';
-import { attachArgs, inbound, parseFollow } from './terminal.ts';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { WebSocket } from 'ws';
+import { installUpgrades, keepAlive } from '../api/upgrade.ts';
+import type { SessionsService } from './service.ts';
+import { attachArgs, attachTerminals, inbound, parseFollow } from './terminal.ts';
+
+test('a malformed terminal URL is a 400 and a failing handler a 500, not a crash', async () => {
+  const server = createServer();
+  installUpgrades(
+    server,
+    () => null,
+    () => ({ kind: 'user', id: 'chris', rights: [] }),
+  );
+  const get = (id: string) => {
+    if (id === 'boom') throw new Error('tmux failed');
+  };
+  attachTerminals(server, { get } as unknown as SessionsService);
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const status = (path: string) =>
+    new Promise<number>((resolve) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${(server.address() as AddressInfo).port}${path}`);
+      ws.on('unexpected-response', (_req, res) => resolve(res.statusCode ?? 0));
+      ws.on('error', () => resolve(0));
+    });
+  try {
+    assert.equal(await status('/api/terminals/%E0%A4%A'), 400);
+    assert.equal(await status('/api/terminals/boom'), 500);
+    assert.equal(await status('/api/terminals/nope'), 404, 'the server still answers');
+  } finally {
+    server.close();
+  }
+});
 
 test('only a follow client attaches with ignore-size', () => {
   assert.deepEqual(attachArgs('s', 'n', false), ['-L', 's', 'attach-session', '-t', '=n']);
@@ -16,7 +46,8 @@ test('follow is on only for follow=1', () => {
   assert.equal(parseFollow(new URLSearchParams('')), false);
 });
 
-test('keepAlive terminates a socket that missed a pong', async () => {
+test('keepAlive terminates a socket that missed a pong', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
   const ws = Object.assign(new EventEmitter(), {
     pings: 0,
     dead: false,
@@ -28,24 +59,34 @@ test('keepAlive terminates a socket that missed a pong', async () => {
     },
   });
   keepAlive(ws as unknown as WebSocket, 10);
-  await new Promise((r) => setTimeout(r, 35));
+  t.after(() => ws.emit('close')); // clears the interval even when an assertion fails
+  t.mock.timers.tick(10);
   assert.equal(ws.pings, 1);
+  assert.equal(ws.dead, false);
+  t.mock.timers.tick(10);
   assert.equal(ws.dead, true);
-  ws.emit('close');
 });
 
-test('keepAlive keeps a socket that answers with pong', async () => {
-  const ws: EventEmitter & { dead: boolean; ping(): void; terminate(): void } = Object.assign(new EventEmitter(), {
-    dead: false,
-    ping() {
-      setImmediate(() => ws.emit('pong'));
+test('keepAlive keeps a socket that answers with pong', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const ws: EventEmitter & { pings: number; dead: boolean; ping(): void; terminate(): void } = Object.assign(
+    new EventEmitter(),
+    {
+      pings: 0,
+      dead: false,
+      ping() {
+        this.pings++;
+        ws.emit('pong');
+      },
+      terminate() {
+        this.dead = true;
+      },
     },
-    terminate() {
-      this.dead = true;
-    },
-  });
+  );
   keepAlive(ws as unknown as WebSocket, 10);
-  await new Promise((r) => setTimeout(r, 55));
+  t.after(() => ws.emit('close'));
+  t.mock.timers.tick(50);
+  assert.equal(ws.pings, 5);
   assert.equal(ws.dead, false);
   ws.emit('close');
   assert.equal(ws.listenerCount('pong'), 1); // only the handler; the timer is cleared by close
