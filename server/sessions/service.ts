@@ -40,11 +40,12 @@ import {
   buttonPrompt,
   defaultLauncher,
   permissionModeFor,
+  shellQuote,
   shellRc,
   slugify,
   type Launcher,
 } from './launch.ts';
-import { claudeDir, encodeCwd, findTranscript, listOldSessions, summarizeTranscript } from './old.ts';
+import { claudeDir, encodeCwd, findTranscript, listOldSessions, summarizeTranscript, UUID } from './old.ts';
 import { Tmux } from './tmux.ts';
 import { claimSession, remoteSessions, resumeGuard } from '../group/transcripts.ts';
 
@@ -113,7 +114,6 @@ const RECONCILE_MS = 3000;
 const RESTORE_GAP_MS = 4000;
 /** After SessionStart, until Claude's input box takes keys. */
 const STARTED_GAP_MS = 1500;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface Row {
   id: string;
@@ -179,7 +179,6 @@ const toSession = (r: Row): Session => ({
 export const tmuxName = (id: string): string => `shub-${id}`;
 const BOOT_CAP_MS = 30_000;
 const now = (): string => new Date().toISOString();
-const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
 export interface SessionsOptions {
   launcher?: Launcher;

@@ -11,7 +11,7 @@ import { guard, type GuardInput } from '../projects/main-checkout.ts';
 import { childCandidates, recordChildren } from '../projects/children.ts';
 import { listWorktrees } from '../projects/worktrees.ts';
 import { contextFill } from '../sessions/context.ts';
-import { isPermissionMode } from '../sessions/launch.ts';
+import { isPermissionMode, shellQuote } from '../sessions/launch.ts';
 import { claudeDir } from '../sessions/old.ts';
 import {
   AGENT_FALLBACK_MS,
@@ -39,8 +39,6 @@ function readContext(path: unknown, knownWindow?: number) {
     return null; // not written yet, or gone
   }
 }
-
-const shellQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
 /**
  * An installed app lives in <home>/versions/<version>/ next to <home>/current. Hooks go through current, so a

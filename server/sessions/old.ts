@@ -7,6 +7,9 @@ import type { OldSession } from '../../shared/api.ts';
 const MAX_FILES = 50;
 const PROMPT_MAX = 300;
 
+/** A Claude session id, also the name of its transcript (<id>.jsonl). */
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const claudeDir = (): string => process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
 
 /** Claude's folder name for a cwd: every non-alphanumeric char becomes "-" (checked against ~/.claude/projects). */
