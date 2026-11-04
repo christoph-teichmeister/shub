@@ -43,6 +43,11 @@ let checking = null;
 
 /** Asks every origin for its bundle; installs the newest genuine one above the running version. */
 function checkUpdates(origins) {
+  // A check in flight may ask fewer machines (a page load asks only this one): ask ours once it is done.
+  if (checking && origins.length) {
+    const again = () => checkUpdates(origins);
+    return checking.then(again, again);
+  }
   checking ??= (async () => {
     const running = await current();
     const candidates = [];
