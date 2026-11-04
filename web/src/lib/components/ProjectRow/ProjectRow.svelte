@@ -51,6 +51,15 @@
     }
   });
   const foldable = $derived(!!children && sessions.length > 0);
+  // Folded rows hide the sessions, so the badge also tells how many there are: "3", "3 · 1 needs you".
+  const shownBadge = $derived(
+    foldable && collapsed
+      ? {
+          text: badge ? `${sessions.length} · ${badge.text}` : `${sessions.length}`,
+          tone: badge?.tone ?? ('neutral' as const),
+        }
+      : badge,
+  );
   function toggle() {
     collapsed = !collapsed;
     try {
@@ -99,7 +108,7 @@
       <span class="badge" title="Leaves the Active group in {countdown}"
         ><StatusBadge text={countdown} tone="neutral" /></span
       >
-    {:else if badge}<span class="badge"><StatusBadge text={badge.text} tone={badge.tone} /></span>{/if}
+    {:else if shownBadge}<span class="badge"><StatusBadge text={shownBadge.text} tone={shownBadge.tone} /></span>{/if}
     <span class="actions">
       {#if project.remoteUrl}
         <IconButton label="Open {project.name} remote" icon="link" href={project.remoteUrl} external />
