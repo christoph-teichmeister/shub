@@ -20,6 +20,7 @@ test('systemd unit runs the launcher and keeps tmux alive across restarts', () =
   assert.match(unit, /^Environment="SHUB_PORT=4790"$/m);
   assert.match(unit, /^Environment="PATH=\/usr\/local\/bin:\/usr\/bin"$/m);
   assert.doesNotMatch(unit, /OTHER/);
+  assert.doesNotMatch(unit, /NODE_ENV/, 'sessions inherit it: npm ci there would skip dev dependencies');
 });
 
 test('launchd agent runs the launcher and abandons the process group', () => {
@@ -30,6 +31,7 @@ test('launchd agent runs the launcher and abandons the process group', () => {
   );
   assert.match(plist, /<key>AbandonProcessGroup<\/key><true\/>/);
   assert.match(plist, /<key>SHUB_HOME<\/key><string>\/Users\/me\/a&amp;b<\/string>/);
+  assert.doesNotMatch(plist, /NODE_ENV/);
 });
 
 test('install and uninstall on Linux: our unit only, systemctl --user', () => {

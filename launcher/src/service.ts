@@ -19,10 +19,12 @@ export interface ServiceOptions {
   env: NodeJS.ProcessEnv;
 }
 
-/** Environment the service needs: PATH (tmux, claude, docker), shub's own settings. */
+/**
+ * Environment the service needs: PATH (tmux, claude, docker), shub's own settings. No NODE_ENV: tmux hands the
+ * service's environment to every session, and NODE_ENV=production there makes `npm ci` skip dev dependencies.
+ */
 function serviceEnv(o: ServiceOptions): Record<string, string> {
   const out: Record<string, string> = {
-    NODE_ENV: 'production',
     SHUB_HOME: o.home,
     PATH: o.env.PATH ?? '/usr/bin:/bin',
   };
