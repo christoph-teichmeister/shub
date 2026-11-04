@@ -220,12 +220,14 @@
     if (s) location.hash = sessionHref(s);
   }
 
-  function send(e: SubmitEvent) {
+  async function send(e: SubmitEvent) {
     e.preventDefault();
     if (!open) return;
     const text = message;
     message = '';
-    void sendKeys(open.id, text ? [text, 'Enter'] : ['Enter']);
+    // Not sent: the text comes back, ahead of anything typed meanwhile.
+    if (!(await sendKeys(open.id, text ? [text, 'Enter'] : ['Enter'])) && text)
+      message = message ? `${text} ${message}` : text;
   }
 
   const QUICK: { label: string; key: string; aria?: string }[] = [
