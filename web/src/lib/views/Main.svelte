@@ -66,9 +66,15 @@
   const root = $derived<Session | null>(
     (route.name === 'project' &&
       sessions.find((s) => s.id === route.sessionId || childrenOf(s.id).some((c) => c.id === route.sessionId))) ||
+      // A closed pane (terminal, second Claude) leaves the route naming nothing: stay on the session it was in.
+      sessions.find((s) => s.id === lastRootId) ||
       sessions[0] ||
       null,
   );
+  let lastRootId: string | null = null;
+  $effect(() => {
+    lastRootId = root?.id ?? null;
+  });
   const panes = $derived(root ? [root, ...childrenOf(root.id)] : []);
   // The focused pane.
   const active = $derived<Session | null>(
