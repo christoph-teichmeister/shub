@@ -212,13 +212,15 @@ export class HostSync {
 
   /** Every item this host is willing to send: switched-off categories stay home. */
   #outgoing(): GroupItem[] {
-    return this.#group.list().flatMap((i) => forSync(i, this.#deps.sync()) ?? []);
+    const sync = this.#deps.sync();
+    return this.#group.list().flatMap((i) => forSync(i, sync) ?? []);
   }
 
   #accept(items: unknown): { changed: number; conflicts: number } {
     if (!Array.isArray(items)) throw new HttpError(400, 'items must be a list');
     let changed = 0;
     let conflicts = 0;
+    const sync = this.#deps.sync();
     for (const raw of items as GroupItem[]) {
       const valid =
         typeof raw?.key === 'string' &&
@@ -227,11 +229,11 @@ export class HostSync {
         raw.version &&
         Object.values(raw.version).every((n) => Number.isInteger(n));
       if (!valid) throw new HttpError(400, 'bad item');
-      let item = forSync(raw, this.#deps.sync());
+      let item = forSync(raw, sync);
       if (!item) continue;
       // The sender's plugin has no env (switched off here): the env we have stays.
       const ours = this.#group.get(item.key)?.body as { env?: unknown } | null | undefined;
-      if (categoryOf(item.key) === 'plugins' && !syncOn(this.#deps.sync(), 'pluginEnv') && ours?.env && item.body)
+      if (categoryOf(item.key) === 'plugins' && !syncOn(sync, 'pluginEnv') && ours?.env && item.body)
         item = { ...item, body: { ...(item.body as object), env: ours.env } };
       const order = this.#group.merge(item);
       if (order === 'newer') changed++;
@@ -326,9 +328,10 @@ export class HostSync {
 
   /** Push the items changed since the last flush to every reachable host; one that was offline gets a full catch-up. */
   async flush(): Promise<void> {
+    const sync = this.#deps.sync();
     const items = [...this.#dirty].flatMap((k) => {
       const item = this.#group.get(k);
-      return (item && forSync(item, this.#deps.sync())) || [];
+      return (item && forSync(item, sync)) || [];
     });
     this.#dirty.clear();
     if (!items.length) return;
