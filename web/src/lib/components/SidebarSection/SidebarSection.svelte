@@ -3,6 +3,7 @@
   import type { SidebarSectionContent } from '../../../../../shared/api.ts';
   import Icon from '../Icon/Icon.svelte';
   import StatusBadge from '../StatusBadge/StatusBadge.svelte';
+  import { store, stored } from '../../stored.ts';
 
   type Entry = SidebarSectionContent['entries'][number];
   interface Props {
@@ -26,22 +27,13 @@
   const key = $derived(`shub.collapsed.${title}`);
   let collapsed = $state(false);
   $effect(() => {
-    try {
-      const stored = localStorage.getItem(key);
-      collapsed = stored === null ? defaultCollapsed : stored === '1';
-    } catch {
-      collapsed = defaultCollapsed;
-    }
+    const kept = stored(key);
+    collapsed = kept === null ? defaultCollapsed : kept === '1';
   });
   const shown = $derived(collapsed ? (collapsedBadge ?? badge) : badge);
   function toggle() {
     collapsed = !collapsed;
-    try {
-      if (collapsed === defaultCollapsed) localStorage.removeItem(key);
-      else localStorage.setItem(key, collapsed ? '1' : '0');
-    } catch {
-      // not remembered, still toggles
-    }
+    store(key, collapsed === defaultCollapsed ? null : collapsed ? '1' : '0');
   }
 </script>
 

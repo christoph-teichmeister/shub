@@ -6,6 +6,7 @@
   import IconButton from '../IconButton/IconButton.svelte';
   import ProjectIcon from '../ProjectIcon/ProjectIcon.svelte';
   import StatusBadge from '../StatusBadge/StatusBadge.svelte';
+  import { store, stored } from '../../stored.ts';
 
   interface Props {
     project: ProjectView;
@@ -44,23 +45,14 @@
   const key = $derived(`shub.collapsed.project.${project.id}`);
   let collapsed = $state(false);
   $effect(() => {
-    try {
-      collapsed = localStorage.getItem(key) === '1';
-    } catch {
-      collapsed = false;
-    }
+    collapsed = stored(key) === '1';
   });
   const foldable = $derived(!!children && sessions.length > 0);
   // Folded rows hide the sessions, so a count pill tells how many there are; unlike the badge it stays on hover.
   const folded = $derived(foldable && collapsed);
   function toggle() {
     collapsed = !collapsed;
-    try {
-      if (collapsed) localStorage.setItem(key, '1');
-      else localStorage.removeItem(key);
-    } catch {
-      // not remembered, still toggles
-    }
+    store(key, collapsed ? '1' : null);
   }
 </script>
 

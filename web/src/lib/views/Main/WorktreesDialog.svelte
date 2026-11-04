@@ -6,6 +6,7 @@
   import Dialog from '../../components/Dialog/Dialog.svelte';
   import StatusBadge from '../../components/StatusBadge/StatusBadge.svelte';
   import TextField from '../../components/TextField/TextField.svelte';
+  import { dayAge } from '../../format.ts';
   import { api } from '../../stores/api.ts';
   import { app, loadChildren, sessionHref, startSession } from '../../stores/state.svelte.ts';
   import { toast, toastError } from '../../stores/toasts.svelte.ts';
@@ -53,10 +54,6 @@
   /** Closing would lose work, git would refuse, or the session must end first. */
   const KEEP = ['active', 'locked', 'dirty', 'not-pushed'];
   const mergedWorktrees = $derived(worktrees.filter((w) => w.state === 'merged'));
-  const age = (iso: string | null) => {
-    const days = iso ? Math.floor((Date.now() - Date.parse(iso)) / 86_400_000) : null;
-    return days === null ? '' : days < 1 ? 'today' : `${days}d`;
-  };
   const closer = (p: ProjectView) => p.buttons.find((b) => b.skill === '/worktree-close');
 
   /** A plain terminal (its own tab) or a Claude session in the worktree. */
@@ -158,7 +155,7 @@
                   /></span
                 >
                 <code class="muted" title={w.path}
-                  >{[w.branch || 'detached', age(w.lastCommitAt)].filter(Boolean).join(' · ')}</code
+                  >{[w.branch || 'detached', dayAge(w.lastCommitAt)].filter(Boolean).join(' · ')}</code
                 >
               </span>
               {#if w.state !== 'folder-gone'}
