@@ -505,6 +505,15 @@ test('an MR/PR link pins a chip and names a session shub named, never a given na
   svc.close(s.id, 'chris');
 });
 
+test('a title or MR name that arrives after the session closed is dropped', async () => {
+  const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  svc.nameFromPrompt(s.id, 'do the thing');
+  svc.nameFromMr(s.id, 'https://gitlab.example.com/ai/portal/-/merge_requests/5');
+  svc.close(s.id, 'chris');
+  await new Promise((r) => setImmediate(r));
+  assert.equal(svc.get(s.id)?.name, 'do the thing');
+});
+
 test('pausing or waiting a full idle session compacts it first; a pause follows once the fill dropped', async () => {
   const full = { tokens: 170_000, window: 200_000 };
   const small = { tokens: 20_000, window: 200_000 };
