@@ -140,6 +140,7 @@
   const approvalProject = $derived(app.projects.find((p) => p.id === approval?.projectId) ?? null);
   const ACTIONS: Record<Approval['action'], string> = {
     'session.start': 'wants to start a new session',
+    'session.close': 'wants to close a session',
     'buttons.write': 'wants to change project buttons',
     'projects.write': 'wants to change projects',
   };
@@ -295,7 +296,9 @@
         <a class="asker" href={sessionHref(asker)} onclick={() => later.push(approval.id)}>Open the asking session</a>
       {/if}
       <Button variant="danger" onclick={() => decide(approval, false)}>Reject</Button>
-      <Button onclick={() => decide(approval, true)}>{approval.action === 'session.start' ? 'Start' : 'Apply'}</Button>
+      <Button onclick={() => decide(approval, true)}
+        >{{ 'session.start': 'Start', 'session.close': 'Close' }[approval.action as string] ?? 'Apply'}</Button
+      >
     {/if}
   {/snippet}
 </Dialog>

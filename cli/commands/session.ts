@@ -14,7 +14,7 @@ shub session wait <what for> [--check <what to look at>] [--every <minutes>] [--
 shub session ready [--id <session id>]   (ends the wait: back to "your turn", with a notification when a session calls it)
 shub session link <url> [--label <label>] [--id <session id>]
                                      (pins a link as a chip on the session's tab; defaults to $SHUB_SESSION_ID)
-shub session close [<session id>]    (defaults to $SHUB_SESSION_ID; a session may only close itself)`;
+shub session close [<session id>]    (defaults to $SHUB_SESSION_ID; another session's close waits for your OK)`;
 
 export async function run(args: string[], opts: { json: boolean }): Promise<void> {
   const [sub, ...rest] = args;
@@ -136,6 +136,13 @@ async function link(id: string | undefined, url: string | undefined, label: stri
 
 async function close(id: string | undefined, json: boolean): Promise<void> {
   if (!id) throw new CliError('which session? Pass an id (see "shub session list").');
-  const result = await api<{ ok: boolean }>('DELETE', `/api/sessions/${encodeURIComponent(id)}`);
-  output(result, json, () => `Closed ${id}.`);
+  const result = await api<{ ok: boolean } | { approval: Approval }>(
+    'DELETE',
+    `/api/sessions/${encodeURIComponent(id)}`,
+  );
+  output(result, json, () =>
+    'approval' in result
+      ? `Waiting for approval in shub: ${result.approval.summary} (${result.approval.id}).`
+      : `Closed ${id}.`,
+  );
 }

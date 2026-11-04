@@ -169,12 +169,31 @@ function routes(sessions: SessionsService, services: Services, router: Router, c
     if (!ok) throw new HttpError(400, 'positions: { [id]: number | null }');
     return sessions.reorder(positions as Record<string, number | null>, tabs === true);
   });
-  router.add(ROUTES.sessionClose, (req) => {
-    // You close any session; a session only itself (also from inside it, e.g. `shub session close`).
-    const decision = services.permissions.decide(req.caller, { kind: 'session.close', sessionId: req.params.id });
-    if (decision.outcome !== 'allow') throw new HttpError(403, decision.reason);
-    sessions.close(req.params.id, req.caller.id);
-    return { ok: true };
+  router.add(ROUTES.sessionClose, (req, res) => {
+    // You close any session; a session closes itself directly and another one after your OK.
+    const id = req.params.id;
+    const decision = services.permissions.decide(req.caller, { kind: 'session.close', sessionId: id });
+    if (decision.outcome === 'deny') throw new HttpError(403, decision.reason);
+    if (decision.outcome === 'allow') {
+      sessions.close(id, req.caller.id);
+      return { ok: true };
+    }
+    const target = sessions.get(id);
+    if (!target) throw new HttpError(404, 'no such session');
+    const approval = services.permissions.requestApproval({
+      requestedBy: req.caller.id,
+      action: 'session.close',
+      projectId: target.projectId,
+      summary: `Close "${target.name}" (${id})`,
+      detail: `${id}: ${target.name}`,
+    });
+    services.permissions
+      .waitForDecision(approval.id)
+      .then((approved) => {
+        if (approved && sessions.get(id)) sessions.close(id, req.caller.id);
+      })
+      .catch((err) => console.error('shub: approved session close failed', err));
+    sendJson(res, 202, { approval });
   });
   router.add(ROUTES.sessionPause, (req) => {
     requireUser(req.caller);
