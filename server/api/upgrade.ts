@@ -80,8 +80,10 @@ export function installUpgrades(
   });
 }
 
-/** Pings every 20 s and terminates a socket that answered nothing since the last ping (phone asleep, wifi gone), so its PTY and listeners are freed. */
+/** Pings every 20 s and terminates a socket that answered nothing since the last ping (phone asleep, wifi gone), so its PTY and listeners are freed.
+ *  A bad frame terminates it too: ws reports it as an 'error' event, which without a listener ends the process. */
 export function keepAlive(ws: WebSocket, every = 20_000): void {
+  ws.on('error', () => ws.terminate());
   let alive = true;
   ws.on('pong', () => (alive = true));
   const timer = setInterval(() => {
