@@ -15,8 +15,10 @@
     panes?: number;
     onallow?: () => void;
     ondeny?: () => void;
+    /** Shows a button that brings a minimized session back into the grid. */
+    onrestore?: () => void;
   }
-  let { session, href, project, accent, panes = 0, onallow, ondeny }: Props = $props();
+  let { session, href, project, accent, panes = 0, onallow, ondeny, onrestore }: Props = $props();
 
   const fill = $derived(contextFill(session));
   const agent = $derived(session.agents?.find((a) => a.activity)?.activity);
@@ -44,10 +46,13 @@
     </span>
     <span class="line">{line}</span>
   </a>
-  {#if session.pendingPermission && onallow && ondeny}
+  {#if (session.pendingPermission && onallow && ondeny) || onrestore}
     <div class="actions">
-      <Button size="sm" variant="primary" onclick={onallow}>Allow</Button>
-      <Button size="sm" onclick={ondeny}>Deny</Button>
+      {#if session.pendingPermission && onallow && ondeny}
+        <Button size="sm" variant="primary" onclick={onallow}>Allow</Button>
+        <Button size="sm" onclick={ondeny}>Deny</Button>
+      {/if}
+      {#if onrestore}<Button size="sm" onclick={onrestore}>Show</Button>{/if}
     </div>
   {/if}
   {#if fill}<span class="fill {fill.level}" style:--fill="{fill.pct}%" title={fill.title}></span>{/if}

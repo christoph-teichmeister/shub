@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
   import type { Session } from '../../../../../shared/api.ts';
   import { idleWithAgents, STATUS_LABEL } from '../../status.ts';
+  import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
 
   interface Props {
@@ -13,10 +14,12 @@
     columns?: number;
     selectedId?: string | null;
     onselect?: (id: string) => void;
+    /** Adds a minimize button to each header. */
+    onminimize?: (id: string) => void;
     /** Pane body, usually a compact TerminalView. */
     pane: Snippet<[Session]>;
   }
-  let { sessions, limit = 4, columns, selectedId = null, onselect, pane }: Props = $props();
+  let { sessions, limit = 4, columns, selectedId = null, onselect, onminimize, pane }: Props = $props();
   const shown = $derived(sessions.slice(0, limit));
 </script>
 
@@ -32,11 +35,16 @@
       aria-label={session.name}
       onfocusin={() => onselect?.(session.id)}
     >
-      <button type="button" class="head" onclick={() => onselect?.(session.id)}>
-        <StatusDot status={session.status} idle={idleWithAgents(session)} />
-        <span class="name">{session.name}</span>
-        <span class="status">{STATUS_LABEL[session.status]}</span>
-      </button>
+      <div class="head">
+        <button type="button" class="title" onclick={() => onselect?.(session.id)}>
+          <StatusDot status={session.status} idle={idleWithAgents(session)} />
+          <span class="name">{session.name}</span>
+          <span class="status">{STATUS_LABEL[session.status]}</span>
+        </button>
+        {#if onminimize}
+          <IconButton label="Minimize" icon="minus" size="xs" onclick={() => onminimize(session.id)} />
+        {/if}
+      </div>
       <div class="body">{@render pane(session)}</div>
     </section>
   {/each}
@@ -97,9 +105,22 @@
     gap: var(--space-2);
     height: var(--size-tab);
     padding: 0 var(--space-3);
-    border: 0;
     background: var(--panel);
     color: var(--fg-2);
+  }
+
+  .title {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
     text-align: left;
     cursor: pointer;
   }
