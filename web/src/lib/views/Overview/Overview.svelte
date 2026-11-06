@@ -1,15 +1,22 @@
 <script lang="ts">
-  // Overview (#/overview): every running session as a status card in one grid, for a big screen. Reads the live
-  // store only; the grid fills the width by itself (auto-fill).
-  import SessionCard from '../../components/SessionCard/SessionCard.svelte';
+  // Overview (#/overview): the running sessions as live terminals in one grid that fills the screen, so you can work
+  // in many at once; paused and not-started ones wait below as small cards. Click a pane to type in it.
   import EmptyState from '../../components/EmptyState/EmptyState.svelte';
   import SelectField from '../../components/SelectField/SelectField.svelte';
-  import { overviewSessions } from '../../overview.ts';
+  import SessionCard from '../../components/SessionCard/SessionCard.svelte';
+  import SplitView from '../../components/SplitView/SplitView.svelte';
+  import TerminalView from '../../components/TerminalView/TerminalView.svelte';
+  import { gridColumns, LIVE, overviewSessions } from '../../overview.ts';
   import { villageBack } from '../../stores/router.svelte.ts';
   import { app, childrenOf, needsYouCount, sendKeys, sessionHref } from '../../stores/state.svelte.ts';
 
   let projectId = $state('');
+  let focusId = $state<string | null>(null);
+  let w = $state(0);
+  let h = $state(0);
   const shown = $derived(overviewSessions(app.sessions, projectId || null));
+  const live = $derived(shown.filter((s) => LIVE.has(s.status)));
+  const quiet = $derived(shown.filter((s) => !LIVE.has(s.status)));
   const project = (id: string | null) => app.projects.find((p) => p.id === id);
 
   function onKeydown(e: KeyboardEvent) {
@@ -40,9 +47,32 @@
       options={[{ value: '', label: 'All projects' }, ...app.projects.map((p) => ({ value: p.id, label: p.name }))]}
     />
   </header>
-  {#if shown.length}
-    <div class="grid">
-      {#each shown as s (s.id)}
+  <div class="live" bind:clientWidth={w} bind:clientHeight={h}>
+    {#if live.length}
+      <SplitView
+        sessions={live}
+        limit={live.length}
+        columns={gridColumns(live.length, w, h)}
+        selectedId={focusId}
+        onselect={(id) => (focusId = id)}
+      >
+        {#snippet pane(s)}
+          <TerminalView
+            sessionId={s.id}
+            accent={project(s.projectId)?.accent}
+            label={s.name}
+            focused={s.id === focusId}
+            compact
+          />
+        {/snippet}
+      </SplitView>
+    {:else}
+      <EmptyState title="No active sessions" body="Start one in a project with Alt N." />
+    {/if}
+  </div>
+  {#if quiet.length}
+    <div class="quiet">
+      {#each quiet as s (s.id)}
         {@const p = project(s.projectId)}
         <SessionCard
           session={s}
@@ -55,8 +85,6 @@
         />
       {/each}
     </div>
-  {:else}
-    <EmptyState title="No running sessions" body="Start one in a project with Alt N." />
   {/if}
 </div>
 
@@ -98,10 +126,16 @@
     flex: 1 1 auto;
   }
 
-  .grid {
+  .live {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+  }
+
+  .quiet {
+    flex: none;
     display: grid;
     gap: var(--space-3);
-    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
-    align-content: start;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
   }
 </style>

@@ -1,10 +1,12 @@
 # SplitView
 
-Up to four sessions side by side (1, 2, 3 with the first spanning two rows, or 2 x 2). A pane that needs the user gets an orange frame; the selected pane a primary frame.
+Up to four sessions side by side (1, 2, 3 with the first spanning two rows, or 2 x 2); with `limit` and `columns` any number in a fixed grid (the overview). A pane that needs the user gets an orange frame; the selected pane a primary frame.
 
 | Prop         | Type                | Notes                           |
 | ------------ | ------------------- | ------------------------------- |
-| `sessions`   | `Session[]`         | First four are shown            |
+| `sessions`   | `Session[]`         | First `limit` are shown         |
+| `limit`      | `number`            | Default 4                       |
+| `columns`    | `number`            | Fixed column count, rows follow |
 | `selectedId` | `string \| null`    |                                 |
 | `onselect`   | `(id) => void`      | Header click or focus in pane   |
 | `pane`       | snippet `(session)` | Body, e.g. compact TerminalView |

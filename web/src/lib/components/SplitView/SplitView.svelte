@@ -5,18 +5,26 @@
   import StatusDot from '../StatusDot/StatusDot.svelte';
 
   interface Props {
-    /** Up to four sessions; more are ignored. */
+    /** Up to `limit` sessions (four by default); more are ignored. */
     sessions: Session[];
+    /** More than four panes: the overview. */
+    limit?: number;
+    /** Fixed column count (rows follow); without it 1, 2, 3 or 2 x 2 as before. */
+    columns?: number;
     selectedId?: string | null;
     onselect?: (id: string) => void;
     /** Pane body, usually a compact TerminalView. */
     pane: Snippet<[Session]>;
   }
-  let { sessions, selectedId = null, onselect, pane }: Props = $props();
-  const shown = $derived(sessions.slice(0, 4));
+  let { sessions, limit = 4, columns, selectedId = null, onselect, pane }: Props = $props();
+  const shown = $derived(sessions.slice(0, limit));
 </script>
 
-<div class="grid n{shown.length}">
+<div
+  class="grid {columns ? 'cols' : `n${shown.length}`}"
+  style:--cols={columns}
+  style:--rows={columns ? Math.ceil(shown.length / columns) : undefined}
+>
   {#each shown as session (session.id)}
     <section
       class="pane {session.status}"
@@ -44,6 +52,11 @@
     background: var(--panel);
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+
+  .cols {
+    grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+    grid-template-rows: repeat(var(--rows), minmax(0, 1fr));
   }
 
   .n1 {
