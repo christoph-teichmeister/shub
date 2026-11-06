@@ -110,14 +110,23 @@ export const defaultLauncher: Launcher = (spec) => {
     const shell = process.env.SHELL || '/bin/bash';
     return basename(shell) === 'bash' && spec.shellRc ? [shell, '--rcfile', spec.shellRc, '-i'] : [shell, '-l'];
   }
-  // Claude runs in a login shell so it sees the environment a terminal gets (tokens exported from the
-  // user's profile); the tmux server only has what systemd gave shub at boot. Only POSIX shells take the
-  // script below, others fall back to /bin/sh.
   // When Claude exits (Ctrl+C twice, /exit) the pane drops into a login shell instead of ending the session;
   // closing the session (Alt+W) still kills tmux.
+  const script = 'claude "$@"; exec "${SHELL:-/bin/bash}" -l';
+  const args = ['sh', ...claudeArgs(spec).slice(1)];
   const shell = process.env.SHELL || '/bin/bash';
-  const runner = ['bash', 'zsh'].includes(basename(shell)) ? [shell, '-l'] : ['/bin/sh'];
-  return [...runner, '-c', 'claude "$@"; exec "${SHELL:-/bin/bash}" -l', 'sh', ...claudeArgs(spec).slice(1)];
+  if (!['bash', 'zsh'].includes(basename(shell))) return ['/bin/sh', '-c', script, ...args];
+  // A login shell gives Claude the environment a terminal gets (tokens exported from the user's profile);
+  // the tmux server only has what systemd gave shub at boot. shub's own PATH stays in front of the profile's.
+  return [
+    'env',
+    `SHUB_PATH=${process.env.PATH ?? ''}`,
+    shell,
+    '-l',
+    '-c',
+    `PATH="$SHUB_PATH:$PATH"; unset SHUB_PATH; ${script}`,
+    ...args,
+  ];
 };
 
 /** `claude ...` argv without the shell fallback. */
