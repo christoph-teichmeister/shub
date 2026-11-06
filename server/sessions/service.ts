@@ -708,10 +708,15 @@ export class SessionsService implements Sessions {
     this.#tmux.paste(tmuxName(id), text);
   }
 
+  /** Streams any file to <stateDir>/pastes and returns its path, without typing it anywhere. */
+  savePaste(contentType: string, body: Readable, name = ''): Promise<string> {
+    return savePaste(this.#ctx.paths.stateDir, contentType, body, name);
+  }
+
   /** Streams any file to <stateDir>/pastes and pastes its absolute path (Claude picks up image paths). */
   async pasteFile(id: string, contentType: string, body: Readable, name = ''): Promise<string> {
     this.#requireRunning(id);
-    const file = await savePaste(this.#ctx.paths.stateDir, contentType, body, name);
+    const file = await this.savePaste(contentType, body, name);
     this.#tmux.paste(tmuxName(id), file);
     return file;
   }

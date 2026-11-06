@@ -753,6 +753,7 @@ export const ROUTES = {
   sessionCommand: 'POST /api/sessions/:id/command', // { index, command?, action: 'run' | 'dismiss' } pendingCommands; 409 when command is no longer at index
   sessionKeys: 'POST /api/sessions/:id/keys', // { keys: "1" | "Escape" | ... } phone quick keys
   sessionPaste: 'POST /api/sessions/:id/paste', // text or multipart image -> path inserted
+  pasteSave: 'POST /api/pastes', // a file body (X-Filename) -> { path }: saved like a session paste, nothing typed (new-session dialog)
   sessionMessages: 'GET /api/sessions/:id/messages', // -> ChatMessage[]: the last messages of the Claude transcript (phone chat view); with ?after=<offset> (empty: first call) -> ChatDelta
   sessionLink: 'POST /api/sessions/:id/links', // SessionLink
   notes: 'GET /api/sessions/:id/notes', // -> { path, text, rev }: the session's shared Markdown draft (a pane shares its session's), user only

@@ -191,6 +191,21 @@
     if (ask?.button.id === button.id) ask.worktrees = list;
   }
 
+  /** Pasted screenshots/files are saved on the server and their path joins the text, as in a terminal paste. */
+  async function pasteIntoAsk(e: ClipboardEvent) {
+    const files = [...(e.clipboardData?.files ?? [])];
+    if (!files.length) return;
+    e.preventDefault();
+    const target = ask;
+    for (const body of files) {
+      const { path } = await api<{ path: string }>('pasteSave', { body }).catch((err: unknown) => {
+        toastError(err);
+        return { path: '' };
+      });
+      if (path && target && ask === target) target.value = `${target.value}${target.value ? ' ' : ''}${path}`;
+    }
+  }
+
   function submitAsk(e: SubmitEvent) {
     e.preventDefault();
     if (!ask) return;
@@ -565,6 +580,7 @@
           bind:value={ask.value}
           required
           autocomplete="off"
+          onpaste={pasteIntoAsk}
           hint={ask.button.ask === 'pick-worktree' && ask.worktrees === null ? 'Loading the worktree list…' : undefined}
         />
       {/if}
