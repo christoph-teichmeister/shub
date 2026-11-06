@@ -114,6 +114,8 @@
       <Button variant="primary" onclick={() => location.reload()}>Reload</Button>
     </EmptyState>
   {/await}
+{:else if route.name === 'overview' && !ui.phone}
+  {@render lazy(import('./lib/views/Overview/Overview.svelte'))}
 {:else if ui.phone}
   <Phone />
 {:else}

@@ -315,6 +315,9 @@
         case 'KeyV':
           go('village');
           break;
+        case 'KeyO':
+          go('overview');
+          break;
         case 'KeyN':
           void newSession();
           break;
