@@ -488,7 +488,7 @@
     <section id="split-view" aria-labelledby="h-split">
       <h2 id="h-split">Split view</h2>
       <div class="box tall">
-        <SplitView sessions={SESSIONS.slice(0, 3)} selectedId="s2">
+        <SplitView sessions={SESSIONS.slice(0, 3)} selectedId="s2" onminimize={() => {}}>
           {#snippet pane(s)}<pre class="fake">{s.name}: terminal here</pre>{/snippet}
         </SplitView>
       </div>

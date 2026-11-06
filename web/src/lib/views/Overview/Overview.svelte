@@ -1,12 +1,14 @@
 <script lang="ts">
   // Overview (#/overview): the running sessions as live terminals in one grid that fills the screen, so you can work
   // in many at once; paused and not-started ones wait below as small cards. Click a pane to type in it.
+  import type { Session } from '../../../../../shared/api.ts';
   import EmptyState from '../../components/EmptyState/EmptyState.svelte';
   import SelectField from '../../components/SelectField/SelectField.svelte';
   import SessionCard from '../../components/SessionCard/SessionCard.svelte';
   import SplitView from '../../components/SplitView/SplitView.svelte';
   import TerminalView from '../../components/TerminalView/TerminalView.svelte';
   import { gridColumns, LIVE, overviewSessions } from '../../overview.ts';
+  import { store, storedJson } from '../../stored.ts';
   import { villageBack } from '../../stores/router.svelte.ts';
   import { app, childrenOf, needsYouCount, sendKeys, sessionHref } from '../../stores/state.svelte.ts';
 
@@ -15,8 +17,14 @@
   let w = $state(0);
   let h = $state(0);
   const shown = $derived(overviewSessions(app.sessions, projectId || null));
-  const live = $derived(shown.filter((s) => LIVE.has(s.status)));
-  const quiet = $derived(shown.filter((s) => !LIVE.has(s.status)));
+  // Minimized sessions wait in the strip below, remembered in this browser; one that needs you always stays up.
+  const KEY = 'shub.overview.minimized';
+  const saved = storedJson(KEY);
+  let minimized = $state<string[]>(Array.isArray(saved) ? saved.filter((x) => typeof x === 'string') : []);
+  const setMinimized = (list: string[]) => store(KEY, JSON.stringify((minimized = list)));
+  const isLive = (s: Session) => LIVE.has(s.status) && (s.status === 'needs-you' || !minimized.includes(s.id));
+  const live = $derived(shown.filter(isLive));
+  const quiet = $derived(shown.filter((s) => !isLive(s)));
   const project = (id: string | null) => app.projects.find((p) => p.id === id);
 
   function onKeydown(e: KeyboardEvent) {
@@ -55,6 +63,7 @@
         columns={gridColumns(live.length, w, h)}
         selectedId={focusId}
         onselect={(id) => (focusId = id)}
+        onminimize={(id) => setMinimized([...minimized, id])}
       >
         {#snippet pane(s)}
           <TerminalView
@@ -82,6 +91,9 @@
           panes={childrenOf(s.id).length}
           onallow={() => void sendKeys(s.id, ['1'])}
           ondeny={() => void sendKeys(s.id, ['3'])}
+          onrestore={minimized.includes(s.id) && LIVE.has(s.status)
+            ? () => setMinimized(minimized.filter((x) => x !== s.id))
+            : undefined}
         />
       {/each}
     </div>
