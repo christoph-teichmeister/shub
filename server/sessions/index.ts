@@ -233,6 +233,12 @@ function routes(sessions: SessionsService, services: Services, router: Router, c
     const name = decodeURIComponent(String(req.raw.headers['x-filename'] ?? ''));
     return { path: await sessions.pasteFile(req.params.id, type, req.raw, name) };
   });
+  router.add(ROUTES.pasteSave, async (req) => {
+    requireUser(req.caller);
+    const type = req.raw.headers['content-type'] ?? '';
+    const name = decodeURIComponent(String(req.raw.headers['x-filename'] ?? ''));
+    return { path: await sessions.savePaste(type, req.raw, name) };
+  });
   const transcripts = new Map<string, string>();
   router.add(ROUTES.sessionMessages, (req) => {
     requireRight(req.caller, 'read');
