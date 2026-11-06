@@ -4,6 +4,7 @@ export const SHORTCUTS: [string, string[]][] = [
   ['Show / hide the sidebar', ['Alt B']],
   ['Next session that needs you', ['Alt J']],
   ['Crab village / back', ['Alt V']],
+  ['Overview of all sessions / back', ['Alt O']],
   ['In the village: walk (arrows too when standing)', ['W', 'A', 'S', 'D']],
   ['In the village: allow / deny the pinned crab', ['Y', 'N']],
   ['In the village: close the chat window', ['Alt W']],

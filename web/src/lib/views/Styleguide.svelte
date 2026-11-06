@@ -26,6 +26,7 @@
   import SessionTab from '../components/SessionTab/SessionTab.svelte';
   import Sidebar from '../components/Sidebar/Sidebar.svelte';
   import SidebarSection from '../components/SidebarSection/SidebarSection.svelte';
+  import SessionCard from '../components/SessionCard/SessionCard.svelte';
   import SplitView from '../components/SplitView/SplitView.svelte';
   import StatusBadge from '../components/StatusBadge/StatusBadge.svelte';
   import StatusDot from '../components/StatusDot/StatusDot.svelte';
@@ -87,6 +88,7 @@
     'Drawer',
     'Toast',
     'Empty state',
+    'Session card',
     'Split view',
     'Bottom panel',
     'Terminal',
@@ -465,6 +467,24 @@
       </div>
     </section>
 
+    <section id="session-card" aria-labelledby="h-card">
+      <h2 id="h-card">Session card</h2>
+      <div class="box cards">
+        {#each SESSIONS.slice(0, 5) as s (s.id)}
+          <SessionCard
+            session={s.status === 'needs-you'
+              ? { ...s, pendingPermission: { tool: 'Bash', summary: 'rm -rf dist' } }
+              : { ...s, context: { tokens: 130_000, window: 200_000 } }}
+            href="#/styleguide"
+            project="ai-portal"
+            panes={s.status === 'working' ? 1 : 0}
+            onallow={() => {}}
+            ondeny={() => {}}
+          />
+        {/each}
+      </div>
+    </section>
+
     <section id="split-view" aria-labelledby="h-split">
       <h2 id="h-split">Split view</h2>
       <div class="box tall">
@@ -691,6 +711,12 @@
     border: var(--hairline) solid var(--line);
     border-radius: var(--radius-lg);
     overflow: hidden;
+  }
+
+  .cards {
+    display: grid;
+    gap: var(--space-3);
+    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
   }
 
   .tall {

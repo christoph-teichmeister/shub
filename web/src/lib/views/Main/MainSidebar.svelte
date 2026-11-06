@@ -299,6 +299,13 @@
   </div>
 {/snippet}
 
+{#snippet overviewButton()}
+  <a class="rail-item" href={href('overview')} title="All sessions at a glance (Alt O)">
+    <Icon name="grid" />
+    <span class="visually-hidden">Session overview</span>
+  </a>
+{/snippet}
+
 {#snippet villageButton()}
   <a
     class="rail-item"
@@ -316,6 +323,7 @@
     <div class="brand">
       <Wordmark accent={project?.accent} {needsYou} />
       <span class="grow"></span>
+      {@render overviewButton()}
       {@render villageButton()}
       <button
         type="button"
@@ -449,6 +457,7 @@
       <span class="global-icon" aria-hidden="true"><Icon name="sparkle" size="sm" weight={2} /></span>
       {#if globalSession}<span class="rail-dot"><StatusDot status={globalSession.status} /></span>{/if}
     </button>
+    {@render overviewButton()}
     {@render villageButton()}
     {#if needsYouTotal}
       <button
