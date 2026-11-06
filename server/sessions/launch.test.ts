@@ -163,7 +163,26 @@ test('claude sessions fall back to a login shell when claude exits', () => {
     permissionMode: 'default',
     resume: false,
   });
-  assert.deepEqual(argv.slice(0, 2), ['/bin/sh', '-c']);
-  assert.match(argv[2], /^claude "\$@"; exec /);
-  assert.deepEqual(argv.slice(4, 7), ['--session-id', 'u', '--settings']);
+  const c = argv.indexOf('-c');
+  assert.match(argv[c + 1], /claude "\$@"; exec /);
+  assert.deepEqual(argv.slice(c + 3, c + 6), ['--session-id', 'u', '--settings']);
+});
+
+test('claude sessions start in a login shell when $SHELL is bash or zsh', () => {
+  const spec = {
+    kind: 'claude',
+    claudeSessionId: 'u',
+    settingsFile: '/s.json',
+    permissionMode: 'default',
+    resume: false,
+  } as const;
+  const saved = process.env.SHELL;
+  try {
+    process.env.SHELL = '/usr/bin/bash';
+    assert.deepEqual(defaultLauncher(spec).slice(2, 5), ['/usr/bin/bash', '-l', '-c']);
+    process.env.SHELL = '/usr/bin/fish';
+    assert.deepEqual(defaultLauncher(spec).slice(0, 2), ['/bin/sh', '-c']);
+  } finally {
+    process.env.SHELL = saved;
+  }
 });
