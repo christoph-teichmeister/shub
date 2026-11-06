@@ -55,6 +55,8 @@
       cursorInactiveStyle: s.cursorStyle,
       cursorBlink: s.cursorBlink,
       scrollback: s.scrollback,
+      // Dim (SGR 2) text drops below 4.5:1 on dark themes; xterm lifts any colour pair up to this ratio.
+      minimumContrastRatio: 4.5,
     } as const;
   }
 
