@@ -33,3 +33,12 @@ test('overviewSessions: needs-you first, panes rolled up, shells and exited left
     ['d'],
   );
 });
+
+import { gridColumns } from '../web/src/lib/overview.ts';
+
+test('gridColumns picks terminal-shaped cells on a wide and a tall screen', () => {
+  assert.equal(gridColumns(1, 3840, 2000), 1);
+  assert.equal(gridColumns(12, 3840, 2000), 4); // 4 x 3 -> 960 x 667
+  assert.equal(gridColumns(4, 1000, 1600), 1); // tall: stacked
+  assert.equal(gridColumns(0, 100, 100), 1);
+});

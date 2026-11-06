@@ -1,6 +1,6 @@
 # SessionCard
 
-One session as a status card in the overview grid (`#/overview`): status mark and text, time in that status, name, project chip, a line for what it does or waits for, context fill along the bottom edge. The card links to the session.
+One session as a status card, in the overview's strip of quiet (paused, not started) sessions (`#/overview`): status mark and text, time in that status, name, project chip, a line for what it does or waits for, context fill along the bottom edge. The card links to the session.
 
 | Prop      | Type         | Notes                                                       |
 | --------- | ------------ | ----------------------------------------------------------- |
