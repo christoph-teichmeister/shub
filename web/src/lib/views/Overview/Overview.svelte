@@ -2,6 +2,7 @@
   // Overview (#/overview): the running sessions as live terminals in one grid that fills the screen, so you can work
   // in many at once; paused and not-started ones wait below as small cards. Click a pane to type in it.
   import type { Session } from '../../../../../shared/api.ts';
+  import Button from '../../components/Button/Button.svelte';
   import EmptyState from '../../components/EmptyState/EmptyState.svelte';
   import Icon from '../../components/Icon/Icon.svelte';
   import SelectField from '../../components/SelectField/SelectField.svelte';
@@ -83,6 +84,15 @@
         onselect={(id) => (focusId = id)}
         onminimize={(id) => setMinimized([...minimized, id])}
       >
+        {#snippet actions(s)}
+          {#if s.pendingPermission}
+            <span class="ask" title="{s.pendingPermission.tool}: {s.pendingPermission.summary}">
+              {s.pendingPermission.tool}: {s.pendingPermission.summary}
+            </span>
+            <Button size="sm" variant="primary" onclick={() => void sendKeys(s.id, ['1'])}>Allow</Button>
+            <Button size="sm" onclick={() => void sendKeys(s.id, ['3'])}>Deny</Button>
+          {/if}
+        {/snippet}
         {#snippet pane(s)}
           <TerminalView
             sessionId={s.id}
@@ -181,6 +191,15 @@
     font: inherit;
     font-size: var(--text-sm);
     cursor: pointer;
+  }
+
+  .ask {
+    min-width: 0;
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-sm);
   }
 
   .quiet {
