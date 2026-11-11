@@ -14,7 +14,7 @@ const s = (id: string, status: Session['status'], extra: Partial<Session> = {}) 
     ...extra,
   }) as Session;
 
-test('overviewSessions: needs-you first, panes rolled up, shells and exited left out, project filter', () => {
+test('overviewSessions: needs-you first, panes rolled up, shells, the global session and exited left out, project filter', () => {
   const all = [
     s('a', 'your-turn'),
     s('b', 'working'),
@@ -22,6 +22,7 @@ test('overviewSessions: needs-you first, panes rolled up, shells and exited left
     s('d', 'your-turn', { projectId: 'q' }),
     s('e', 'exited'),
     s('f', 'working', { kind: 'shell' }),
+    s('h', 'working', { kind: 'global' }),
     s('g', 'needs-you', { parentId: 'd' }),
   ];
   assert.deepEqual(
