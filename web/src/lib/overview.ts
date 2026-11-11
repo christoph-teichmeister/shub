@@ -39,3 +39,10 @@ export function neighbour(i: number, dir: 'left' | 'right' | 'up' | 'down', cols
   if (i + cols < n) return i + cols;
   return Math.floor(i / cols) < Math.floor((n - 1) / cols) ? n - 1 : i;
 }
+
+/** The minimized ids that still name a session; an empty store (not loaded yet) leaves the list alone. */
+export function pruneMinimized(ids: string[], all: Session[]): string[] {
+  if (!all.length) return ids;
+  const live = ids.filter((id) => all.some((s) => s.id === id));
+  return live.length === ids.length ? ids : live;
+}

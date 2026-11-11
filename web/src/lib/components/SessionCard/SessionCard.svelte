@@ -17,8 +17,10 @@
     ondeny?: () => void;
     /** Shows a button that brings a minimized session back into the grid. */
     onrestore?: () => void;
+    /** Accent frame: a minimized session that is your turn now. */
+    flagged?: boolean;
   }
-  let { session, href, project, accent, panes = 0, onallow, ondeny, onrestore }: Props = $props();
+  let { session, href, project, accent, panes = 0, onallow, ondeny, onrestore, flagged = false }: Props = $props();
 
   const fill = $derived(contextFill(session));
   const agent = $derived(session.agents?.find((a) => a.activity)?.activity);
@@ -32,7 +34,7 @@
   );
 </script>
 
-<article class="card {session.status}" style:--accent={accent}>
+<article class="card {session.status}" class:flagged style:--accent={accent}>
   <a class="main" {href} title={waitTitle(session)}>
     <span class="head">
       <StatusDot status={session.status} idle={idleWithAgents(session)} />
@@ -76,6 +78,10 @@
     border: var(--ring) solid var(--status-needs-you);
     background: var(--status-needs-you-bg);
     color: var(--status-needs-you-fg);
+  }
+
+  .card.flagged {
+    border: var(--ring) solid var(--status-your-turn);
   }
 
   .card.paused,
