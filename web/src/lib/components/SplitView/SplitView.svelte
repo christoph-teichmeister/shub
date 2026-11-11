@@ -16,12 +16,24 @@
     onselect?: (id: string) => void;
     /** Adds a minimize button to each header. */
     onminimize?: (id: string) => void;
+    /** Project name and accent colour of a session: shown as a chip and a colour strip in its header. */
+    projectOf?: (s: Session) => { name: string; accent?: string } | undefined;
     /** Extra header content per pane (e.g. Allow/Deny), shown before the minimize button. */
     actions?: Snippet<[Session]>;
     /** Pane body, usually a compact TerminalView. */
     pane: Snippet<[Session]>;
   }
-  let { sessions, limit = 4, columns, selectedId = null, onselect, onminimize, actions, pane }: Props = $props();
+  let {
+    sessions,
+    limit = 4,
+    columns,
+    selectedId = null,
+    onselect,
+    onminimize,
+    projectOf,
+    actions,
+    pane,
+  }: Props = $props();
   const shown = $derived(sessions.slice(0, limit));
 </script>
 
@@ -31,16 +43,19 @@
   style:--rows={columns ? Math.ceil(shown.length / columns) : undefined}
 >
   {#each shown as session (session.id)}
+    {@const proj = projectOf?.(session)}
     <section
       class="pane {session.status}"
       class:selected={session.id === selectedId}
       aria-label={session.name}
+      style:--accent={proj?.accent}
       onfocusin={() => onselect?.(session.id)}
     >
-      <div class="head">
+      <div class="head" class:accented={proj?.accent}>
         <button type="button" class="title" onclick={() => onselect?.(session.id)}>
           <StatusDot status={session.status} idle={idleWithAgents(session)} />
           <span class="name">{session.name}</span>
+          {#if proj}<span class="chip">{proj.name}</span>{/if}
           <span class="status">{STATUS_LABEL[session.status]}</span>
         </button>
         {@render actions?.(session)}
@@ -94,7 +109,31 @@
   }
 
   .pane.selected {
-    border-color: var(--primary);
+    border: var(--ring) solid var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent);
+  }
+
+  /* Needs you wins over selected: the orange frame stays, the glow just goes. */
+  .pane.selected.needs-you {
+    border-color: var(--status-needs-you);
+    box-shadow: none;
+  }
+
+  .head.accented {
+    border-left: 3px solid var(--accent);
+  }
+
+  .chip {
+    flex: none;
+    max-width: 10rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 var(--space-2);
+    border: var(--hairline) solid var(--line);
+    border-radius: var(--radius-pill);
+    font-size: var(--text-xs);
+    color: var(--muted);
   }
 
   .pane.needs-you {

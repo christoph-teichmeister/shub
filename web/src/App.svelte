@@ -73,7 +73,8 @@
 
   $effect(() => {
     const n = needsYouCount();
-    document.title = n ? `(${n}) shub` : 'shub';
+    const base = route.name === 'overview' ? 'Overview – shub' : 'shub';
+    document.title = n ? `(${n}) ${base}` : base;
   });
 </script>
 

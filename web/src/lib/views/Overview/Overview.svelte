@@ -103,6 +103,7 @@
         sessions={live}
         limit={live.length}
         columns={gridColumns(live.length, w, h)}
+        projectOf={(s) => project(s.projectId)}
         selectedId={focusId}
         onselect={(id) => (focusId = id)}
         onminimize={(id) => setMinimized([...minimized, id])}
