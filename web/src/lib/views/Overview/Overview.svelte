@@ -10,7 +10,15 @@
   import { gridColumns, LIVE, overviewSessions } from '../../overview.ts';
   import { store, storedJson } from '../../stored.ts';
   import { villageBack } from '../../stores/router.svelte.ts';
-  import { app, childrenOf, needsYouCount, sendKeys, sessionHref } from '../../stores/state.svelte.ts';
+  import {
+    app,
+    childrenOf,
+    needsYouCount,
+    sendKeys,
+    sessionHref,
+    startSession,
+    ui,
+  } from '../../stores/state.svelte.ts';
 
   let projectId = $state('');
   let focusId = $state<string | null>(null);
@@ -28,10 +36,16 @@
   const project = (id: string | null) => app.projects.find((p) => p.id === id);
 
   function onKeydown(e: KeyboardEvent) {
-    if (!e.altKey || e.ctrlKey || e.metaKey || e.code !== 'KeyO') return;
+    if (!e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.code === 'KeyO') location.hash = villageBack();
+    else if (e.code === 'KeyK') ui.search = !ui.search;
+    // The new session shows up as a pane here; without a project filter, search picks the project.
+    else if (e.code === 'KeyN') {
+      if (projectId) void startSession({ projectId, kind: 'claude' });
+      else ui.search = true;
+    } else return;
     e.preventDefault();
     e.stopPropagation();
-    location.hash = villageBack();
   }
 </script>
 
