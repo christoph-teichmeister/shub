@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Session } from '../shared/api.ts';
-import { neighbour, overviewSessions } from '../web/src/lib/overview.ts';
+import { neighbour, overviewSessions, pruneMinimized } from '../web/src/lib/overview.ts';
 
 const s = (id: string, status: Session['status'], extra: Partial<Session> = {}) =>
   ({
@@ -59,4 +59,12 @@ test('neighbour: moves in a 3-column grid of 5, stays at edges, down from a miss
   assert.equal(neighbour(1, 'down', 3, 5), 4);
   assert.equal(neighbour(2, 'down', 3, 5), 4);
   assert.equal(neighbour(4, 'down', 3, 5), 4);
+});
+
+test('pruneMinimized: drops ids of gone sessions, keeps the list while the store is empty', () => {
+  const all = [s('a', 'working')];
+  assert.deepEqual(pruneMinimized(['a', 'zz'], all), ['a']);
+  const same = ['a'];
+  assert.equal(pruneMinimized(same, all), same);
+  assert.deepEqual(pruneMinimized(['a'], []), ['a']);
 });
