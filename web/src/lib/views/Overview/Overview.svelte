@@ -3,6 +3,7 @@
   // in many at once; paused and not-started ones wait below as small cards. Click a pane to type in it.
   import type { Session } from '../../../../../shared/api.ts';
   import EmptyState from '../../components/EmptyState/EmptyState.svelte';
+  import Icon from '../../components/Icon/Icon.svelte';
   import SelectField from '../../components/SelectField/SelectField.svelte';
   import SessionCard from '../../components/SessionCard/SessionCard.svelte';
   import SplitView from '../../components/SplitView/SplitView.svelte';
@@ -25,6 +26,9 @@
   const isLive = (s: Session) => LIVE.has(s.status) && (s.status === 'needs-you' || !minimized.includes(s.id));
   const live = $derived(shown.filter(isLive));
   const quiet = $derived(shown.filter((s) => !isLive(s)));
+  const HIDE_KEY = 'shub.overview.stripHidden';
+  let stripHidden = $state(storedJson(HIDE_KEY) === true);
+  const toggleStrip = () => store(HIDE_KEY, JSON.stringify((stripHidden = !stripHidden)));
   const project = (id: string | null) => app.projects.find((p) => p.id === id);
 
   function onKeydown(e: KeyboardEvent) {
@@ -80,6 +84,12 @@
     {/if}
   </div>
   {#if quiet.length}
+    <button type="button" class="strip-toggle" aria-expanded={!stripHidden} onclick={toggleStrip}>
+      <Icon name={stripHidden ? 'chevron-right' : 'chevron-down'} size="xs" />
+      {quiet.length} parked
+    </button>
+  {/if}
+  {#if quiet.length && !stripHidden}
     <div class="quiet">
       {#each quiet as s (s.id)}
         {@const p = project(s.projectId)}
@@ -142,6 +152,21 @@
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
+  }
+
+  .strip-toggle {
+    flex: none;
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: var(--text-sm);
+    cursor: pointer;
   }
 
   .quiet {
