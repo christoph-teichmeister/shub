@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Session } from '../shared/api.ts';
-import { overviewSessions } from '../web/src/lib/overview.ts';
+import { neighbour, overviewSessions } from '../web/src/lib/overview.ts';
 
 const s = (id: string, status: Session['status'], extra: Partial<Session> = {}) =>
   ({
@@ -47,4 +47,16 @@ test('gridColumns picks terminal-shaped cells on a wide and a tall screen', () =
   assert.equal(gridColumns(12, 3840, 2000), 4); // 4 x 3 -> 960 x 667
   assert.equal(gridColumns(4, 1000, 1600), 1); // tall: stacked
   assert.equal(gridColumns(0, 100, 100), 1);
+});
+
+test('neighbour: moves in a 3-column grid of 5, stays at edges, down from a missing cell goes to the last pane', () => {
+  assert.equal(neighbour(0, 'right', 3, 5), 1);
+  assert.equal(neighbour(2, 'right', 3, 5), 2);
+  assert.equal(neighbour(4, 'right', 3, 5), 4);
+  assert.equal(neighbour(3, 'left', 3, 5), 3);
+  assert.equal(neighbour(4, 'up', 3, 5), 1);
+  assert.equal(neighbour(0, 'up', 3, 5), 0);
+  assert.equal(neighbour(1, 'down', 3, 5), 4);
+  assert.equal(neighbour(2, 'down', 3, 5), 4);
+  assert.equal(neighbour(4, 'down', 3, 5), 4);
 });

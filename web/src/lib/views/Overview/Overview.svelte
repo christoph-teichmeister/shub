@@ -1,6 +1,6 @@
 <script lang="ts">
   // Overview (#/overview): the running sessions as live terminals in one grid that fills the screen, so you can work
-  // in many at once; paused and not-started ones wait below as small cards. Click a pane to type in it.
+  // in many at once; paused and not-started ones wait below as small cards. Click a pane to type in it; Alt arrows, Alt 1 to 9, Alt J and Alt Enter move between panes.
   import type { Session } from '../../../../../shared/api.ts';
   import Button from '../../components/Button/Button.svelte';
   import EmptyState from '../../components/EmptyState/EmptyState.svelte';
@@ -9,9 +9,10 @@
   import SessionCard from '../../components/SessionCard/SessionCard.svelte';
   import SplitView from '../../components/SplitView/SplitView.svelte';
   import TerminalView from '../../components/TerminalView/TerminalView.svelte';
-  import { gridColumns, LIVE, overviewSessions } from '../../overview.ts';
+  import { gridColumns, LIVE, neighbour, overviewSessions } from '../../overview.ts';
   import { store, storedJson } from '../../stored.ts';
   import { villageBack } from '../../stores/router.svelte.ts';
+  import { toast } from '../../stores/toasts.svelte.ts';
   import {
     app,
     childrenOf,
@@ -40,17 +41,35 @@
   const toggleStrip = () => store(HIDE_KEY, JSON.stringify((stripHidden = !stripHidden)));
   const project = (id: string | null) => app.projects.find((p) => p.id === id);
 
+  const ARROWS = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' } as const;
+
   function onKeydown(e: KeyboardEvent) {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
+    const i = live.findIndex((s) => s.id === focusId);
+    const digit = /^Digit([1-9])$/.exec(e.code);
+    let target: Session | undefined;
     if (e.code === 'KeyO') location.hash = villageBack();
     else if (e.code === 'KeyK') ui.search = !ui.search;
     // The new session shows up as a pane here; without a project filter, search picks the project.
     else if (e.code === 'KeyN') {
       if (projectId) void startSession({ projectId, kind: 'claude' });
       else ui.search = true;
+    } else if (e.code === 'Enter') {
+      if (live[i]) location.hash = sessionHref(live[i]);
+    } else if (e.code in ARROWS) {
+      target =
+        live[
+          i < 0 ? 0 : neighbour(i, ARROWS[e.code as keyof typeof ARROWS], gridColumns(live.length, w, h), live.length)
+        ];
+    } else if (digit) target = live[Number(digit[1]) - 1];
+    else if (e.code === 'KeyJ') {
+      const hot = live.filter((s) => s.status === 'needs-you');
+      if (!hot.length) toast('Nothing needs you');
+      else target = hot[(hot.findIndex((s) => s.id === focusId) + 1) % hot.length];
     } else return;
     e.preventDefault();
     e.stopPropagation();
+    if (target) focusId = target.id;
   }
 </script>
 

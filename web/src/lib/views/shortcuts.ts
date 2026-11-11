@@ -21,6 +21,8 @@ export const SHORTCUTS: [string, string[]][] = [
   ['In a terminal: jump a word back / forward', ['Ctrl ←', 'Ctrl →']],
   ['Close session', ['Alt W']],
   ['In search: new session / pin the project', ['Alt Enter', 'Alt P']],
+  ['In the overview: focus the neighbouring pane / pane N', ['Alt ← ↑ → ↓', 'Alt 1', 'Alt 9']],
+  ['In the overview: next pane that needs you / open the focused one full size', ['Alt J', 'Alt Enter']],
   ['This overview', ['Alt ?']],
 ];
 
