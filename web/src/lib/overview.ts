@@ -29,3 +29,13 @@ export function gridColumns(n: number, w: number, h: number): number {
   }
   return best;
 }
+
+/** Index of the pane next to `i` in a grid of `n` panes in `cols` columns, or `i` at an edge. Down from a column the
+ *  short last row lacks goes to the last pane. */
+export function neighbour(i: number, dir: 'left' | 'right' | 'up' | 'down', cols: number, n: number): number {
+  if (dir === 'left') return i % cols ? i - 1 : i;
+  if (dir === 'right') return i % cols < cols - 1 && i + 1 < n ? i + 1 : i;
+  if (dir === 'up') return i >= cols ? i - cols : i;
+  if (i + cols < n) return i + cols;
+  return Math.floor(i / cols) < Math.floor((n - 1) / cols) ? n - 1 : i;
+}
