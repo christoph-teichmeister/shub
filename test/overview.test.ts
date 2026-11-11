@@ -14,7 +14,7 @@ const s = (id: string, status: Session['status'], extra: Partial<Session> = {}) 
     ...extra,
   }) as Session;
 
-test('overviewSessions: needs-you first, panes rolled up, shells, the global session and exited left out, project filter', () => {
+test('overviewSessions: stable creation order, shells, the global session and exited left out, project filter', () => {
   const all = [
     s('a', 'your-turn'),
     s('b', 'working'),
@@ -27,7 +27,12 @@ test('overviewSessions: needs-you first, panes rolled up, shells, the global ses
   ];
   assert.deepEqual(
     overviewSessions(all).map((x) => x.id),
-    ['c', 'd', 'b', 'a'],
+    ['a', 'b', 'c', 'd'],
+  );
+  all[0]!.status = 'needs-you'; // a status change must not reorder
+  assert.deepEqual(
+    overviewSessions(all).map((x) => x.id),
+    ['a', 'b', 'c', 'd'],
   );
   assert.deepEqual(
     overviewSessions(all, 'q').map((x) => x.id),
