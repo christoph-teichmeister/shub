@@ -43,6 +43,13 @@
 
   const ARROWS = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' } as const;
 
+  // Alt N: a session in the filtered project, else in the focused pane's project, else search for one. It shows up as a pane here.
+  const newSession = () => {
+    const id = projectId || app.sessions.find((x) => x.id === focusId)?.projectId;
+    if (id) void startSession({ projectId: id, kind: 'claude' });
+    else ui.search = true;
+  };
+
   function onKeydown(e: KeyboardEvent) {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
     const i = live.findIndex((s) => s.id === focusId);
@@ -50,11 +57,8 @@
     let target: Session | undefined;
     if (e.code === 'KeyO') location.hash = villageBack();
     else if (e.code === 'KeyK') ui.search = !ui.search;
-    // The new session shows up as a pane here; without a project filter, search picks the project.
-    else if (e.code === 'KeyN') {
-      if (projectId) void startSession({ projectId, kind: 'claude' });
-      else ui.search = true;
-    } else if (e.code === 'Enter') {
+    else if (e.code === 'KeyN') newSession();
+    else if (e.code === 'Enter') {
       if (live[i]) location.hash = sessionHref(live[i]);
     } else if (e.code in ARROWS) {
       target =
@@ -123,7 +127,12 @@
         {/snippet}
       </SplitView>
     {:else}
-      <EmptyState title="No active sessions" body="Start one in a project with Alt N." />
+      <EmptyState
+        title="No active sessions"
+        body={quiet.length
+          ? 'Paused or not-started sessions wait in the strip below. Resume one, or start a new one with Alt N.'
+          : 'Start one in a project with Alt N.'}
+      />
     {/if}
   </div>
   {#if quiet.length}
