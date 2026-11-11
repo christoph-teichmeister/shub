@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Session } from '../shared/api.ts';
-import { neighbour, overviewSessions, pruneMinimized } from '../web/src/lib/overview.ts';
+import { capLive, neighbour, overviewSessions, pruneMinimized } from '../web/src/lib/overview.ts';
 
 const s = (id: string, status: Session['status'], extra: Partial<Session> = {}) =>
   ({
@@ -67,4 +67,13 @@ test('pruneMinimized: drops ids of gone sessions, keeps the list while the store
   const same = ['a'];
   assert.equal(pruneMinimized(same, all), same);
   assert.deepEqual(pruneMinimized(['a'], []), ['a']);
+});
+
+test('capLive: needs-you always live, promoted next, newest others displaced', () => {
+  const w = [s('a', 'needs-you'), s('b', 'working'), s('cc', 'working'), s('ddd', 'your-turn'), s('ee', 'needs-you')];
+  const ids = (l: Session[]) => l.map((x) => x.id);
+  assert.deepEqual(ids(capLive(w, 3).live), ['a', 'b', 'ee']);
+  assert.deepEqual(ids(capLive(w, 3).over), ['cc', 'ddd']);
+  assert.deepEqual(ids(capLive(w, 3, ['ddd']).live), ['a', 'ddd', 'ee']);
+  assert.deepEqual(ids(capLive(w, 1).live), ['a', 'ee']);
 });

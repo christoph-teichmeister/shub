@@ -9,7 +9,7 @@
   import SessionCard from '../../components/SessionCard/SessionCard.svelte';
   import SplitView from '../../components/SplitView/SplitView.svelte';
   import TerminalView from '../../components/TerminalView/TerminalView.svelte';
-  import { gridColumns, LIVE, neighbour, overviewSessions, pruneMinimized } from '../../overview.ts';
+  import { capLive, gridColumns, LIVE, MAX_LIVE, neighbour, overviewSessions, pruneMinimized } from '../../overview.ts';
   import { store, storedJson } from '../../stored.ts';
   import { villageBack } from '../../stores/router.svelte.ts';
   import { toast } from '../../stores/toasts.svelte.ts';
@@ -37,9 +37,12 @@
     const kept = pruneMinimized(minimized, app.sessions);
     if (kept !== minimized) setMinimized(kept);
   });
-  const isLive = (s: Session) => LIVE.has(s.status) && (s.status === 'needs-you' || !minimized.includes(s.id));
-  const live = $derived(shown.filter(isLive));
-  const quiet = $derived(shown.filter((s) => !isLive(s)));
+  // Past MAX_LIVE the cells are unreadable: the overflow waits in the strip, "Show" promotes one (not remembered).
+  let promoted = $state<string[]>([]);
+  const wantsLive = (s: Session) => LIVE.has(s.status) && (s.status === 'needs-you' || !minimized.includes(s.id));
+  const capped = $derived(capLive(shown.filter(wantsLive), MAX_LIVE, promoted));
+  const live = $derived(capped.live);
+  const quiet = $derived(shown.filter((s) => !live.includes(s)));
   const HIDE_KEY = 'shub.overview.stripHidden';
   let stripHidden = $state(storedJson(HIDE_KEY) === true);
   const toggleStrip = () => store(HIDE_KEY, JSON.stringify((stripHidden = !stripHidden)));
@@ -159,8 +162,11 @@
           flagged={s.status === 'your-turn' && minimized.includes(s.id)}
           onallow={() => void sendKeys(s.id, ['1'])}
           ondeny={() => void sendKeys(s.id, ['3'])}
-          onrestore={minimized.includes(s.id) && LIVE.has(s.status)
-            ? () => setMinimized(minimized.filter((x) => x !== s.id))
+          onrestore={LIVE.has(s.status)
+            ? () => {
+                setMinimized(minimized.filter((x) => x !== s.id));
+                promoted = [...promoted, s.id];
+              }
             : undefined}
         />
       {/each}
