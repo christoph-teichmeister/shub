@@ -10,6 +10,7 @@ Up to four sessions side by side (1, 2, 3 with the first spanning two rows, or 2
 | `onminimize` | `(id) => void`      | Adds a minimize button (`−`) to each header |
 | `selectedId` | `string \| null`    |                                             |
 | `onselect`   | `(id) => void`      | Header click or focus in pane               |
+| `actions`    | snippet `(session)` | Optional header content (Allow/Deny)        |
 | `pane`       | snippet `(session)` | Body, e.g. compact TerminalView             |
 
 States: 1, 2, 3, 4 panes; needs-you pane; selected pane.

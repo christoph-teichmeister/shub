@@ -16,10 +16,12 @@
     onselect?: (id: string) => void;
     /** Adds a minimize button to each header. */
     onminimize?: (id: string) => void;
+    /** Extra header content per pane (e.g. Allow/Deny), shown before the minimize button. */
+    actions?: Snippet<[Session]>;
     /** Pane body, usually a compact TerminalView. */
     pane: Snippet<[Session]>;
   }
-  let { sessions, limit = 4, columns, selectedId = null, onselect, onminimize, pane }: Props = $props();
+  let { sessions, limit = 4, columns, selectedId = null, onselect, onminimize, actions, pane }: Props = $props();
   const shown = $derived(sessions.slice(0, limit));
 </script>
 
@@ -41,6 +43,7 @@
           <span class="name">{session.name}</span>
           <span class="status">{STATUS_LABEL[session.status]}</span>
         </button>
+        {@render actions?.(session)}
         {#if onminimize}
           <IconButton label="Minimize" icon="minus" size="xs" onclick={() => onminimize(session.id)} />
         {/if}
