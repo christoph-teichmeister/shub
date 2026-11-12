@@ -113,6 +113,8 @@
         projectOf={(s) => project(s.projectId)}
         selectedId={focusId}
         onselect={(id) => (focusId = id)}
+        maximizable
+        hrefFor={sessionHref}
         onminimize={(id) => setMinimized([...minimized, id])}
       >
         {#snippet actions(s)}

@@ -20,6 +20,10 @@
     projectOf?: (s: Session) => { name: string; accent?: string } | undefined;
     /** Extra header content per pane (e.g. Allow/Deny), shown before the minimize button. */
     actions?: Snippet<[Session]>;
+    /** Adds an Open link (to the session's normal view) to each header. */
+    hrefFor?: (s: Session) => string;
+    /** Adds a maximize button (and double-click on the title) to each header; Esc is left to the terminal. */
+    maximizable?: boolean;
     /** Pane body, usually a compact TerminalView. */
     pane: Snippet<[Session]>;
   }
@@ -32,13 +36,22 @@
     onminimize,
     projectOf,
     actions,
+    hrefFor,
+    maximizable = false,
     pane,
   }: Props = $props();
-  const shown = $derived(sessions.slice(0, limit));
+  // The maximized pane fills the grid; the others unmount (their sessions keep running, the terminals reattach on restore).
+  let maxId = $state<string | null>(null);
+  const all = $derived(sessions.slice(0, limit));
+  const shown = $derived(all.filter((s) => !maxId || s.id === maxId));
+  const toggleMax = (id: string) => (maxId = maxId === id ? null : id);
+  $effect(() => {
+    if (maxId && !all.some((s) => s.id === maxId)) maxId = null;
+  });
 </script>
 
 <div
-  class="grid {columns ? 'cols' : `n${shown.length}`}"
+  class="grid {maxId ? 'n1' : columns ? 'cols' : `n${shown.length}`}"
   style:--cols={columns}
   style:--rows={columns ? Math.ceil(shown.length / columns) : undefined}
 >
@@ -52,14 +65,30 @@
       onfocusin={() => onselect?.(session.id)}
     >
       <div class="head" class:accented={proj?.accent}>
-        <button type="button" class="title" onclick={() => onselect?.(session.id)}>
+        <button
+          type="button"
+          class="title"
+          onclick={() => onselect?.(session.id)}
+          ondblclick={() => maximizable && toggleMax(session.id)}
+        >
           <StatusDot status={session.status} idle={idleWithAgents(session)} />
           <span class="name">{session.name}</span>
           {#if proj}<span class="chip">{proj.name}</span>{/if}
           <span class="status">{STATUS_LABEL[session.status]}</span>
         </button>
         {@render actions?.(session)}
-        {#if onminimize}
+        {#if hrefFor}
+          <IconButton label="Open" icon="open" size="xs" href={hrefFor(session)} />
+        {/if}
+        {#if maximizable}
+          <IconButton
+            label={maxId ? 'Restore' : 'Maximize'}
+            icon={maxId ? 'restore' : 'maximize'}
+            size="xs"
+            onclick={() => toggleMax(session.id)}
+          />
+        {/if}
+        {#if onminimize && !maxId}
           <IconButton label="Minimize" icon="minus" size="xs" onclick={() => onminimize(session.id)} />
         {/if}
       </div>
