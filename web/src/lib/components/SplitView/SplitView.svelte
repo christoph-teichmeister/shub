@@ -57,13 +57,16 @@
   style:--cols={columns}
   style:--rows={columns ? Math.ceil(shown.length / columns) : undefined}
 >
-  {#each shown as session (session.id)}
+  {#each shown as session, i (session.id)}
     {@const proj = projectOf?.(session)}
     <section
       class="pane {session.status}"
       class:selected={session.id === selectedId}
       aria-label={session.name}
       style:--accent={proj?.accent}
+      style:grid-column={columns && !maximizedId && i === shown.length - 1 && shown.length % columns
+        ? `span ${columns - (shown.length % columns) + 1}`
+        : undefined}
       onfocusin={() => onselect?.(session.id)}
     >
       <div class="head" class:accented={proj?.accent}>
