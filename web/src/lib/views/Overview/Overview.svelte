@@ -1,6 +1,7 @@
 <script lang="ts">
   // Overview (#/overview): the running sessions as live terminals in one grid that fills the screen, so you can work
   // in many at once; paused and not-started ones wait below as small cards. Click a pane to type in it; Alt arrows, Alt 1 to 9, Alt J and Alt Enter move between panes; Alt W closes the focused one.
+  import { untrack } from 'svelte';
   import type { ProjectView, Session } from '../../../../../shared/api.ts';
   import Button from '../../components/Button/Button.svelte';
   import EmptyState from '../../components/EmptyState/EmptyState.svelte';
@@ -43,7 +44,10 @@
   });
   // Past MAX_LIVE the cells are unreadable: the overflow waits in the strip, "Show" promotes one (not remembered).
   let promoted = $state<string[]>([]);
-  const wantsLive = (s: Session) => LIVE.has(s.status) && (s.status === 'needs-you' || !minimized.includes(s.id));
+  // A just-started session is 'new' until Claude does something: it only gets a pane once promoted (Alt N, Alt K).
+  const wantsLive = (s: Session) =>
+    (LIVE.has(s.status) || (s.status === 'new' && promoted.includes(s.id))) &&
+    (s.status === 'needs-you' || !minimized.includes(s.id));
   const capped = $derived(capLive(shown.filter(wantsLive), MAX_LIVE, promoted));
   const live = $derived(capped.live);
   const quiet = $derived(shown.filter((s) => !live.includes(s)));
@@ -67,6 +71,20 @@
     setMinimized(minimized.filter((x) => x !== s.id));
     focusId = s.id;
   }
+  // A session that appears while the grid is open (after an approval, from another tab or the CLI) gets its pane too,
+  // without stealing the focus.
+  let seen: Set<string> | null = null;
+  $effect(() => {
+    const fresh = shown
+      .filter((s) => seen && !seen.has(s.id) && (LIVE.has(s.status) || s.status === 'new'))
+      .map((s) => s.id);
+    seen = new Set(shown.map((s) => s.id));
+    if (fresh.length)
+      untrack(() => {
+        promoted = [...promoted, ...fresh];
+        setMinimized(minimized.filter((x) => !fresh.includes(x)));
+      });
+  });
   $effect(() => {
     ui.showInGrid = showPane;
     return () => (ui.showInGrid = null);
