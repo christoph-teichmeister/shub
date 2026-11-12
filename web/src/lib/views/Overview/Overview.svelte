@@ -1,7 +1,7 @@
 <script lang="ts">
   // Overview (#/overview): the running sessions as live terminals in one grid that fills the screen, so you can work
   // in many at once; paused and not-started ones wait below as small cards. Click a pane to type in it; Alt arrows, Alt 1 to 9, Alt J and Alt Enter move between panes.
-  import type { Session } from '../../../../../shared/api.ts';
+  import type { ProjectView, Session } from '../../../../../shared/api.ts';
   import Button from '../../components/Button/Button.svelte';
   import EmptyState from '../../components/EmptyState/EmptyState.svelte';
   import Icon from '../../components/Icon/Icon.svelte';
@@ -9,6 +9,7 @@
   import SessionCard from '../../components/SessionCard/SessionCard.svelte';
   import SplitView from '../../components/SplitView/SplitView.svelte';
   import TerminalView from '../../components/TerminalView/TerminalView.svelte';
+  import ProjectPicker from './ProjectPicker.svelte';
   import { capLive, gridColumns, LIVE, MAX_LIVE, neighbour, overviewSessions, pruneMinimized } from '../../overview.ts';
   import { store, storedJson } from '../../stored.ts';
   import { villageBack } from '../../stores/router.svelte.ts';
@@ -51,12 +52,15 @@
 
   const ARROWS = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' } as const;
 
-  // Alt N: a session in the filtered project, else in the focused pane's project, else search for one. It shows up as a pane here.
-  const newSession = () => {
-    const id = projectId || app.sessions.find((x) => x.id === focusId)?.projectId;
-    if (id) void startSession({ projectId: id, kind: 'claude' });
-    else ui.search = true;
-  };
+  // Alt N: ask which project, then start the session as a new pane here and focus it (never leaves the grid).
+  let picking = $state(false);
+  async function newSession(p: ProjectView) {
+    picking = false;
+    const s = await startSession({ projectId: p.id, kind: 'claude' });
+    if (!s) return;
+    promoted = [...promoted, s.id]; // past the cap it still gets its pane
+    focusId = s.id;
+  }
 
   function onKeydown(e: KeyboardEvent) {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
@@ -65,7 +69,7 @@
     let target: Session | undefined;
     if (e.code === 'KeyO') location.hash = villageBack();
     else if (e.code === 'KeyK') ui.search = !ui.search;
-    else if (e.code === 'KeyN') newSession();
+    else if (e.code === 'KeyN') picking = !picking;
     else if (e.code === 'Enter') {
       if (live[i]) location.hash = sessionHref(live[i]);
     } else if (e.code in ARROWS && maxId) {
@@ -91,6 +95,13 @@
 </script>
 
 <svelte:window onkeydowncapture={onKeydown} />
+
+<ProjectPicker
+  open={picking}
+  preferred={projectId || app.sessions.find((x) => x.id === focusId)?.projectId || undefined}
+  onpick={newSession}
+  onclose={() => (picking = false)}
+/>
 
 <div class="overview">
   <header>
@@ -148,7 +159,7 @@
         title="No active sessions"
         body={quiet.length
           ? 'Paused or not-started sessions wait in the strip below. Resume one, or start a new one with Alt N.'
-          : 'Start one in a project with Alt N.'}
+          : 'Start one with Alt N.'}
       />
     {/if}
   </div>

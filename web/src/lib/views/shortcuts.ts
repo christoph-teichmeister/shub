@@ -9,7 +9,7 @@ export const SHORTCUTS: [string, string[]][] = [
   ['In the village: allow / deny the pinned crab', ['Y', 'N']],
   ['In the village: close the chat window', ['Alt W']],
   ['Search projects and sessions', ['Alt K']],
-  ["New session in this project (overview: the focused pane's)", ['Alt N']],
+  ['New session in this project (overview: pick a project, opens as a pane)', ['Alt N']],
   ['Go to tab 1 to 9', ['Alt 1', 'Alt 9']],
   ['Previous / next tab', ['Alt [', 'Alt ]']],
   ['Previous / next session in the sidebar, across projects', ['Alt ↑', 'Alt ↓']],
