@@ -57,10 +57,18 @@
   async function newSession(p: ProjectView) {
     picking = false;
     const s = await startSession({ projectId: p.id, kind: 'claude' });
-    if (!s) return;
+    if (s) showPane(s);
+  }
+  // Alt K search also lands here (new or resumed sessions), so it never leaves the grid.
+  function showPane(s: Session) {
     promoted = [...promoted, s.id]; // past the cap it still gets its pane
+    setMinimized(minimized.filter((x) => x !== s.id));
     focusId = s.id;
   }
+  $effect(() => {
+    ui.showInGrid = showPane;
+    return () => (ui.showInGrid = null);
+  });
 
   function onKeydown(e: KeyboardEvent) {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
