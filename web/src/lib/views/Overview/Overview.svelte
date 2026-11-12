@@ -1,6 +1,6 @@
 <script lang="ts">
   // Overview (#/overview): the running sessions as live terminals in one grid that fills the screen, so you can work
-  // in many at once; paused and not-started ones wait below as small cards. Click a pane to type in it; Alt arrows, Alt 1 to 9, Alt J and Alt Enter move between panes.
+  // in many at once; paused and not-started ones wait below as small cards. Click a pane to type in it; Alt arrows, Alt 1 to 9, Alt J and Alt Enter move between panes; Alt W closes the focused one.
   import type { ProjectView, Session } from '../../../../../shared/api.ts';
   import Button from '../../components/Button/Button.svelte';
   import EmptyState from '../../components/EmptyState/EmptyState.svelte';
@@ -10,6 +10,7 @@
   import SplitView from '../../components/SplitView/SplitView.svelte';
   import TerminalView from '../../components/TerminalView/TerminalView.svelte';
   import ProjectPicker from './ProjectPicker.svelte';
+  import ConfirmDialog, { type Confirm } from '../Main/ConfirmDialog.svelte';
   import { capLive, gridColumns, LIVE, MAX_LIVE, neighbour, overviewSessions, pruneMinimized } from '../../overview.ts';
   import { store, storedJson } from '../../stored.ts';
   import { villageBack } from '../../stores/router.svelte.ts';
@@ -17,6 +18,7 @@
   import {
     app,
     childrenOf,
+    closeSession,
     needsYouCount,
     sendKeys,
     sessionHref,
@@ -70,6 +72,26 @@
     return () => (ui.showInGrid = null);
   });
 
+  // Alt W closes the focused session; like the tab bar, it asks first when panes or work would be lost.
+  let confirm = $state<Confirm | null>(null);
+  function closeFocused() {
+    const s = live.find((x) => x.id === focusId);
+    if (!s) return;
+    const run = () => void closeSession(s.id);
+    const panes = childrenOf(s.id).length;
+    if (panes)
+      confirm = {
+        title: `Close ${s.name} and its ${panes === 1 ? 'pane' : `${panes} panes`}?`,
+        body: 'They end with it.',
+        action: 'Close all',
+        danger: true,
+        run,
+      };
+    else if (s.status === 'working')
+      confirm = { title: `Close ${s.name}?`, body: 'It is still working.', action: 'Close', danger: true, run };
+    else run();
+  }
+
   function onKeydown(e: KeyboardEvent) {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
     const i = live.findIndex((s) => s.id === focusId);
@@ -78,6 +100,7 @@
     if (e.code === 'KeyO') location.hash = villageBack();
     else if (e.code === 'KeyK') ui.search = !ui.search;
     else if (e.code === 'KeyN') picking = !picking;
+    else if (e.code === 'KeyW') closeFocused();
     else if (e.code === 'Enter') {
       if (live[i]) location.hash = sessionHref(live[i]);
     } else if (e.code in ARROWS && maxId) {
@@ -110,6 +133,7 @@
   onpick={newSession}
   onclose={() => (picking = false)}
 />
+<ConfirmDialog bind:confirm />
 
 <div class="overview">
   <header>
