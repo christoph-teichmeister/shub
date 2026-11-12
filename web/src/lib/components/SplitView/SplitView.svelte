@@ -24,6 +24,8 @@
     hrefFor?: (s: Session) => string;
     /** Adds a maximize button (and double-click on the title) to each header; Esc is left to the terminal. */
     maximizable?: boolean;
+    /** The maximized pane's session id (bindable), so the parent can move it, e.g. with the keyboard. */
+    maximizedId?: string | null;
     /** Pane body, usually a compact TerminalView. */
     pane: Snippet<[Session]>;
   }
@@ -38,20 +40,20 @@
     actions,
     hrefFor,
     maximizable = false,
+    maximizedId = $bindable(null),
     pane,
   }: Props = $props();
   // The maximized pane fills the grid; the others unmount (their sessions keep running, the terminals reattach on restore).
-  let maxId = $state<string | null>(null);
   const all = $derived(sessions.slice(0, limit));
-  const shown = $derived(all.filter((s) => !maxId || s.id === maxId));
-  const toggleMax = (id: string) => (maxId = maxId === id ? null : id);
+  const shown = $derived(all.filter((s) => !maximizedId || s.id === maximizedId));
+  const toggleMax = (id: string) => (maximizedId = maximizedId === id ? null : id);
   $effect(() => {
-    if (maxId && !all.some((s) => s.id === maxId)) maxId = null;
+    if (maximizedId && !all.some((s) => s.id === maximizedId)) maximizedId = null;
   });
 </script>
 
 <div
-  class="grid {maxId ? 'n1' : columns ? 'cols' : `n${shown.length}`}"
+  class="grid {maximizedId ? 'n1' : columns ? 'cols' : `n${shown.length}`}"
   style:--cols={columns}
   style:--rows={columns ? Math.ceil(shown.length / columns) : undefined}
 >
@@ -82,13 +84,13 @@
         {/if}
         {#if maximizable}
           <IconButton
-            label={maxId ? 'Restore' : 'Maximize'}
-            icon={maxId ? 'restore' : 'maximize'}
+            label={maximizedId ? 'Restore' : 'Maximize'}
+            icon={maximizedId ? 'restore' : 'maximize'}
             size="xs"
             onclick={() => toggleMax(session.id)}
           />
         {/if}
-        {#if onminimize && !maxId}
+        {#if onminimize && !maximizedId}
           <IconButton label="Minimize" icon="minus" size="xs" onclick={() => onminimize(session.id)} />
         {/if}
       </div>
