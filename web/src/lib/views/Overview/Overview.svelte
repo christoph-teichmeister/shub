@@ -25,6 +25,7 @@
 
   let projectId = $state('');
   let focusId = $state<string | null>(null);
+  let maxId = $state<string | null>(null);
   let w = $state(0);
   let h = $state(0);
   const shown = $derived(overviewSessions(app.sessions, projectId || null));
@@ -67,6 +68,10 @@
     else if (e.code === 'KeyN') newSession();
     else if (e.code === 'Enter') {
       if (live[i]) location.hash = sessionHref(live[i]);
+    } else if (e.code in ARROWS && maxId) {
+      // Only one pane is visible: the arrows step through the panes in order.
+      const back = e.code === 'ArrowLeft' || e.code === 'ArrowUp';
+      target = live[(Math.max(i, 0) + (back ? -1 : 1) + live.length) % live.length];
     } else if (e.code in ARROWS) {
       target =
         live[
@@ -81,6 +86,7 @@
     e.preventDefault();
     e.stopPropagation();
     if (target) focusId = target.id;
+    if (target && maxId) maxId = target.id; // a maximized pane follows the focus
   }
 </script>
 
@@ -114,6 +120,7 @@
         selectedId={focusId}
         onselect={(id) => (focusId = id)}
         maximizable
+        bind:maximizedId={maxId}
         hrefFor={sessionHref}
         onminimize={(id) => setMinimized([...minimized, id])}
       >
