@@ -46,3 +46,21 @@ export function pruneMinimized(ids: string[], all: Session[]): string[] {
   const live = ids.filter((id) => all.some((s) => s.id === id));
   return live.length === ids.length ? ids : live;
 }
+
+/** Most live terminals at once: beyond this the cells get too small to read, and every pane resizes its session's PTY. */
+export const MAX_LIVE = 6;
+
+/** Splits overview-ordered `wanted` (sessions that want a live pane) into the `max` that get one and the overflow.
+ *  Needs-you sessions always get one; `promoted` (the user's "Show") come next, then overview order, so the newest
+ *  non-urgent ones are displaced first. */
+export function capLive(wanted: Session[], max: number, promoted: string[] = []): { live: Session[]; over: Session[] } {
+  const tier = (s: Session) => (s.status === 'needs-you' ? 0 : promoted.includes(s.id) ? 1 : 2);
+  const keep = new Set(
+    wanted
+      .map((s, i) => ({ s, i }))
+      .sort((a, b) => tier(a.s) - tier(b.s) || a.i - b.i)
+      .filter(({ s }, n) => tier(s) === 0 || n < max)
+      .map(({ s }) => s.id),
+  );
+  return { live: wanted.filter((s) => keep.has(s.id)), over: wanted.filter((s) => !keep.has(s.id)) };
+}
