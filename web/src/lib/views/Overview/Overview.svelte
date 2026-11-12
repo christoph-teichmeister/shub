@@ -44,7 +44,10 @@
   });
   // Past MAX_LIVE the cells are unreadable: the overflow waits in the strip, "Show" promotes one (not remembered).
   let promoted = $state<string[]>([]);
-  const wantsLive = (s: Session) => LIVE.has(s.status) && (s.status === 'needs-you' || !minimized.includes(s.id));
+  // A just-started session is 'new' until Claude does something: it only gets a pane once promoted (Alt N, Alt K).
+  const wantsLive = (s: Session) =>
+    (LIVE.has(s.status) || (s.status === 'new' && promoted.includes(s.id))) &&
+    (s.status === 'needs-you' || !minimized.includes(s.id));
   const capped = $derived(capLive(shown.filter(wantsLive), MAX_LIVE, promoted));
   const live = $derived(capped.live);
   const quiet = $derived(shown.filter((s) => !live.includes(s)));
@@ -72,7 +75,9 @@
   // without stealing the focus.
   let seen: Set<string> | null = null;
   $effect(() => {
-    const fresh = shown.filter((s) => seen && !seen.has(s.id) && LIVE.has(s.status)).map((s) => s.id);
+    const fresh = shown
+      .filter((s) => seen && !seen.has(s.id) && (LIVE.has(s.status) || s.status === 'new'))
+      .map((s) => s.id);
     seen = new Set(shown.map((s) => s.id));
     if (fresh.length)
       untrack(() => {
