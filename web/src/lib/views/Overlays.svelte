@@ -1,6 +1,6 @@
 <script lang="ts">
   // Overlays every signed-in screen shares: search (Alt K), approvals, the shortcut overview (Alt ?).
-  import type { Approval, OldSession, ProjectView } from '../../../../shared/api.ts';
+  import type { Approval, OldSession, ProjectView, Session } from '../../../../shared/api.ts';
   import Button from '../components/Button/Button.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
   import Icon from '../components/Icon/Icon.svelte';
@@ -87,10 +87,12 @@
     toast(`${p.name} is pinned in the sidebar`);
   }
 
+  const show = (s: Session) => (ui.showInGrid ? ui.showInGrid(s) : (location.hash = sessionHref(s)));
+
   async function newSession(p: ProjectView) {
     close();
     const s = await startSession({ projectId: p.id, kind: 'claude' });
-    if (s) location.hash = sessionHref(s);
+    if (s) show(s);
   }
 
   async function resume(h: Extract<Hit, { kind: 'old' }>, takeOver = false) {
@@ -103,11 +105,12 @@
       fork: !!h.old.host && !takeOver,
       takeOver,
     });
-    if (s) location.hash = sessionHref(s);
+    if (s) show(s);
   }
 
   function open(h: Hit) {
     if (h.kind === 'old') return h.old.resumable === false ? undefined : void resume(h);
+    if (ui.showInGrid && h.kind !== 'add') return void newSession(h.project);
     close();
     if (h.kind === 'add') go('settings', 'project', 'new');
     else go('p', h.project.id);
