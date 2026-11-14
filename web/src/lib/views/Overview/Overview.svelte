@@ -158,6 +158,7 @@
   // without stealing the focus.
   let seen: Set<string> | null = null;
   $effect(() => {
+    if (!app.ready) return; // before the first load every session would look new
     const fresh = shown
       .filter((s) => seen && !seen.has(s.id) && (LIVE.has(s.status) || s.status === 'new'))
       .map((s) => s.id);
