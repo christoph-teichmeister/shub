@@ -84,6 +84,9 @@ before(async () => {
   for (const dir of Object.values(dirs)) mkdirSync(dir, { recursive: true });
   writeFileSync(join(dirs.bin, 'claude'), FAKE_CLAUDE);
   chmodSync(join(dirs.bin, 'claude'), 0o755);
+  // Shadow the real notify-send: the test server must not pop desktop notifications on the dev's screen.
+  writeFileSync(join(dirs.bin, 'notify-send'), '#!/bin/sh\n');
+  chmodSync(join(dirs.bin, 'notify-send'), 0o755);
   const port = await freePort();
   base = `http://127.0.0.1:${port}`;
   const env: NodeJS.ProcessEnv = {
