@@ -64,3 +64,174 @@ export function capLive(wanted: Session[], max: number, promoted: string[] = [])
   );
   return { live: wanted.filter((s) => keep.has(s.id)), over: wanted.filter((s) => !keep.has(s.id)) };
 }
+
+/** Free-tiling layout: a leaf is a session id, a split lays its children out in a row or column with a size ratio each
+ *  (sizes sum to 1). Every function below is pure and returns a new tree. */
+export type Layout = string | Split;
+export interface Split {
+  dir: 'row' | 'col';
+  children: Layout[];
+  sizes: number[];
+}
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Smallest share a child keeps when resized. Six children (MAX_LIVE) in one split still fit (1/6 > 0.15). */
+export const MIN_SIZE = 0.15;
+
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+
+/** The leaf ids in tree order. */
+export function leaves(t: Layout | null): string[] {
+  return t === null ? [] : typeof t === 'string' ? [t] : t.children.flatMap(leaves);
+}
+
+/** The tree without leaves `keep` rejects: one-child splits collapse into the child, the rest share the freed space. */
+function prune(t: Layout | null, keep: (id: string) => boolean): Layout | null {
+  if (t === null) return null;
+  if (typeof t === 'string') return keep(t) ? t : null;
+  const children: Layout[] = [];
+  const sizes: number[] = [];
+  t.children.forEach((c, i) => {
+    const p = prune(c, keep);
+    if (p !== null) [children[children.length], sizes[sizes.length]] = [p, t.sizes[i]];
+  });
+  if (children.length < 2) return children[0] ?? null;
+  const total = sum(sizes);
+  return { dir: t.dir, children, sizes: sizes.map((x) => x / total) };
+}
+
+function replaceLeaf(t: Layout, id: string, by: Layout): Layout {
+  if (typeof t === 'string') return t === id ? by : t;
+  return { ...t, children: t.children.map((c) => replaceLeaf(c, id, by)) };
+}
+
+/** Where every leaf sits, in 0..1 of the whole area. */
+export function rects(t: Layout | null, box: Rect = { x: 0, y: 0, w: 1, h: 1 }, out = new Map<string, Rect>()) {
+  if (t === null) return out;
+  if (typeof t === 'string') return out.set(t, box);
+  let at = 0;
+  t.children.forEach((c, i) => {
+    const s = t.sizes[i];
+    rects(
+      c,
+      t.dir === 'row'
+        ? { x: box.x + at * box.w, y: box.y, w: box.w * s, h: box.h }
+        : { x: box.x, y: box.y + at * box.h, w: box.w, h: box.h * s },
+      out,
+    );
+    at += s;
+  });
+  return out;
+}
+
+/** Fits the tree to the live sessions: drops dead and duplicate leaves, collapses what is left, and gives every live
+ *  session without a leaf one by halving the largest leaf along its longer side. */
+export function reconcile(tree: Layout | null, liveIds: string[]): Layout | null {
+  const live = new Set(liveIds);
+  const seen = new Set<string>();
+  let t = prune(tree, (id) => live.has(id) && !seen.has(id) && !!seen.add(id));
+  for (const id of liveIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    if (t === null) {
+      t = id;
+      continue;
+    }
+    let big = '';
+    let area = -1;
+    for (const [k, r] of rects(t)) if (r.w * r.h > area + 1e-9) [big, area] = [k, r.w * r.h];
+    const r = rects(t).get(big)!;
+    t = replaceLeaf(t, big, { dir: r.w >= r.h ? 'row' : 'col', children: [big, id], sizes: [0.5, 0.5] });
+  }
+  return t;
+}
+
+/** Applies `fn` to the split at `path` (child indexes from the root); an invalid path leaves the tree alone. */
+function atSplit(t: Layout, path: number[], fn: (s: Split) => Split): Layout {
+  if (typeof t === 'string') return t;
+  if (!path.length) return fn(t);
+  const [i, ...rest] = path;
+  if (!t.children[i]) return t;
+  return { ...t, children: t.children.map((c, j) => (j === i ? atSplit(c, rest, fn) : c)) };
+}
+
+/** Sets the sizes of the split at `path`. Ignored unless there is one size per child, each at least MIN_SIZE. */
+export function setSizes(t: Layout, path: number[], sizes: number[]): Layout {
+  return atSplit(t, path, (s) =>
+    sizes.length === s.children.length && sizes.every((x) => x >= MIN_SIZE - 1e-9)
+      ? { ...s, sizes: sizes.map((x) => x / sum(sizes)) }
+      : s,
+  );
+}
+
+/** Moves the divider after child `index` of the split at `path` by `delta` (a ratio; negative = up/left); neither
+ *  neighbour shrinks below MIN_SIZE. */
+export function resize(t: Layout, path: number[], index: number, delta: number): Layout {
+  return atSplit(t, path, (s) => {
+    if (index < 0 || index + 1 >= s.sizes.length) return s;
+    // A neighbour already under MIN_SIZE (halving can do that) keeps its size at the least instead of jumping up.
+    const [a, b] = [s.sizes[index], s.sizes[index + 1]];
+    const d = Math.min(Math.max(delta, Math.min(MIN_SIZE, a) - a), b - Math.min(MIN_SIZE, b));
+    const sizes = s.sizes.slice();
+    sizes[index] += d;
+    sizes[index + 1] -= d;
+    return { ...s, sizes };
+  });
+}
+
+/** Gives every child of the split at `path` the same share. */
+export function equalize(t: Layout, path: number[]): Layout {
+  return atSplit(t, path, (s) => ({ ...s, sizes: s.sizes.map(() => 1 / s.sizes.length) }));
+}
+
+/** Exchanges the places of two leaves. */
+export function swap(t: Layout, a: string, b: string): Layout {
+  const ids = leaves(t);
+  if (a === b || !ids.includes(a) || !ids.includes(b)) return t;
+  const go = (n: Layout): Layout =>
+    typeof n === 'string' ? (n === a ? b : n === b ? a : n) : { ...n, children: n.children.map(go) };
+  return go(t);
+}
+
+/** Takes leaf `from` out and puts it on the `edge` of leaf `to`, splitting that leaf's cell in half. */
+export function moveToEdge(t: Layout, from: string, to: string, edge: 'top' | 'bottom' | 'left' | 'right'): Layout {
+  const ids = leaves(t);
+  if (from === to || !ids.includes(from) || !ids.includes(to)) return t;
+  const rest = prune(t, (id) => id !== from)!;
+  const first = edge === 'top' || edge === 'left';
+  return replaceLeaf(rest, to, {
+    dir: edge === 'top' || edge === 'bottom' ? 'col' : 'row',
+    children: first ? [from, to] : [to, from],
+    sizes: [0.5, 0.5],
+  });
+}
+
+export const serializeLayout = (t: Layout): string => JSON.stringify(t);
+
+/** The tree in `raw` (a localStorage value), or null when it is missing or not a sound tree: bad JSON, wrong shapes,
+ *  a split with fewer than two children, mismatched or non-positive sizes, a repeated id. Sizes are renormalised. */
+export function parseLayout(raw: string | null): Layout | null {
+  const seen = new Set<string>();
+  const check = (v: unknown): Layout | null => {
+    if (typeof v === 'string') return v && !seen.has(v) && !!seen.add(v) ? v : null;
+    if (typeof v !== 'object' || v === null) return null;
+    const { dir, children, sizes } = v as Partial<Split>;
+    if ((dir !== 'row' && dir !== 'col') || !Array.isArray(children) || !Array.isArray(sizes)) return null;
+    if (children.length < 2 || sizes.length !== children.length) return null;
+    if (!sizes.every((x) => typeof x === 'number' && Number.isFinite(x) && x > 0)) return null;
+    const kids = children.map(check);
+    if (kids.includes(null)) return null;
+    const total = sum(sizes);
+    return { dir, children: kids as Layout[], sizes: sizes.map((x) => x / total) };
+  };
+  try {
+    return raw === null ? null : check(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
