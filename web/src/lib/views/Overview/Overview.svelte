@@ -56,7 +56,9 @@
   const saved = storedJson(KEY);
   let minimized = $state<string[]>(Array.isArray(saved) ? saved.filter((x) => typeof x === 'string') : []);
   const setMinimized = (list: string[]) => store(KEY, JSON.stringify((minimized = list)));
+  // Pruning waits for the first full load: a partial list (an event before the fetch) would wipe the remembered ids.
   $effect(() => {
+    if (!app.ready) return;
     const kept = pruneMinimized(minimized, app.sessions);
     if (kept !== minimized) setMinimized(kept);
   });
@@ -74,6 +76,7 @@
   let known = $state(ids(KNOWN_KEY));
   const remember = (key: string, list: string[]) => store(key, JSON.stringify(list));
   $effect(() => {
+    if (!app.ready) return;
     const p = pruneMinimized(placed, app.sessions);
     if (p !== placed) remember(PLACED_KEY, (placed = p));
     const k = pruneMinimized(known, app.sessions);
