@@ -11,6 +11,7 @@ Up to four sessions side by side (1, 2, 3 with the first spanning two rows, or 2
 | `projectOf`   | `(session) => {name, accent?}` | Project chip and accent strip in the header                                                                                                    |
 | `maximizable` | `boolean`                      | Maximize button + double-click on title; fills the grid, click restores (Esc goes to the terminal; other panes unmount, sessions keep running) |
 | `maximizedId` | `string \| null`               | Bindable id of the maximized pane; set it to maximize or move the maximized pane                                                               |
+| `onmaximize`  | `(id) => void`                 | Replaces the in-grid maximize: button and title double-click call it instead (Overview opens the normal view)                                  |
 | `hrefFor`     | `(s) => string`                | Adds an Open link to each header                                                                                                               |
 | `selectedId`  | `string \| null`               |                                                                                                                                                |
 | `onselect`    | `(id) => void`                 | Header click or focus in pane                                                                                                                  |

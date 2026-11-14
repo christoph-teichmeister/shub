@@ -37,6 +37,8 @@
     maximizable?: boolean;
     /** The maximized pane's session id (bindable), so the parent can move it, e.g. with the keyboard. */
     maximizedId?: string | null;
+    /** Replaces the in-grid maximize: the button and the title double-click call this instead (e.g. to open the normal view). */
+    onmaximize?: (id: string) => void;
     /** Free-tiling layout (leaves are session ids): nested boxes with drag bars instead of the grid. Ignored while a pane
      *  is maximized. Without it the grid renders as before. */
     layout?: Layout | null;
@@ -57,6 +59,7 @@
     hrefFor,
     maximizable = false,
     maximizedId = $bindable(null),
+    onmaximize,
     layout = null,
     onlayout,
     pane,
@@ -157,7 +160,7 @@
     addEventListener('pointerup', end, { signal: stop.signal });
     addEventListener('pointercancel', end, { signal: stop.signal });
   }
-  const toggleMax = (id: string) => (maximizedId = maximizedId === id ? null : id);
+  const toggleMax = (id: string) => (onmaximize ? onmaximize(id) : (maximizedId = maximizedId === id ? null : id));
   $effect(() => {
     if (maximizedId && !all.some((s) => s.id === maximizedId)) maximizedId = null;
   });
