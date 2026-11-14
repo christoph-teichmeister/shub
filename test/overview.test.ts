@@ -230,12 +230,28 @@ test('swap: exchanges two leaves anywhere, unknown or equal ids change nothing',
 test('moveToEdge: takes the leaf out and wraps the target on the chosen edge', () => {
   const t = row(['a', 'b', 'c'], [0.2, 0.3, 0.5]);
   const r = moveToEdge(t, 'a', 'c', 'right') as Split;
-  assert.deepEqual(r.children, ['b', row(['c', 'a'], [0.5, 0.5])]);
-  near(r.sizes[0], 0.375);
-  near(r.sizes[1], 0.625);
+  assert.deepEqual(r.children, ['b', 'c', 'a']);
+  [0.375, 0.3125, 0.3125].forEach((x, i) => near(r.sizes[i], x));
   assert.deepEqual((moveToEdge(t, 'c', 'a', 'top') as Split).children[0], col(['c', 'a'], [0.5, 0.5]));
-  assert.deepEqual((moveToEdge(t, 'a', 'b', 'left') as Split).children[0], row(['a', 'b'], [0.5, 0.5]));
+  assert.deepEqual((moveToEdge(t, 'a', 'b', 'left') as Split).children, ['a', 'b', 'c']);
   assert.deepEqual((moveToEdge(t, 'a', 'b', 'bottom') as Split).children[0], col(['b', 'a'], [0.5, 0.5]));
+});
+
+test('moveToEdge: same direction as the parent joins as a sibling, repeated moves do not nest', () => {
+  let t: Layout = row(['a', 'b', 'c']);
+  t = moveToEdge(t, 'a', 'c', 'right');
+  t = moveToEdge(t, 'b', 'c', 'right');
+  assert.deepEqual(leaves(t), ['c', 'b', 'a']);
+  assert.ok((t as Split).children.every((c) => typeof c === 'string'));
+});
+
+test('reconcile: leaves too small to halve are skipped while a bigger one exists', () => {
+  const t = row([col(['a', 'b'], [0.5, 0.5]), 'c'], [0.1, 0.9]) as Layout;
+  const r = reconcile(t, ['a', 'b', 'c', 'd']) as Split;
+  assert.deepEqual(r.children[0], t && (t as Split).children[0]);
+  assert.deepEqual(leaves(r).sort(), ['a', 'b', 'c', 'd']);
+  // nothing fits: still places the id
+  assert.deepEqual(leaves(reconcile(row(['a', 'b'], [0.5, 0.5]), ['a', 'b'])).sort(), ['a', 'b']);
 });
 
 test('moveToEdge: two leaves collapse and rewrap, bad moves change nothing', () => {
