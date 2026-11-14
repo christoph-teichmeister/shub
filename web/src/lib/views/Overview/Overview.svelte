@@ -126,10 +126,12 @@
   // CommandChip's "Open in terminal": a shell as a child of the session; its pane shows it under the Claude terminal.
   async function newShell(from: Session, cwd?: string) {
     const open = shellOf(from);
-    if (open && !cwd) return open.id; // one shell per pane: reuse it
-    const s = await startSession({ projectId: from.projectId, kind: 'shell', parentId: from.id, cwd });
+    const s =
+      open && !cwd ? open : await startSession({ projectId: from.projectId, kind: 'shell', parentId: from.id, cwd }); // one shell per pane: reuse it
+    if (s) shellFocus = s.id;
     return s?.id;
   }
+  let shellFocus = $state<string | null>(null); // the shell just opened takes the keyboard
   const shellOf = (s: Session) => childrenOf(s.id).find((k) => k.kind === 'shell' && k.status !== 'exited');
   // Alt K search also lands here (new or resumed sessions), so it never leaves the grid.
   function showPane(s: Session) {
@@ -292,7 +294,13 @@
                   />
                 </div>
                 {#key shell.id}
-                  <TerminalView sessionId={shell.id} accent={project(s.projectId)?.accent} label={shell.name} compact />
+                  <TerminalView
+                    sessionId={shell.id}
+                    focused={shell.id === shellFocus}
+                    accent={project(s.projectId)?.accent}
+                    label={shell.name}
+                    compact
+                  />
                 {/key}
               </div>
             {/if}
