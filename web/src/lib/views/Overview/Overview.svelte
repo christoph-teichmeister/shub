@@ -58,6 +58,15 @@
     const kept = pruneMinimized(minimized, app.sessions);
     if (kept !== minimized) setMinimized(kept);
   });
+  // A session that is not running (paused, restored later) is parked in the strip and remembered, so a restart that
+  // brings it back to life does not pull it into the grid: only "Show", Alt K or a brand-new session does.
+  $effect(() => {
+    const idle = shown.filter((s) => !LIVE.has(s.status) && s.status !== 'new').map((s) => s.id);
+    untrack(() => {
+      const add = idle.filter((id) => !minimized.includes(id));
+      if (add.length) setMinimized([...minimized, ...add]);
+    });
+  });
   // Past MAX_LIVE the cells are unreadable: the overflow waits in the strip, "Show" promotes one (not remembered).
   let promoted = $state<string[]>([]);
   // A just-started session is 'new' until Claude does something: it only gets a pane once promoted (Alt N, Alt K).
