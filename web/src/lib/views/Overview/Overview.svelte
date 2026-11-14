@@ -248,7 +248,7 @@
         onselect={(id) => (focusId = id)}
         maximizable
         bind:maximizedId={maxId}
-        hrefFor={sessionHref}
+        onmaximize={(id) => (location.hash = sessionHref(live.find((s) => s.id === id)!))}
         onminimize={(id) => setMinimized([...minimized, id])}
       >
         {#snippet actions(s)}
