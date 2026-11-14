@@ -221,6 +221,37 @@ export function moveToEdge(t: Layout, from: string, to: string, edge: 'top' | 'b
   });
 }
 
+/** The leaf nearest to `id` in direction `dir` by where the panes really sit (centres, a sideways offset counts double),
+ *  or `id` at an edge. Works for any tree; the auto grid keeps using neighbour(). */
+export function neighbourByRect(t: Layout | null, id: string, dir: 'left' | 'right' | 'up' | 'down'): string {
+  const all = rects(t);
+  const r = all.get(id);
+  if (!r) return id;
+  const horizontal = dir === 'left' || dir === 'right';
+  const sign = dir === 'right' || dir === 'down' ? 1 : -1;
+  let best = id;
+  let score = Infinity;
+  for (const [k, o] of all) {
+    const dx = o.x + o.w / 2 - (r.x + r.w / 2);
+    const dy = o.y + o.h / 2 - (r.y + r.h / 2);
+    const [main, cross] = horizontal ? [dx, dy] : [dy, dx];
+    // the whole pane must lie beyond the edge, not just its centre
+    const gap = { left: r.x - (o.x + o.w), right: o.x - (r.x + r.w), up: r.y - (o.y + o.h), down: o.y - (r.y + r.h) }[
+      dir
+    ];
+    if (k !== id && gap > -1e-9 && main * sign + 2 * Math.abs(cross) < score)
+      [best, score] = [k, main * sign + 2 * Math.abs(cross)];
+  }
+  return best;
+}
+
+/** Drop zone for a point at (`fx`, `fy`) in 0..1 of a pane: the nearest edge when within the outer quarter, else swap. */
+export function dropZone(fx: number, fy: number): 'top' | 'bottom' | 'left' | 'right' | 'center' {
+  const d = { left: fx, right: 1 - fx, top: fy, bottom: 1 - fy };
+  const edge = (Object.keys(d) as (keyof typeof d)[]).reduce((a, b) => (d[b] < d[a] ? b : a));
+  return d[edge] < 0.25 ? edge : 'center';
+}
+
 export const serializeLayout = (t: Layout): string => JSON.stringify(t);
 
 /** The tree in `raw` (a localStorage value), or null when it is missing or not a sound tree: bad JSON, wrong shapes,

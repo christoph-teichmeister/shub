@@ -7,7 +7,9 @@ import {
   leaves,
   type Layout,
   moveToEdge,
+  dropZone,
   neighbour,
+  neighbourByRect,
   overviewSessions,
   parseLayout,
   pruneMinimized,
@@ -289,4 +291,28 @@ test('gridLayout is rows of cols panes; a short last row shares the whole row', 
     children: [{ dir: 'row', children: ['a', 'b'], sizes: [0.5, 0.5] }, 'c'],
     sizes: [0.5, 0.5],
   });
+});
+
+test('neighbourByRect: nearest pane by position, stays at edges, skips panes that are not in that direction', () => {
+  // left: a tall; right: b over c
+  const t: Layout = {
+    dir: 'row',
+    sizes: [0.5, 0.5],
+    children: ['a', { dir: 'col', sizes: [0.5, 0.5], children: ['b', 'c'] }],
+  };
+  assert.equal(neighbourByRect(t, 'a', 'right'), 'b');
+  assert.equal(neighbourByRect(t, 'c', 'left'), 'a');
+  assert.equal(neighbourByRect(t, 'b', 'down'), 'c');
+  assert.equal(neighbourByRect(t, 'c', 'down'), 'c');
+  assert.equal(neighbourByRect(t, 'a', 'up'), 'a');
+  assert.equal(neighbourByRect(t, 'x', 'up'), 'x');
+});
+
+test('dropZone: outer quarter is the nearest edge, the middle swaps', () => {
+  assert.equal(dropZone(0.5, 0.5), 'center');
+  assert.equal(dropZone(0.1, 0.5), 'left');
+  assert.equal(dropZone(0.9, 0.4), 'right');
+  assert.equal(dropZone(0.5, 0.05), 'top');
+  assert.equal(dropZone(0.6, 0.95), 'bottom');
+  assert.equal(dropZone(0.1, 0.2), 'left');
 });
