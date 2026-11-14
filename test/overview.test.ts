@@ -276,3 +276,17 @@ test('parseLayout: garbage gives null', () => {
   ])
     assert.equal(parseLayout(raw), null, String(raw));
 });
+
+import { gridLayout } from '../web/src/lib/overview.ts';
+
+test('gridLayout is rows of cols panes; a short last row shares the whole row', () => {
+  assert.equal(gridLayout([], 2), null);
+  assert.equal(gridLayout(['a'], 2), 'a');
+  assert.deepEqual(gridLayout(['a', 'b'], 2), { dir: 'row', children: ['a', 'b'], sizes: [0.5, 0.5] });
+  assert.deepEqual(gridLayout(['a', 'b'], 1), { dir: 'col', children: ['a', 'b'], sizes: [0.5, 0.5] });
+  assert.deepEqual(gridLayout(['a', 'b', 'c'], 2), {
+    dir: 'col',
+    children: [{ dir: 'row', children: ['a', 'b'], sizes: [0.5, 0.5] }, 'c'],
+    sizes: [0.5, 0.5],
+  });
+});

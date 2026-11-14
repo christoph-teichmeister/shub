@@ -129,6 +129,16 @@ export function rects(t: Layout | null, box: Rect = { x: 0, y: 0, w: 1, h: 1 }, 
   return out;
 }
 
+const even = (dir: 'row' | 'col', children: Layout[]): Layout =>
+  children.length === 1 ? children[0] : { dir, children, sizes: children.map(() => 1 / children.length) };
+
+/** The auto grid as a tree: rows of `cols` panes, the short last row's panes share the whole row; null when empty. */
+export function gridLayout(ids: string[], cols: number): Layout | null {
+  const rows: Layout[] = [];
+  for (let i = 0; i < ids.length; i += cols) rows.push(even('row', ids.slice(i, i + cols)));
+  return rows.length ? even('col', rows) : null;
+}
+
 /** Fits the tree to the live sessions: drops dead and duplicate leaves, collapses what is left, and gives every live
  *  session without a leaf one by halving the largest leaf along its longer side. */
 export function reconcile(tree: Layout | null, liveIds: string[]): Layout | null {

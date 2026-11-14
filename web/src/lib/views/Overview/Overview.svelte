@@ -12,7 +12,19 @@
   import TerminalView from '../../components/TerminalView/TerminalView.svelte';
   import ProjectPicker from './ProjectPicker.svelte';
   import ConfirmDialog, { type Confirm } from '../Main/ConfirmDialog.svelte';
-  import { capLive, gridColumns, LIVE, MAX_LIVE, neighbour, overviewSessions, pruneMinimized } from '../../overview.ts';
+  import {
+    capLive,
+    gridColumns,
+    gridLayout,
+    LIVE,
+    MAX_LIVE,
+    neighbour,
+    overviewSessions,
+    parseLayout,
+    pruneMinimized,
+    reconcile,
+    type Layout,
+  } from '../../overview.ts';
   import { store, storedJson } from '../../stored.ts';
   import { villageBack } from '../../stores/router.svelte.ts';
   import { toast } from '../../stores/toasts.svelte.ts';
@@ -51,6 +63,34 @@
   const capped = $derived(capLive(shown.filter(wantsLive), MAX_LIVE, promoted));
   const live = $derived(capped.live);
   const quiet = $derived(shown.filter((s) => !live.includes(s)));
+  // A dragged layout is remembered per project filter ('' = all). Until the first drag the grid stays automatic: it is
+  // shown as a tree too (so it has bars), but only a drag stores it. Live-set changes are folded in by reconcile.
+  const LAYOUT_KEY = 'shub.overview.layout';
+  const savedLayouts = storedJson(LAYOUT_KEY);
+  const loaded: Record<string, Layout> = {};
+  for (const [k, v] of Object.entries(savedLayouts && typeof savedLayouts === 'object' ? savedLayouts : {})) {
+    const t = parseLayout(JSON.stringify(v));
+    if (t) loaded[k] = t;
+  }
+  let custom = $state(loaded);
+  const setLayout = (t: Layout | null) => {
+    const next = { ...custom };
+    if (t) next[projectId] = t;
+    else delete next[projectId];
+    custom = next;
+    store(LAYOUT_KEY, JSON.stringify(next));
+  };
+  const layout = $derived(
+    custom[projectId]
+      ? reconcile(
+          custom[projectId],
+          live.map((s) => s.id),
+        )
+      : gridLayout(
+          live.map((s) => s.id),
+          gridColumns(live.length, w, h),
+        ),
+  );
   const HIDE_KEY = 'shub.overview.stripHidden';
   let stripHidden = $state(storedJson(HIDE_KEY) === true);
   const toggleStrip = () => store(HIDE_KEY, JSON.stringify((stripHidden = !stripHidden)));
@@ -163,6 +203,9 @@
         · {needsYouCount(shown)} need you{/if}
     </span>
     <span class="grow"></span>
+    {#if custom[projectId]}
+      <Button size="sm" onclick={() => setLayout(null)}>Reset layout</Button>
+    {/if}
     <SelectField
       label="Project"
       hideLabel
@@ -177,6 +220,8 @@
         sessions={live}
         limit={live.length}
         columns={gridColumns(live.length, w, h)}
+        {layout}
+        onlayout={setLayout}
         projectOf={(s) => project(s.projectId)}
         selectedId={focusId}
         onselect={(id) => (focusId = id)}
