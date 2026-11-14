@@ -8,6 +8,7 @@
   import Button from '../../components/Button/Button.svelte';
   import CommandChip from '../../components/CommandChip/CommandChip.svelte';
   import EmptyState from '../../components/EmptyState/EmptyState.svelte';
+  import IconButton from '../../components/IconButton/IconButton.svelte';
   import Icon from '../../components/Icon/Icon.svelte';
   import SelectField from '../../components/SelectField/SelectField.svelte';
   import SessionCard from '../../components/SessionCard/SessionCard.svelte';
@@ -122,12 +123,14 @@
     const s = await startSession({ projectId: p.id, kind: 'claude' });
     if (s) showPane(s);
   }
-  // CommandChip's "Open in terminal": the grid only shows Claude sessions, so the shell opens as its own page.
+  // CommandChip's "Open in terminal": a shell as a child of the session; its pane shows it under the Claude terminal.
   async function newShell(from: Session, cwd?: string) {
+    const open = shellOf(from);
+    if (open && !cwd) return open.id; // one shell per pane: reuse it
     const s = await startSession({ projectId: from.projectId, kind: 'shell', parentId: from.id, cwd });
-    if (s) location.hash = sessionHref(s);
     return s?.id;
   }
+  const shellOf = (s: Session) => childrenOf(s.id).find((k) => k.kind === 'shell' && k.status !== 'exited');
   // Alt K search also lands here (new or resumed sessions), so it never leaves the grid.
   function showPane(s: Session) {
     promoted = [...promoted, s.id]; // past the cap it still gets its pane
@@ -268,6 +271,7 @@
           {/if}
         {/snippet}
         {#snippet pane(s)}
+          {@const shell = shellOf(s)}
           <div class="cell">
             <TerminalView
               sessionId={s.id}
@@ -276,6 +280,22 @@
               focused={s.id === focusId}
               compact
             />
+            {#if shell}
+              <div class="shell">
+                <div class="shell-head">
+                  <span>{shell.name}</span>
+                  <IconButton
+                    label="Close terminal"
+                    icon="close"
+                    size="xs"
+                    onclick={() => void closeSession(shell.id)}
+                  />
+                </div>
+                {#key shell.id}
+                  <TerminalView sessionId={shell.id} accent={project(s.projectId)?.accent} label={shell.name} compact />
+                {/key}
+              </div>
+            {/if}
             <CommandChip session={s} onterminal={(cwd) => newShell(s, cwd)} />
           </div>
         {/snippet}
@@ -321,6 +341,23 @@
 </div>
 
 <style>
+  .shell {
+    flex: 0 0 40%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-top: var(--hairline) solid var(--line);
+  }
+
+  .shell-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--muted);
+  }
+
   .cell {
     flex: 1 1 auto;
     min-width: 0;
