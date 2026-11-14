@@ -1,6 +1,8 @@
 <script lang="ts">
   // Overview (#/overview): the running sessions as live terminals in one grid that fills the screen, so you can work
-  // in many at once; paused and not-started ones wait below as small cards. Click a pane to type in it; Alt arrows, Alt 1 to 9, Alt J and Alt Enter move between panes; Alt W closes the focused one.
+  // in many at once; paused and not-started ones wait below as small cards. Click a pane to type in it; Alt arrows, Alt 1 to 9, Alt J and Alt Enter move between panes; Alt W closes the focused one; Alt Shift arrows swap it with the pane next to it.
+  // Drag a pane's title onto another pane's edge to move it there (middle: swap), drag the bars to resize; the layout is
+  // remembered per project until "Reset layout".
   import { untrack } from 'svelte';
   import type { ProjectView, Session } from '../../../../../shared/api.ts';
   import Button from '../../components/Button/Button.svelte';
@@ -19,10 +21,12 @@
     LIVE,
     MAX_LIVE,
     neighbour,
+    neighbourByRect,
     overviewSessions,
     parseLayout,
     pruneMinimized,
     reconcile,
+    swap,
     type Layout,
   } from '../../overview.ts';
   import { store, storedJson } from '../../stored.ts';
@@ -161,15 +165,20 @@
     else if (e.code === 'KeyW') closeFocused();
     else if (e.code === 'Enter') {
       if (live[i]) location.hash = sessionHref(live[i]);
+    } else if (e.code in ARROWS && e.shiftKey) {
+      // Swap the focused pane with its neighbour on screen (the tree is always there, auto grid included).
+      const nb = layout && live[i] ? neighbourByRect(layout, live[i].id, ARROWS[e.code as keyof typeof ARROWS]) : '';
+      if (layout && nb && nb !== focusId && !maxId) setLayout(swap(layout, focusId!, nb));
     } else if (e.code in ARROWS && maxId) {
       // Only one pane is visible: the arrows step through the panes in order.
       const back = e.code === 'ArrowLeft' || e.code === 'ArrowUp';
       target = live[(Math.max(i, 0) + (back ? -1 : 1) + live.length) % live.length];
     } else if (e.code in ARROWS) {
-      target =
-        live[
-          i < 0 ? 0 : neighbour(i, ARROWS[e.code as keyof typeof ARROWS], gridColumns(live.length, w, h), live.length)
-        ];
+      const dir = ARROWS[e.code as keyof typeof ARROWS];
+      const id = i < 0 ? live[0]?.id : custom[projectId] ? neighbourByRect(layout, live[i].id, dir) : undefined;
+      target = id
+        ? live.find((s) => s.id === id)
+        : live[neighbour(i, dir, gridColumns(live.length, w, h), live.length)];
     } else if (digit) target = live[Number(digit[1]) - 1];
     else if (e.code === 'KeyJ') {
       const hot = live.filter((s) => s.status === 'needs-you');

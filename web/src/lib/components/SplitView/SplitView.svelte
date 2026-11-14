@@ -1,7 +1,17 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { Session } from '../../../../../shared/api.ts';
-  import { equalize, rects, resize, setSizes, type Layout, type Rect } from '../../overview.ts';
+  import {
+    dropZone,
+    equalize,
+    moveToEdge,
+    rects,
+    resize,
+    setSizes,
+    swap,
+    type Layout,
+    type Rect,
+  } from '../../overview.ts';
   import { idleWithAgents, STATUS_LABEL } from '../../status.ts';
   import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
@@ -109,6 +119,43 @@
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'])
       el.addEventListener(type, () => stop.abort(), { signal: stop.signal });
   }
+  // Header drag: past 5px the title starts moving its pane; over another pane the edge band moves it there, the middle
+  // swaps. A drag that never passed the threshold stays a plain click.
+  type Over = { id: string; zone: ReturnType<typeof dropZone> };
+  let dragging = $state<{ id: string; over: Over | null } | null>(null);
+  let wasDrag = false;
+  function grab(e: PointerEvent, id: string) {
+    wasDrag = false;
+    if (!tree || e.button) return;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const stop = new AbortController();
+    const at = (m: PointerEvent): Over | null => {
+      const el = document.elementFromPoint(m.clientX, m.clientY)?.closest<HTMLElement>('[data-pane]');
+      const to = el?.dataset.pane;
+      if (!el || !to || to === id) return null;
+      const r = el.getBoundingClientRect();
+      return { id: to, zone: dropZone((m.clientX - r.left) / r.width, (m.clientY - r.top) / r.height) };
+    };
+    addEventListener(
+      'pointermove',
+      (m) => {
+        if (!dragging && Math.hypot(m.clientX - x0, m.clientY - y0) < 5) return;
+        wasDrag = true;
+        dragging = { id, over: at(m) };
+      },
+      { signal: stop.signal },
+    );
+    const end = (m: PointerEvent) => {
+      stop.abort();
+      const over = dragging && m.type === 'pointerup' ? at(m) : null;
+      dragging = null;
+      if (!over || !tree) return;
+      onlayout?.(over.zone === 'center' ? swap(tree, id, over.id) : moveToEdge(tree, id, over.id, over.zone));
+    };
+    addEventListener('pointerup', end, { signal: stop.signal });
+    addEventListener('pointercancel', end, { signal: stop.signal });
+  }
   const toggleMax = (id: string) => (maximizedId = maximizedId === id ? null : id);
   $effect(() => {
     if (maximizedId && !all.some((s) => s.id === maximizedId)) maximizedId = null;
@@ -121,6 +168,8 @@
     class="pane {session.status}"
     class:selected={session.id === selectedId}
     aria-label={session.name}
+    data-pane={session.id}
+    class:dragged={dragging?.id === session.id}
     style:--accent={proj?.accent}
     style:--x={place?.get(session.id)?.x}
     style:--y={place?.get(session.id)?.y}
@@ -135,8 +184,9 @@
       <button
         type="button"
         class="title"
-        onclick={() => onselect?.(session.id)}
-        ondblclick={() => maximizable && toggleMax(session.id)}
+        onpointerdown={(e) => grab(e, session.id)}
+        onclick={() => !wasDrag && onselect?.(session.id)}
+        ondblclick={() => maximizable && !wasDrag && toggleMax(session.id)}
       >
         <StatusDot status={session.status} idle={idleWithAgents(session)} />
         <span class="name">{session.name}</span>
@@ -160,6 +210,7 @@
       {/if}
     </div>
     <div class="body">{@render pane(session)}</div>
+    {#if dragging?.over?.id === session.id}<div class="drop {dragging.over.zone}"></div>{/if}
   </section>
 {/snippet}
 
@@ -251,6 +302,7 @@
   }
 
   .pane {
+    position: relative;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -270,6 +322,36 @@
 
   .n3 .pane:first-child {
     grid-row: span 2;
+  }
+
+  .pane.dragged {
+    opacity: 0.5;
+  }
+
+  /* Where the dragged pane would land: the half it would take, or the whole pane for a swap. */
+  .drop {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: color-mix(in srgb, var(--primary) 25%, transparent);
+    border: var(--ring) solid var(--primary);
+    border-radius: var(--radius-lg);
+  }
+
+  .drop.left {
+    right: 50%;
+  }
+
+  .drop.right {
+    left: 50%;
+  }
+
+  .drop.top {
+    bottom: 50%;
+  }
+
+  .drop.bottom {
+    top: 50%;
   }
 
   .pane.selected {
