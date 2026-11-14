@@ -6,6 +6,7 @@
   import { untrack } from 'svelte';
   import type { ProjectView, Session } from '../../../../../shared/api.ts';
   import Button from '../../components/Button/Button.svelte';
+  import CommandChip from '../../components/CommandChip/CommandChip.svelte';
   import EmptyState from '../../components/EmptyState/EmptyState.svelte';
   import Icon from '../../components/Icon/Icon.svelte';
   import SelectField from '../../components/SelectField/SelectField.svelte';
@@ -120,6 +121,12 @@
     picking = false;
     const s = await startSession({ projectId: p.id, kind: 'claude' });
     if (s) showPane(s);
+  }
+  // CommandChip's "Open in terminal": the grid only shows Claude sessions, so the shell opens as its own page.
+  async function newShell(from: Session, cwd?: string) {
+    const s = await startSession({ projectId: from.projectId, kind: 'shell', parentId: from.id, cwd });
+    if (s) location.hash = sessionHref(s);
+    return s?.id;
   }
   // Alt K search also lands here (new or resumed sessions), so it never leaves the grid.
   function showPane(s: Session) {
@@ -261,13 +268,16 @@
           {/if}
         {/snippet}
         {#snippet pane(s)}
-          <TerminalView
-            sessionId={s.id}
-            accent={project(s.projectId)?.accent}
-            label={s.name}
-            focused={s.id === focusId}
-            compact
-          />
+          <div class="cell">
+            <TerminalView
+              sessionId={s.id}
+              accent={project(s.projectId)?.accent}
+              label={s.name}
+              focused={s.id === focusId}
+              compact
+            />
+            <CommandChip session={s} onterminal={(cwd) => newShell(s, cwd)} />
+          </div>
         {/snippet}
       </SplitView>
     {:else}
@@ -311,6 +321,14 @@
 </div>
 
 <style>
+  .cell {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
   .overview {
     height: 100vh;
     display: flex;
