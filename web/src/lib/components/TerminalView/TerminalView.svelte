@@ -375,7 +375,18 @@
     };
     const observer = new ResizeObserver(() => requestAnimationFrame(refit));
     observer.observe(host!);
-    void document.fonts?.ready.then(refit);
+    // fonts.ready resolves at once when nothing is loading yet, so xterm can measure its cells with the fallback font
+    // and keep those widths once the webfont arrives. Load the face, then flip the family so xterm measures again.
+    const { fontFamily, fontSize } = look();
+    void document.fonts
+      ?.load(`${fontSize}px ${fontFamily}`)
+      .then(() => {
+        if (closed) return;
+        t.options.fontFamily = 'monospace';
+        t.options.fontFamily = fontFamily;
+        refit();
+      })
+      .catch(() => {});
     // WebGL draws box-drawing glyphs cell-exact, so Claude's tables connect; the DOM renderer leaves gaps. The addon
     // is a chunk of its own: until it arrives, and without WebGL or when it fails to load, the DOM renderer draws.
     void import('@xterm/addon-webgl')
