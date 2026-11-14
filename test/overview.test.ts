@@ -196,6 +196,15 @@ test('resize: moves the divider, clamps both neighbours to MIN_SIZE, never chang
   assert.deepEqual(resize('a', [], 0, 0.1), 'a');
 });
 
+test('resize: a neighbour already under MIN_SIZE never shrinks further and does not jump', () => {
+  const t = row(['a', 'b'], [0.05, 0.95]);
+  assert.deepEqual((resize(t, [], 0, -0.1) as Split).sizes, [0.05, 0.95]);
+  const grow = resize(t, [], 0, 0.1) as Split;
+  near(grow.sizes[0], 0.15);
+  near(grow.sizes[1], 0.85);
+  near((resize(t, [], 0, 5) as Split).sizes[1], MIN_SIZE);
+});
+
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
 test('equalize: equal shares for the split at the path', () => {

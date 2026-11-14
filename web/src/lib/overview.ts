@@ -170,11 +170,13 @@ export function setSizes(t: Layout, path: number[], sizes: number[]): Layout {
 }
 
 /** Moves the divider after child `index` of the split at `path` by `delta` (a ratio; negative = up/left); neither
- *  neighbour goes below MIN_SIZE. */
+ *  neighbour shrinks below MIN_SIZE. */
 export function resize(t: Layout, path: number[], index: number, delta: number): Layout {
   return atSplit(t, path, (s) => {
     if (index < 0 || index + 1 >= s.sizes.length) return s;
-    const d = Math.min(Math.max(delta, MIN_SIZE - s.sizes[index]), s.sizes[index + 1] - MIN_SIZE);
+    // A neighbour already under MIN_SIZE (halving can do that) keeps its size at the least instead of jumping up.
+    const [a, b] = [s.sizes[index], s.sizes[index + 1]];
+    const d = Math.min(Math.max(delta, Math.min(MIN_SIZE, a) - a), b - Math.min(MIN_SIZE, b));
     const sizes = s.sizes.slice();
     sizes[index] += d;
     sizes[index + 1] -= d;
