@@ -51,57 +51,39 @@
   let w = $state(0);
   let h = $state(0);
   const shown = $derived(overviewSessions(app.sessions, projectId || null));
-  // Minimized sessions wait in the strip below, remembered in this browser; one that needs you always stays up.
-  const KEY = 'shub.overview.minimized';
-  const saved = storedJson(KEY);
-  let minimized = $state<string[]>(Array.isArray(saved) ? saved.filter((x) => typeof x === 'string') : []);
-  const setMinimized = (list: string[]) => store(KEY, JSON.stringify((minimized = list)));
-  // Pruning waits for the first full load: a partial list (an event before the fetch) would wipe the remembered ids.
+  // The sessions open in the grid are stored as a list of ids (in this browser) and restored from it: only these get a
+  // pane, the rest wait in the strip. One that needs you shows up anyway while it does. First run: all live ones.
+  const OPEN_KEY = 'shub.overview.open';
+  const savedOpen = storedJson(OPEN_KEY);
+  let open = $state<string[] | null>(
+    Array.isArray(savedOpen) ? savedOpen.filter((x): x is string => typeof x === 'string') : null,
+  );
+  const isOpen = (id: string) => !!open?.includes(id);
+  const setOpen = (list: string[]) => store(OPEN_KEY, JSON.stringify((open = list)));
+  const openIt = (...ids: string[]) => setOpen([...(open ?? []).filter((x) => !ids.includes(x)), ...ids]);
+  const closeIt = (id: string) => setOpen((open ?? []).filter((x) => x !== id));
+  // Only after the first full load: a partial session list would wipe the remembered ids.
   $effect(() => {
     if (!app.ready) return;
-    const kept = pruneMinimized(minimized, app.sessions);
-    if (kept !== minimized) setMinimized(kept);
-  });
-  // Which sessions the grid holds is remembered, not derived from status: a restart turns paused sessions live, and
-  // they must not fill the grid. `placed` = ever had a pane (stays until the session is gone or you minimize it),
-  // `known` = seen before. A session never seen before (just started) still gets its pane; a known one without a
-  // placed mark waits in the strip until "Show", Alt K or Alt N.
-  const ids = (key: string) => {
-    const v = storedJson(key);
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
-  };
-  const PLACED_KEY = 'shub.overview.placed';
-  const KNOWN_KEY = 'shub.overview.known';
-  let placed = $state(ids(PLACED_KEY));
-  let known = $state(ids(KNOWN_KEY));
-  const remember = (key: string, list: string[]) => store(key, JSON.stringify(list));
-  $effect(() => {
-    if (!app.ready) return;
-    const p = pruneMinimized(placed, app.sessions);
-    if (p !== placed) remember(PLACED_KEY, (placed = p));
-    const k = pruneMinimized(known, app.sessions);
-    if (k !== known) remember(KNOWN_KEY, (known = k));
+    untrack(() => {
+      if (open === null)
+        return setOpen(
+          overviewSessions(app.sessions)
+            .filter((s) => LIVE.has(s.status))
+            .map((s) => s.id),
+        );
+      const kept = pruneMinimized(open, app.sessions);
+      if (kept !== open) setOpen(kept);
+    });
   });
   // Past MAX_LIVE the cells are unreadable: the overflow waits in the strip, "Show" promotes one (not remembered).
   let promoted = $state<string[]>([]);
-  // A just-started session is 'new' until Claude does something: it only gets a pane once promoted (Alt N, Alt K).
+  // A just-started session is 'new' until Claude does something: it only gets a pane once open (Alt N, Alt K).
   const wantsLive = (s: Session) =>
-    (LIVE.has(s.status) || (s.status === 'new' && promoted.includes(s.id))) &&
-    (s.status === 'needs-you' || !minimized.includes(s.id)) &&
-    (!known.includes(s.id) || placed.includes(s.id) || promoted.includes(s.id));
+    (LIVE.has(s.status) || (s.status === 'new' && isOpen(s.id))) && (s.status === 'needs-you' || isOpen(s.id));
   const capped = $derived(capLive(shown.filter(wantsLive), MAX_LIVE, promoted));
   const live = $derived(capped.live);
   const quiet = $derived(shown.filter((s) => !live.includes(s)));
-  $effect(() => {
-    const seenNow = shown.filter((s) => s.status !== 'new').map((s) => s.id);
-    const onGrid = live.map((s) => s.id);
-    untrack(() => {
-      const k = seenNow.filter((id) => !known.includes(id));
-      if (k.length) remember(KNOWN_KEY, (known = [...known, ...k]));
-      const p = onGrid.filter((id) => !placed.includes(id));
-      if (p.length) remember(PLACED_KEY, (placed = [...placed, ...p]));
-    });
-  });
   // A dragged layout is remembered per project filter ('' = all). Until the first drag the grid stays automatic: it is
   // shown as a tree too (so it has bars), but only a drag stores it. Live-set changes are folded in by reconcile.
   const LAYOUT_KEY = 'shub.overview.layout';
@@ -169,7 +151,7 @@
   // Alt K search also lands here (new or resumed sessions), so it never leaves the grid.
   function showPane(s: Session) {
     promoted = [...promoted, s.id]; // past the cap it still gets its pane
-    setMinimized(minimized.filter((x) => x !== s.id));
+    openIt(s.id);
     focusId = s.id;
   }
   // A session that appears while the grid is open (after an approval, from another tab or the CLI) gets its pane too,
@@ -183,7 +165,7 @@
     if (fresh.length)
       untrack(() => {
         promoted = [...promoted, ...fresh];
-        setMinimized(minimized.filter((x) => !fresh.includes(x)));
+        openIt(...fresh);
       });
   });
   $effect(() => {
@@ -294,7 +276,7 @@
         maximizable
         bind:maximizedId={maxId}
         onmaximize={(id) => (location.hash = sessionHref(live.find((s) => s.id === id)!))}
-        onminimize={(id) => setMinimized([...minimized, id])}
+        onminimize={closeIt}
       >
         {#snippet actions(s)}
           {#if s.pendingPermission}
@@ -366,12 +348,12 @@
           project={p?.name}
           accent={p?.accent}
           panes={childrenOf(s.id).length}
-          flagged={s.status === 'your-turn' && minimized.includes(s.id)}
+          flagged={s.status === 'your-turn' && !isOpen(s.id)}
           onallow={() => void sendKeys(s.id, ['1'])}
           ondeny={() => void sendKeys(s.id, ['3'])}
           onrestore={LIVE.has(s.status)
             ? () => {
-                setMinimized(minimized.filter((x) => x !== s.id));
+                openIt(s.id);
                 promoted = [...promoted, s.id];
               }
             : undefined}
