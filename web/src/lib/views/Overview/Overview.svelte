@@ -60,24 +60,45 @@
     const kept = pruneMinimized(minimized, app.sessions);
     if (kept !== minimized) setMinimized(kept);
   });
-  // A session that is not running (paused, restored later) is parked in the strip and remembered, so a restart that
-  // brings it back to life does not pull it into the grid: only "Show", Alt K or a brand-new session does.
+  // Which sessions the grid holds is remembered, not derived from status: a restart turns paused sessions live, and
+  // they must not fill the grid. `placed` = ever had a pane (stays until the session is gone or you minimize it),
+  // `known` = seen before. A session never seen before (just started) still gets its pane; a known one without a
+  // placed mark waits in the strip until "Show", Alt K or Alt N.
+  const ids = (key: string) => {
+    const v = storedJson(key);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  };
+  const PLACED_KEY = 'shub.overview.placed';
+  const KNOWN_KEY = 'shub.overview.known';
+  let placed = $state(ids(PLACED_KEY));
+  let known = $state(ids(KNOWN_KEY));
+  const remember = (key: string, list: string[]) => store(key, JSON.stringify(list));
   $effect(() => {
-    const idle = shown.filter((s) => !LIVE.has(s.status) && s.status !== 'new').map((s) => s.id);
-    untrack(() => {
-      const add = idle.filter((id) => !minimized.includes(id));
-      if (add.length) setMinimized([...minimized, ...add]);
-    });
+    const p = pruneMinimized(placed, app.sessions);
+    if (p !== placed) remember(PLACED_KEY, (placed = p));
+    const k = pruneMinimized(known, app.sessions);
+    if (k !== known) remember(KNOWN_KEY, (known = k));
   });
   // Past MAX_LIVE the cells are unreadable: the overflow waits in the strip, "Show" promotes one (not remembered).
   let promoted = $state<string[]>([]);
   // A just-started session is 'new' until Claude does something: it only gets a pane once promoted (Alt N, Alt K).
   const wantsLive = (s: Session) =>
     (LIVE.has(s.status) || (s.status === 'new' && promoted.includes(s.id))) &&
-    (s.status === 'needs-you' || !minimized.includes(s.id));
+    (s.status === 'needs-you' || !minimized.includes(s.id)) &&
+    (!known.includes(s.id) || placed.includes(s.id) || promoted.includes(s.id));
   const capped = $derived(capLive(shown.filter(wantsLive), MAX_LIVE, promoted));
   const live = $derived(capped.live);
   const quiet = $derived(shown.filter((s) => !live.includes(s)));
+  $effect(() => {
+    const seenNow = shown.filter((s) => s.status !== 'new').map((s) => s.id);
+    const onGrid = live.map((s) => s.id);
+    untrack(() => {
+      const k = seenNow.filter((id) => !known.includes(id));
+      if (k.length) remember(KNOWN_KEY, (known = [...known, ...k]));
+      const p = onGrid.filter((id) => !placed.includes(id));
+      if (p.length) remember(PLACED_KEY, (placed = [...placed, ...p]));
+    });
+  });
   // A dragged layout is remembered per project filter ('' = all). Until the first drag the grid stays automatic: it is
   // shown as a tree too (so it has bars), but only a drag stores it. Live-set changes are folded in by reconcile.
   const LAYOUT_KEY = 'shub.overview.layout';
