@@ -142,6 +142,7 @@
       (m) => {
         if (!dragging && Math.hypot(m.clientX - x0, m.clientY - y0) < 5) return;
         wasDrag = true;
+        m.preventDefault();
         dragging = { id, over: at(m) };
       },
       { signal: stop.signal },
@@ -185,7 +186,10 @@
         type="button"
         class="title"
         onpointerdown={(e) => grab(e, session.id)}
-        onclick={() => !wasDrag && onselect?.(session.id)}
+        onclick={() => {
+          if (!wasDrag) onselect?.(session.id);
+          wasDrag = false;
+        }}
         ondblclick={() => maximizable && !wasDrag && toggleMax(session.id)}
       >
         <StatusDot status={session.status} idle={idleWithAgents(session)} />
@@ -411,6 +415,12 @@
     font: inherit;
     text-align: left;
     cursor: pointer;
+    touch-action: none;
+  }
+
+  .pane.dragged,
+  :global(body:has(.dragged)) {
+    user-select: none;
   }
 
   .needs-you .head {

@@ -152,9 +152,13 @@ export function reconcile(tree: Layout | null, liveIds: string[]): Layout | null
       t = id;
       continue;
     }
+    // Largest leaf whose longer side can still be halved above MIN_SIZE; the largest overall when none can.
+    // ponytail: unit square, not the real pixel box; fine while the screen aspect stays near 8:5.
+    const all = [...rects(t)];
+    const fits = all.filter(([, r]) => Math.max(r.w, r.h) > 2 * MIN_SIZE);
     let big = '';
     let area = -1;
-    for (const [k, r] of rects(t)) if (r.w * r.h > area + 1e-9) [big, area] = [k, r.w * r.h];
+    for (const [k, r] of fits.length ? fits : all) if (r.w * r.h > area + 1e-9) [big, area] = [k, r.w * r.h];
     const r = rects(t).get(big)!;
     t = replaceLeaf(t, big, { dir: r.w >= r.h ? 'row' : 'col', children: [big, id], sizes: [0.5, 0.5] });
   }
@@ -214,11 +218,23 @@ export function moveToEdge(t: Layout, from: string, to: string, edge: 'top' | 'b
   if (from === to || !ids.includes(from) || !ids.includes(to)) return t;
   const rest = prune(t, (id) => id !== from)!;
   const first = edge === 'top' || edge === 'left';
-  return replaceLeaf(rest, to, {
-    dir: edge === 'top' || edge === 'bottom' ? 'col' : 'row',
-    children: first ? [from, to] : [to, from],
-    sizes: [0.5, 0.5],
-  });
+  const dir = edge === 'top' || edge === 'bottom' ? 'col' : 'row';
+  const go = (n: Layout): Layout => {
+    if (typeof n === 'string')
+      return n === to ? { dir, children: first ? [from, to] : [to, from], sizes: [0.5, 0.5] } : n;
+    const i = n.children.indexOf(to);
+    // Same direction as the parent: join as a sibling and share the target's size instead of nesting.
+    if (i < 0 || n.dir !== dir) return { ...n, children: n.children.map(go) };
+    const at = first ? i : i + 1;
+    const s = n.sizes[i] / 2;
+    const children = n.children.slice();
+    const sizes = n.sizes.slice();
+    children.splice(at, 0, from);
+    sizes.splice(at, 0, s);
+    sizes[first ? i + 1 : i] = s;
+    return { dir, children, sizes };
+  };
+  return go(rest);
 }
 
 /** The leaf nearest to `id` in direction `dir` by where the panes really sit (centres, a sideways offset counts double),

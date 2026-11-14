@@ -72,7 +72,9 @@
   const LAYOUT_KEY = 'shub.overview.layout';
   const savedLayouts = storedJson(LAYOUT_KEY);
   const loaded: Record<string, Layout> = {};
-  for (const [k, v] of Object.entries(savedLayouts && typeof savedLayouts === 'object' ? savedLayouts : {})) {
+  for (const [k, v] of Object.entries(
+    savedLayouts && typeof savedLayouts === 'object' && !Array.isArray(savedLayouts) ? savedLayouts : {},
+  )) {
     const t = parseLayout(JSON.stringify(v));
     if (t) loaded[k] = t;
   }
@@ -84,6 +86,16 @@
     custom = next;
     store(LAYOUT_KEY, JSON.stringify(next));
   };
+  // Layouts of deleted projects go (once the project list has loaded).
+  $effect(() => {
+    if (!app.projects.length) return;
+    const keys = Object.keys(custom).filter((k) => k && !project(k));
+    if (!keys.length) return;
+    const next = { ...custom };
+    for (const k of keys) delete next[k];
+    custom = next;
+    store(LAYOUT_KEY, JSON.stringify(next));
+  });
   const layout = $derived(
     custom[projectId]
       ? reconcile(
