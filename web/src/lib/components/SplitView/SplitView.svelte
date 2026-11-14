@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { Session } from '../../../../../shared/api.ts';
-  import { equalize, resize, type Layout } from '../../overview.ts';
+  import { equalize, rects, resize, setSizes, type Layout, type Rect } from '../../overview.ts';
   import { idleWithAgents, STATUS_LABEL } from '../../status.ts';
   import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
@@ -53,31 +53,61 @@
   }: Props = $props();
   // The maximized pane fills the grid; the others unmount (their sessions keep running, the terminals reattach on restore).
   const all = $derived(sessions.slice(0, limit));
-  const shown = $derived(all.filter((s) => !maximizedId || s.id === maximizedId));
+  const shown = $derived(all.filter((s) => (!maximizedId || s.id === maximizedId) && (!place || place.has(s.id))));
   const tree = $derived(layout && !maximizedId ? layout : null);
   const byId = $derived(new Map(all.map((s) => [s.id, s])));
-  const BAR = 6; // px, keep in sync with .bar
-  // Drags the bar before child `index + 1` of the split at `path`: the pointer's distance from where it went down is a
-  // ratio of the split's free space, applied to the layout as it was then, so the divider follows the pointer exactly.
-  function drag(e: PointerEvent, path: number[], index: number) {
+  // Tree mode: ONE flat keyed list of panes placed from rects(tree), so a pane never remounts when the tree changes shape.
+  const place = $derived(tree ? rects(tree) : null);
+  type Bar = {
+    path: number[];
+    index: number;
+    row: boolean;
+    sizes: number[];
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  };
+  // The drag bars as an overlay: (x, y) is the centre line of the divider, (w, h) the extent of its split.
+  function barsOf(t: Layout, box: Rect, path: number[], out: Bar[] = []): Bar[] {
+    if (typeof t === 'string') return out;
+    const row = t.dir === 'row';
+    let at = 0;
+    t.children.forEach((c, i) => {
+      const s = t.sizes[i];
+      const r = row ? { ...box, x: box.x + at * box.w, w: box.w * s } : { ...box, y: box.y + at * box.h, h: box.h * s };
+      if (i) out.push({ path, index: i - 1, row, sizes: t.sizes, x: r.x, y: r.y, w: box.w, h: box.h });
+      barsOf(c, r, [...path, i], out);
+      at += s;
+    });
+    return out;
+  }
+  const bars = $derived(tree ? barsOf(tree, { x: 0, y: 0, w: 1, h: 1 }, []) : []);
+  // Drags a bar: the pointer's distance from where it went down is a ratio of the split's extent, applied to the split's
+  // sizes as they were then but to the latest tree, so the divider follows the pointer exactly.
+  function drag(e: PointerEvent, b: Bar) {
     if (!tree || e.button) return;
-    const bar = e.currentTarget as HTMLElement;
-    const box = bar.parentElement!;
-    const row = box.classList.contains('row');
-    const rect = box.getBoundingClientRect();
-    const span = (row ? rect.width : rect.height) - BAR * box.querySelectorAll(':scope > .bar').length;
-    const start = tree;
-    const from = row ? e.clientX : e.clientY;
+    const el = e.currentTarget as HTMLElement;
+    const area = el.parentElement!;
+    const pad = parseFloat(getComputedStyle(area).paddingLeft) || 0;
+    const rect = area.getBoundingClientRect();
+    const span = ((b.row ? rect.width : rect.height) - 2 * pad) * (b.row ? b.w : b.h);
+    const from = b.row ? e.clientX : e.clientY;
     const stop = new AbortController();
     e.preventDefault();
-    bar.setPointerCapture(e.pointerId);
-    bar.addEventListener(
+    el.setPointerCapture(e.pointerId);
+    el.addEventListener(
       'pointermove',
-      (m) => span > 0 && onlayout?.(resize(start, path, index, ((row ? m.clientX : m.clientY) - from) / span)),
+      (m) =>
+        span > 0 &&
+        tree &&
+        onlayout?.(
+          resize(setSizes(tree, b.path, b.sizes), b.path, b.index, ((b.row ? m.clientX : m.clientY) - from) / span),
+        ),
       { signal: stop.signal },
     );
-    for (const type of ['pointerup', 'pointercancel'])
-      bar.addEventListener(type, () => stop.abort(), { signal: stop.signal });
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'])
+      el.addEventListener(type, () => stop.abort(), { signal: stop.signal });
   }
   const toggleMax = (id: string) => (maximizedId = maximizedId === id ? null : id);
   $effect(() => {
@@ -92,6 +122,10 @@
     class:selected={session.id === selectedId}
     aria-label={session.name}
     style:--accent={proj?.accent}
+    style:--x={place?.get(session.id)?.x}
+    style:--y={place?.get(session.id)?.y}
+    style:--w={place?.get(session.id)?.w}
+    style:--h={place?.get(session.id)?.h}
     style:grid-column={!tree && columns && !maximizedId && i === shown.length - 1 && shown.length % columns
       ? `span ${columns - (shown.length % columns) + 1}`
       : undefined}
@@ -129,41 +163,29 @@
   </section>
 {/snippet}
 
-{#snippet node(t: Layout, path: number[], size: number)}
-  <div class="box {typeof t === 'string' ? '' : t.dir}" style:flex="{size} 1 0">
-    {#if typeof t === 'string'}
-      {@const session = byId.get(t)}
-      {#if session}{@render cell(session, 0)}{/if}
-    {:else}
-      {#each t.children as c, i (typeof c === 'string' ? c : `split ${i}`)}
-        {#if i}
-          <div
-            class="bar"
-            role="separator"
-            aria-orientation={t.dir === 'row' ? 'vertical' : 'horizontal'}
-            title="Drag to resize, double-click to equalize"
-            onpointerdown={(e) => drag(e, path, i - 1)}
-            ondblclick={() => onlayout?.(equalize(tree!, path))}
-          ></div>
-        {/if}
-        {@render node(c, [...path, i], t.sizes[i])}
-      {/each}
-    {/if}
-  </div>
-{/snippet}
-
 <div
-  class="grid {maximizedId || tree ? 'n1' : columns ? 'cols' : `n${shown.length}`}"
+  class="grid {tree ? 'free' : maximizedId ? 'n1' : columns ? 'cols' : `n${shown.length}`}"
   style:--cols={columns}
   style:--rows={columns ? Math.ceil(shown.length / columns) : undefined}
 >
-  {#if tree}
-    {@render node(tree, [], 1)}
-  {:else}
-    {#each shown as session, i (session.id)}
-      {@render cell(session, i)}
-    {/each}
-  {/if}
+  {#each shown as session, i (session.id)}
+    {@render cell(session, i)}
+  {/each}
+  {#each bars as b (b.path.join() + ':' + b.index)}
+    <div
+      class="bar"
+      class:row={b.row}
+      role="separator"
+      aria-orientation={b.row ? 'vertical' : 'horizontal'}
+      title="Drag to resize, double-click to equalize"
+      style:--x={b.x}
+      style:--y={b.y}
+      style:--w={b.w}
+      style:--h={b.h}
+      onpointerdown={(e) => drag(e, b)}
+      ondblclick={() => onlayout?.(equalize(tree!, b.path))}
+    ></div>
+  {/each}
 </div>
 
 <style>
@@ -192,22 +214,18 @@
     grid-template-rows: minmax(0, 1fr);
   }
 
-  .box {
-    min-width: 0;
-    min-height: 0;
-    display: flex;
-  }
+  /* Free layout: absolute panes and bars placed by the fractions --x --y --w --h of the padded area. */
+  .free {
+    display: block;
+    position: relative;
 
-  .row {
-    flex-direction: row;
-  }
-
-  .col {
-    flex-direction: column;
+    --area-w: calc(100% - 2 * var(--space-2));
+    --area-h: calc(100% - 2 * var(--space-2));
+    --g: 3px; /* half a bar */
   }
 
   .bar {
-    flex: none;
+    position: absolute;
     touch-action: none;
     border-radius: var(--radius-pill);
   }
@@ -216,13 +234,19 @@
     background: var(--line);
   }
 
-  .row > .bar {
-    width: 6px;
+  .bar.row {
+    left: calc(var(--space-2) + var(--area-w) * var(--x) - var(--g));
+    top: calc(var(--space-2) + var(--area-h) * var(--y));
+    width: calc(2 * var(--g));
+    height: calc(var(--area-h) * var(--h));
     cursor: col-resize;
   }
 
-  .col > .bar {
-    height: 6px;
+  .bar:not(.row) {
+    left: calc(var(--space-2) + var(--area-w) * var(--x));
+    top: calc(var(--space-2) + var(--area-h) * var(--y) - var(--g));
+    width: calc(var(--area-w) * var(--w));
+    height: calc(2 * var(--g));
     cursor: row-resize;
   }
 
@@ -236,9 +260,12 @@
     background: var(--term-bg);
   }
 
-  .box > .pane {
-    flex: 1 1 0;
-    min-width: 0;
+  .free > .pane {
+    position: absolute;
+    left: calc(var(--space-2) + var(--area-w) * var(--x) + var(--g));
+    top: calc(var(--space-2) + var(--area-h) * var(--y) + var(--g));
+    width: calc(var(--area-w) * var(--w) - 2 * var(--g));
+    height: calc(var(--area-h) * var(--h) - 2 * var(--g));
   }
 
   .n3 .pane:first-child {
