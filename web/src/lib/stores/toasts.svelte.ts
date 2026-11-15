@@ -8,8 +8,9 @@ export interface ToastItem {
   details?: string;
 }
 
-/** Oldest toasts go first beyond this many. */
+/** Beyond this many the oldest confirmation goes; errors and needs-you are never dropped by the cap (up to five in all). */
 const MAX = 3;
+const HARD_MAX = 5;
 
 let next = 1;
 export const toasts = $state<ToastItem[]>([]);
@@ -21,8 +22,14 @@ export function toast(
   ms = tone === 'neutral' ? 4000 : 0,
   details?: string,
 ): void {
+  if (tone !== 'neutral' && toasts.some((t) => t.tone === tone && t.message === message)) return; // a reload repeating the same failure
   toasts.push({ id: next++, message, tone, ms: ms || undefined, details });
-  if (toasts.length > MAX) toasts.splice(0, toasts.length - MAX);
+  while (toasts.length > MAX) {
+    const i = toasts.findIndex((t, k) => t.tone === 'neutral' && k < toasts.length - 1); // never the one just pushed
+    if (i < 0) break;
+    toasts.splice(i, 1);
+  }
+  if (toasts.length > HARD_MAX) toasts.splice(0, toasts.length - HARD_MAX); // errors pile up: still bounded on a phone
 }
 
 export function dismissToast(id: number): void {

@@ -1,12 +1,13 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import ConnectionBanner from '../ConnectionBanner/ConnectionBanner.svelte';
 
   let { sidebar, children }: { sidebar: Snippet; children: Snippet } = $props();
 </script>
 
 <div class="shell">
   {@render sidebar()}
-  <main class="main">{@render children()}</main>
+  <main class="main"><ConnectionBanner />{@render children()}</main>
 </div>
 
 <style>

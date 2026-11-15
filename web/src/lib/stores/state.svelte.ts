@@ -34,6 +34,10 @@ export const app = $state({
   connected: false,
   /** The shown machine did not answer at all (network error, not an HTTP status). */
   unreachable: false,
+  /** The events socket dropped and is trying again. */
+  reconnecting: false,
+  /** When the shown machine last answered a call: "Showing data from HH:MM" in the connection banner. */
+  lastOkAt: null as number | null,
   /** API version of the shown machine when it differs from this app's (an older or newer shub there). */
   apiMismatch: null as number | null,
   config: null as Config | null,
@@ -197,19 +201,49 @@ export function unpinSession(s: Session) {
   void api('sessionsReorder', { body: { positions: { [s.id]: null } } }).catch(toastError);
 }
 
+let signedOutShown = false;
+const toasted = new Set<string>(); // each failure text toasts once per session, a reload repeating it stays quiet
+let netFailed = false; // a call in the current loadAll did not get through
 function guard<T>(p: Promise<T>): Promise<T | undefined> {
-  return p.catch((err: unknown) => {
-    if (err instanceof ApiError && err.status === 401) app.authRequired = true;
-    // The machine is off or out of reach: fetch failed or timed out, or `tailscale serve` answers 502/504 for a stopped shub.
-    else if (
-      err instanceof TypeError ||
-      (err instanceof DOMException && err.name === 'TimeoutError') ||
-      (err instanceof ApiError && [502, 503, 504].includes(err.status))
-    ) {
-      app.unreachable = true;
-    } else console.warn(err);
-    return undefined;
-  });
+  return p.then(
+    (v) => {
+      app.lastOkAt = Date.now();
+      return v;
+    },
+    (err: unknown) => {
+      if (err instanceof ApiError && err.status === 401) {
+        app.authRequired = true;
+        if (!signedOutShown) toast('Signed out. Sign in again.', 'error');
+        signedOutShown = true;
+      }
+      // The machine is off or out of reach: fetch failed or timed out, or `tailscale serve` answers 502/504 for a stopped shub.
+      else if (
+        err instanceof TypeError ||
+        (err instanceof DOMException && err.name === 'TimeoutError') ||
+        (err instanceof ApiError && [502, 503, 504].includes(err.status))
+      ) {
+        app.unreachable = true;
+        netFailed = true;
+      } else {
+        console.warn(err);
+        // An older or newer shub on the other side answers some endpoints with 4xx: the banner already says so.
+        const text = err instanceof Error ? err.message : String(err);
+        if (app.apiMismatch === null && !toasted.has(text)) {
+          toasted.add(text);
+          toastError(err);
+        }
+      }
+      return undefined;
+    },
+  );
+}
+
+let reconnectEvents: (() => void) | null = null;
+
+/** Asks again now instead of waiting for the next backoff: reloads everything and nudges the events socket. */
+export function retryNow(): void {
+  void loadAll();
+  if (!app.connected) reconnectEvents?.(); // a healthy socket (and the terminals) stay as they are
 }
 
 function themeFromConfig(): void {
@@ -276,6 +310,7 @@ export async function loadUpdate(): Promise<void> {
 }
 
 export async function loadAll(): Promise<void> {
+  netFailed = false;
   await Promise.all([
     loadConfig(),
     loadProjects(),
@@ -291,6 +326,7 @@ export async function loadAll(): Promise<void> {
       app.apiMismatch = h && h.apiVersion !== API_VERSION ? h.apiVersion : null;
     }),
   ]);
+  app.unreachable = netFailed; // set once all calls are in: one answer must not hide another's failure
   app.ready = true;
 }
 
@@ -395,6 +431,7 @@ export function connectEvents(): () => void {
   const retry = () => {
     app.connected = false;
     if (stopped || app.authRequired) return;
+    app.reconnecting = true;
     clearTimeout(timer);
     timer = setTimeout(() => void open(), delay);
     delay = Math.min(delay * 2, RETRY_MAX_MS);
@@ -419,6 +456,7 @@ export function connectEvents(): () => void {
     ws = sock;
     sock.onopen = () => {
       app.connected = true;
+      app.reconnecting = false;
       delay = 1000;
       if (everOpen) void loadAll();
       everOpen = true;
@@ -441,7 +479,7 @@ export function connectEvents(): () => void {
   };
   void open();
   // Back from sleep or offline: drop the (possibly dead) socket and connect now instead of waiting out the backoff.
-  const off = onResume(() => {
+  const reconnect = () => {
     if (stopped || app.authRequired) return;
     clearTimeout(timer);
     clearTimeout(watchdog);
@@ -450,9 +488,12 @@ export function connectEvents(): () => void {
     ws?.close();
     delay = 1000;
     void open();
-  });
+  };
+  const off = onResume(reconnect);
+  reconnectEvents = reconnect;
   return () => {
     stopped = true;
+    reconnectEvents = null;
     off();
     clearTimeout(timer);
     clearTimeout(watchdog);

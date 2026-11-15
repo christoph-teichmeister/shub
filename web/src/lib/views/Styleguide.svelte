@@ -32,6 +32,7 @@
   import StatusDot from '../components/StatusDot/StatusDot.svelte';
   import TabBar from '../components/TabBar/TabBar.svelte';
   import TerminalView from '../components/TerminalView/TerminalView.svelte';
+  import ConnectionBanner from '../components/ConnectionBanner/ConnectionBanner.svelte';
   import Toast from '../components/Toast/Toast.svelte';
   import Wordmark from '../components/Wordmark/Wordmark.svelte';
   import { app } from '../stores/state.svelte.ts';
@@ -87,6 +88,7 @@
     'Forms',
     'Drawer',
     'Toast',
+    'Connection banner',
     'Empty state',
     'Session card',
     'Split view',
@@ -456,6 +458,13 @@
         ]}
         ondismiss={() => {}}
       />
+    </section>
+
+    <section id="connection-banner" aria-labelledby="h-banner">
+      <h2 id="h-banner">Connection banner</h2>
+      <ConnectionBanner kind="offline" machine="laptop" since={Date.parse('2026-10-19T14:05:00')} />
+      <ConnectionBanner kind="reconnecting" machine="laptop" since={Date.parse('2026-10-19T14:05:00')} />
+      <ConnectionBanner kind="mismatch" machine="laptop" apiVersion={2} />
     </section>
 
     <section id="empty-state" aria-labelledby="h-empty">
