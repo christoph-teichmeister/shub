@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import type { Approval, ProjectView, Session } from '../shared/api.ts';
 import { contrastRatio } from '../web/src/lib/tokens/contrast.ts';
 
@@ -2151,7 +2151,9 @@ test('notes: a save that lost against Claude shows the bar; Take theirs loads th
   await page.keyboard.press('Alt+m');
   const editor = page.getByRole('textbox', { name: 'Markdown draft' });
   await editor.fill('mine');
-  await expect(page.getByRole('alert')).toContainText('changed the file while you typed');
+  await expect(page.getByRole('alert').filter({ hasText: 'changed the file' })).toContainText(
+    'changed the file while you typed',
+  );
   await page.getByRole('button', { name: 'Take theirs' }).click();
   await expect(editor).toHaveValue('claude wrote this');
   expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1);
@@ -2229,7 +2231,7 @@ test('phone toast sits at the top and the message field is 16 px, so iOS does no
   await page.setViewportSize({ width: 390, height: 844 });
   const { errors } = await mockApi(page, { '/api/sessions': [session] });
   await page.goto('/#/p/ai-portal/s1');
-  const toastBox = page.getByRole('status').locator('.toast').first();
+  const toastBox = page.locator('.toast').first();
   await expect(toastBox).toBeVisible();
   expect((await toastBox.boundingBox())!.y).toBeLessThan(60);
   const size = await page.getByLabel('Message to Claude').evaluate((el) => getComputedStyle(el).fontSize);
@@ -2456,4 +2458,39 @@ test('the village desk is a button that opens the first crab in line, and stands
   await map.locator('.prompt').click(); // the E prompt is a button too
   await expect(map.getByRole('button', { name: 'Your desk: open the first crab in line' })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('server down: the banner says so with the last good time, and Retry now brings the data back', async ({
+  page,
+}) => {
+  await mockApi(page, { '/api/sessions': [session] });
+  await page.goto('/#/p/ai-portal/s1');
+  await expect(page.getByText('MR 2136 review').first()).toBeVisible();
+  const banner = page.getByRole('alert').filter({ hasText: 'does not answer' });
+  await expect(banner).toHaveCount(0);
+
+  const down = (r: Route) => r.abort();
+  await page.route('**/api/**', down);
+  await page.evaluate(() => dispatchEvent(new Event('online'))); // the events socket reconnects and reloads everything
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText('It may be off.');
+  await expect(banner).toContainText(/Showing data from \d/);
+
+  await page.unroute('**/api/**', down);
+  await banner.getByRole('button', { name: 'Retry now' }).click();
+  await expect(banner).toHaveCount(0);
+});
+
+test('a 401 says the access token changed before the login form', async ({ page }) => {
+  await mockApi(page);
+  await page.route('**/api/config', (r) => r.fulfill({ status: 401, json: { error: 'login required' } }), { times: 1 });
+  await page.goto('/#/');
+  await expect(page.getByRole('alert').filter({ hasText: 'Signed out: your access token changed' })).toBeVisible();
+  await expect(page.getByLabel('Access token')).toBeVisible();
+});
+
+test('a failing call that is not a network error shows a toast instead of only logging', async ({ page }) => {
+  await mockApi(page, { '/api/usage': { status: 500, json: { error: 'usage store is broken' } } });
+  await page.goto('/#/');
+  await expect(page.getByRole('alert').filter({ hasText: 'usage store is broken' })).toBeVisible();
 });

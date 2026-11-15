@@ -34,6 +34,10 @@ export const app = $state({
   connected: false,
   /** The shown machine did not answer at all (network error, not an HTTP status). */
   unreachable: false,
+  /** The events socket dropped and is trying again. */
+  reconnecting: false,
+  /** When the shown machine last answered a call: "Showing data from HH:MM" in the connection banner. */
+  lastOkAt: null as number | null,
   /** API version of the shown machine when it differs from this app's (an older or newer shub there). */
   apiMismatch: null as number | null,
   config: null as Config | null,
@@ -197,19 +201,40 @@ export function unpinSession(s: Session) {
   void api('sessionsReorder', { body: { positions: { [s.id]: null } } }).catch(toastError);
 }
 
+let signedOutShown = false;
 function guard<T>(p: Promise<T>): Promise<T | undefined> {
-  return p.catch((err: unknown) => {
-    if (err instanceof ApiError && err.status === 401) app.authRequired = true;
-    // The machine is off or out of reach: fetch failed or timed out, or `tailscale serve` answers 502/504 for a stopped shub.
-    else if (
-      err instanceof TypeError ||
-      (err instanceof DOMException && err.name === 'TimeoutError') ||
-      (err instanceof ApiError && [502, 503, 504].includes(err.status))
-    ) {
-      app.unreachable = true;
-    } else console.warn(err);
-    return undefined;
-  });
+  return p.then(
+    (v) => {
+      app.unreachable = false;
+      app.lastOkAt = Date.now();
+      return v;
+    },
+    (err: unknown) => {
+      if (err instanceof ApiError && err.status === 401) {
+        app.authRequired = true;
+        if (!signedOutShown) toast('Signed out: your access token changed. Sign in again.', 'error');
+        signedOutShown = true;
+      }
+      // The machine is off or out of reach: fetch failed or timed out, or `tailscale serve` answers 502/504 for a stopped shub.
+      else if (
+        err instanceof TypeError ||
+        (err instanceof DOMException && err.name === 'TimeoutError') ||
+        (err instanceof ApiError && [502, 503, 504].includes(err.status))
+      ) {
+        app.unreachable = true;
+      } else {
+        console.warn(err);
+        toastError(err);
+      }
+      return undefined;
+    },
+  );
+}
+
+/** Asks again now instead of waiting for the next backoff: reloads everything and nudges the events socket. */
+export function retryNow(): void {
+  void loadAll();
+  window.dispatchEvent(new Event('online')); // connectEvents reconnects on it
 }
 
 function themeFromConfig(): void {
@@ -395,6 +420,7 @@ export function connectEvents(): () => void {
   const retry = () => {
     app.connected = false;
     if (stopped || app.authRequired) return;
+    app.reconnecting = true;
     clearTimeout(timer);
     timer = setTimeout(() => void open(), delay);
     delay = Math.min(delay * 2, RETRY_MAX_MS);
@@ -419,6 +445,7 @@ export function connectEvents(): () => void {
     ws = sock;
     sock.onopen = () => {
       app.connected = true;
+      app.reconnecting = false;
       delay = 1000;
       if (everOpen) void loadAll();
       everOpen = true;

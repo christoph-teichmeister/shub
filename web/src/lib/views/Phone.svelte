@@ -1,6 +1,7 @@
 <script lang="ts">
   // Phone layout (viewport < 700 px), same routes as the desktop: #/ is the overview, #/p/<id>/<session> a terminal.
   import ChatView from '../components/ChatView/ChatView.svelte';
+  import ConnectionBanner from '../components/ConnectionBanner/ConnectionBanner.svelte';
   import CommandChip from '../components/CommandChip/CommandChip.svelte';
   import MachineSwitcher from '../components/MachineSwitcher/MachineSwitcher.svelte';
   import { fleet } from '../stores/machines.svelte.ts';
@@ -397,18 +398,7 @@
       <IconButton label="Settings" icon="gear" size="lg" href={href('settings')} />
     </header>
     {#if fleet.list.length}<MachineSwitcher />{/if}
-    {#if app.apiMismatch !== null && !app.unreachable}
-      <p class="unreachable">
-        {fleet.list.find((m) => m.origin === fleet.selected)?.name.split('.')[0] ?? 'This machine'} runs a shub with API {app.apiMismatch},
-        this app speaks {API_VERSION}. Update the older one; until then some things may fail.
-      </p>
-    {/if}
-    {#if app.unreachable}
-      <p class="unreachable">
-        {fleet.list.find((m) => m.origin === fleet.selected)?.name.split('.')[0] ?? 'This machine'} does not answer. It may
-        be off.
-      </p>
-    {/if}
+    <ConnectionBanner />
 
     {#if pushOffer}
       <section class="offer" aria-label="Push notifications">
@@ -586,11 +576,6 @@
   .term-page .bar {
     padding: calc(var(--space-2) + env(safe-area-inset-top)) var(--space-3) var(--space-2);
     border-bottom: var(--hairline) solid var(--line);
-  }
-
-  .unreachable {
-    padding: var(--space-2) var(--space-1);
-    color: var(--muted);
   }
 
   .grow {

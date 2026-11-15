@@ -17,9 +17,10 @@
   const ICON: Record<ToastItem['tone'], IconName> = { neutral: 'check', error: 'warning', 'needs-you': 'bell' };
 </script>
 
-<div class="stack" class:fixed role="status" aria-live="polite">
+<div class="stack" class:fixed>
   {#each items as item (item.id)}
-    <div class="toast {item.tone}">
+    <!-- Errors and needs-you interrupt (alert); confirmations wait their turn (status). -->
+    <div class="toast {item.tone}" role={item.tone === 'neutral' ? 'status' : 'alert'}>
       <span class="icon"><Icon name={ICON[item.tone]} size="sm" weight={2} /></span>
       <div class="message">
         {item.message}

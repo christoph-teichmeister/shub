@@ -8,7 +8,7 @@ export interface ToastItem {
   details?: string;
 }
 
-/** Oldest toasts go first beyond this many. */
+/** Beyond this many the oldest confirmation goes; errors and needs-you are never dropped by the cap. */
 const MAX = 3;
 
 let next = 1;
@@ -21,8 +21,13 @@ export function toast(
   ms = tone === 'neutral' ? 4000 : 0,
   details?: string,
 ): void {
+  if (tone !== 'neutral' && toasts.some((t) => t.tone === tone && t.message === message)) return; // a reload repeating the same failure
   toasts.push({ id: next++, message, tone, ms: ms || undefined, details });
-  if (toasts.length > MAX) toasts.splice(0, toasts.length - MAX);
+  while (toasts.length > MAX) {
+    const i = toasts.findIndex((t) => t.tone === 'neutral');
+    if (i < 0) break;
+    toasts.splice(i, 1);
+  }
 }
 
 export function dismissToast(id: number): void {

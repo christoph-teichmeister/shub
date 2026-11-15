@@ -1,6 +1,6 @@
 # Toast
 
-Stack of short messages, bottom right (top, full width, on a phone: the bottom is the message field), announced politely. Call `toast(message, tone, ms, details)` from `stores/toasts.svelte.ts`; mount one `<Toast />` in the app.
+Stack of short messages, bottom right (top, full width, on a phone: the bottom is the message field), errors and needs-you are `role="alert"`, confirmations `role="status"`. Call `toast(message, tone, ms, details)` from `stores/toasts.svelte.ts`; mount one `<Toast />` in the app.
 
 | Prop        | Type           | Default            |
 | ----------- | -------------- | ------------------ |
@@ -8,4 +8,4 @@ Stack of short messages, bottom right (top, full width, on a phone: the bottom i
 | `ondismiss` | `(id) => void` | removes from store |
 | `fixed`     | `boolean`      | `true`             |
 
-States: neutral (green check, leaves after 4 s), error (pink, warning icon), needs-you (orange bell; only for "a session needs you"). Errors and needs-you stay until dismissed; hovering pauses the timer line. At most three at once, oldest goes first. Optional `details` (release-notes Markdown, rendered by `Markdown`) show under the message and scroll past 40vh; the update toast uses them for the changelog.
+States: neutral (green check, leaves after 4 s), error (pink, warning icon), needs-you (orange bell; only for "a session needs you"). Errors and needs-you stay until dismissed; hovering pauses the timer line. Beyond three, the oldest confirmation goes first; errors and needs-you are never dropped by the cap. Optional `details` (release-notes Markdown, rendered by `Markdown`) show under the message and scroll past 40vh; the update toast uses them for the changelog.
