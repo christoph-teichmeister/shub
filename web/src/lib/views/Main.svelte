@@ -14,7 +14,6 @@
   import NotesPanel from '../components/NotesPanel/NotesPanel.svelte';
   import BottomPanel from '../components/BottomPanel/BottomPanel.svelte';
   import Button from '../components/Button/Button.svelte';
-  import Checkbox from '../components/Checkbox/Checkbox.svelte';
   import CommandChip from '../components/CommandChip/CommandChip.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
   import Drawer from '../components/Drawer/Drawer.svelte';
@@ -97,7 +96,6 @@
   let projectMenu = $state<{ project: ProjectView; x: number; y: number } | null>(null);
   let confirm = $state<Confirm | null>(null);
   let ask = $state<{ button: ButtonDef; value: string; worktrees: Worktree[] | null } | null>(null);
-  let restorable = $state<{ session: Session; on: boolean }[]>([]);
   let services = $state<ServiceContainer[]>([]);
   let mainSidebar = $state<ReturnType<typeof MainSidebar>>();
   let worktreesDialog = $state<ReturnType<typeof WorktreesDialog>>();
@@ -106,7 +104,7 @@
 
   onMount(() => {
     api<Session[]>('restorable').then(
-      (list) => (restorable = list.filter((s) => s.kind !== 'shell').map((session) => ({ session, on: true }))),
+      (list) => void restore(list.filter((s) => s.kind !== 'shell').map((s) => s.id)),
       () => {},
     );
   });
@@ -271,7 +269,7 @@
   }
 
   async function restore(ids: string[]) {
-    restorable = [];
+    if (!ids.length) return;
     const list = await api<Session[]>('restore', { body: { ids } }).catch(toastError);
     if (list?.length)
       toast(list.length === 1 ? 'Resuming 1 session' : `Resuming ${list.length} sessions, one after another`);
@@ -620,29 +618,6 @@
   onconfirm={(c) => (confirm = c)}
 />
 
-<Dialog
-  open={restorable.length > 0}
-  title="Resume {restorable.length} {restorable.length === 1 ? 'session' : 'sessions'}?"
-  description="These were running before the machine restarted. Unticked ones are given up."
-  onclose={() => (restorable = [])}
->
-  <div class="restore">
-    {#each restorable as r (r.session.id)}
-      <Checkbox
-        label={r.session.name}
-        hint={app.projects.find((p) => p.id === r.session.projectId)?.name ?? 'Global Claude'}
-        bind:checked={r.on}
-      />
-    {/each}
-  </div>
-  {#snippet actions()}
-    <Button variant="ghost" onclick={() => (restorable = [])}>Not now</Button>
-    <Button variant="primary" onclick={() => restore(restorable.filter((r) => r.on).map((r) => r.session.id))}
-      >Resume {restorable.filter((r) => r.on).length}</Button
-    >
-  {/snippet}
-</Dialog>
-
 <Drawer
   open={ui.drawer}
   title="Global Claude"
@@ -849,12 +824,6 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-  }
-
-  .restore {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2-5);
   }
 
   .foot-title {
