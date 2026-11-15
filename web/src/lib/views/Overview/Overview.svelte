@@ -176,8 +176,8 @@
 
   // Alt W closes the focused session; like the tab bar, it asks first when panes or work would be lost.
   let confirm = $state<Confirm | null>(null);
-  function closeFocused() {
-    const s = live.find((x) => x.id === focusId);
+  const closeFocused = () => closePane(live.find((x) => x.id === focusId));
+  function closePane(s: Session | undefined) {
     if (!s) return;
     const run = () => void closeSession(s.id);
     const panes = childrenOf(s.id).length;
@@ -192,6 +192,20 @@
     else if (s.status === 'working')
       confirm = { title: `Close ${s.name}?`, body: 'It is still working.', action: 'Close', danger: true, run };
     else run();
+  }
+
+  // Alt J and the header button: the next pane that needs you (undefined when none).
+  function nextNeedingYou() {
+    const hot = live.filter((s) => s.status === 'needs-you');
+    if (!hot.length) toast('Nothing needs you');
+    else return hot[(hot.findIndex((s) => s.id === focusId) + 1) % hot.length];
+  }
+  function jumpToNeedingYou() {
+    const s = nextNeedingYou();
+    if (s) {
+      focusId = s.id;
+      if (maxId) maxId = s.id;
+    }
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -220,11 +234,8 @@
         ? live.find((s) => s.id === id)
         : live[neighbour(i, dir, gridColumns(live.length, w, h), live.length)];
     } else if (digit) target = live[Number(digit[1]) - 1];
-    else if (e.code === 'KeyJ') {
-      const hot = live.filter((s) => s.status === 'needs-you');
-      if (!hot.length) toast('Nothing needs you');
-      else target = hot[(hot.findIndex((s) => s.id === focusId) + 1) % hot.length];
-    } else return;
+    else if (e.code === 'KeyJ') target = nextNeedingYou();
+    else return;
     e.preventDefault();
     e.stopPropagation();
     if (target) focusId = target.id;
@@ -252,6 +263,9 @@
         · {needsYouCount(shown)} need you{/if}
     </span>
     <span class="grow"></span>
+    <Button size="sm" onclick={() => (picking = true)}>New session</Button>
+    <Button size="sm" onclick={jumpToNeedingYou}>Next needing you</Button>
+    <Button size="sm" onclick={() => (ui.shortcuts = true)}>Shortcuts (Alt ?)</Button>
     {#if custom[projectId]}
       <Button size="sm" onclick={() => setLayout(null)}>Reset layout</Button>
     {/if}
@@ -287,6 +301,7 @@
             <Button size="sm" variant="primary" onclick={() => void sendKeys(s.id, ['1'])}>Allow</Button>
             <Button size="sm" onclick={() => void sendKeys(s.id, ['3'])}>Deny</Button>
           {/if}
+          <IconButton label="End session" icon="close" size="xs" onclick={() => closePane(s)} />
         {/snippet}
         {#snippet pane(s)}
           {@const shell = shellOf(s)}
@@ -404,6 +419,7 @@
   header {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: var(--space-3);
   }
 
