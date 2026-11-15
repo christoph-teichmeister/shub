@@ -174,6 +174,8 @@
     return () => (ui.showInGrid = null);
   });
 
+  let askOpen = $state<Record<string, boolean>>({});
+
   // Alt W closes the focused session; like the tab bar, it asks first when panes or work would be lost.
   let confirm = $state<Confirm | null>(null);
   const closeFocused = () => closePane(live.find((x) => x.id === focusId));
@@ -295,9 +297,17 @@
       >
         {#snippet actions(s)}
           {#if s.pendingPermission}
-            <span class="ask" title="{s.pendingPermission.tool}: {s.pendingPermission.summary}">
+            <button
+              type="button"
+              class="ask"
+              class:open={askOpen[s.id]}
+              aria-expanded={!!askOpen[s.id]}
+              title="Show the whole question"
+              onclick={() => (askOpen[s.id] = !askOpen[s.id])}
+            >
+              <Icon name={askOpen[s.id] ? 'chevron-down' : 'chevron-right'} size="sm" />
               {s.pendingPermission.tool}: {s.pendingPermission.summary}
-            </span>
+            </button>
             <Button size="sm" variant="primary" onclick={() => void sendKeys(s.id, ['1'])}>Allow</Button>
             <Button size="sm" onclick={() => void sendKeys(s.id, ['3'])}>Deny</Button>
           {/if}
@@ -464,13 +474,29 @@
     cursor: pointer;
   }
 
+  /* One line until tapped; open it shows the whole question, above the Allow button. */
   .ask {
     min-width: 0;
     max-width: 50%;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
     overflow: hidden;
+    text-align: left;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font: inherit;
     font-size: var(--text-sm);
+    cursor: pointer;
+  }
+
+  .ask.open {
+    order: -1;
+    max-width: none;
+    flex-basis: 100%;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .quiet {

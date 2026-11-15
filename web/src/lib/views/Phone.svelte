@@ -191,6 +191,21 @@
       message = message ? `${text} ${message}` : text;
   }
 
+  // Ctrl C ends what Claude is doing: the first tap arms it, the second sends.
+  let armed = $state(false);
+  let armTimer: ReturnType<typeof setTimeout> | undefined;
+  function quick(id: string, key: string) {
+    if (key !== 'C-c') return void sendKeys(id, [key]);
+    if (!armed) {
+      armed = true;
+      clearTimeout(armTimer);
+      armTimer = setTimeout(() => (armed = false), 3000);
+      return;
+    }
+    armed = false;
+    void sendKeys(id, [key]);
+  }
+
   const QUICK: { label: string; key: string; aria?: string }[] = [
     { label: 'Esc', key: 'Escape' },
     { label: 'Ctrl C', key: 'C-c' },
@@ -293,6 +308,7 @@
             aria-expanded={askOpen}
             onclick={() => (askOpen = !askOpen)}
           >
+            <Icon name={askOpen ? 'chevron-down' : 'chevron-right'} size="sm" />
             <span class="ask-tool">Allow {open.pendingPermission.tool}?</span>
             <span class="ask-summary">{open.pendingPermission.summary}</span>
           </button>
@@ -328,8 +344,12 @@
       {#if keysShown}
         <div class="quick" role="group" aria-label="Quick keys">
           {#each QUICK as q (q.key)}
-            <button type="button" class="qk" aria-label={q.aria} onclick={() => sendKeys(open.id, [q.key])}
-              >{q.label}</button
+            <button
+              type="button"
+              class="qk"
+              class:armed={q.key === 'C-c' && armed}
+              aria-label={q.key === 'C-c' && armed ? 'Tap again to send Ctrl C' : q.aria}
+              onclick={() => quick(open.id, q.key)}>{q.key === 'C-c' && armed ? 'Tap again' : q.label}</button
             >
           {/each}
         </div>
@@ -849,6 +869,11 @@
     font-family: var(--font-mono);
     font-size: var(--text-md);
     cursor: pointer;
+  }
+
+  .qk.armed {
+    border-color: var(--danger);
+    color: var(--danger);
   }
 
   .input {

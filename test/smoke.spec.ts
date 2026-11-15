@@ -2534,4 +2534,59 @@ test('a project change that cannot be saved says which field needs a value', asy
   await expect(page.getByTestId('save-status')).toHaveText('Not saved: Name needs a value');
   await page.getByLabel('Name').fill('ai-portal-2');
   await expect(page.getByTestId('save-status')).not.toContainText('Not saved');
+test('a prompt-skipping default and the trust switch ask first', async ({ page }) => {
+  const { errors, calls } = await mockApi(page, { 'PATCH /api/settings': config });
+  await page.goto('/#/settings/sessions');
+  const writes = () => calls.filter((c) => c.method === 'PATCH' && c.path === '/api/settings').map((c) => c.body);
+
+  await page.getByRole('button', { name: /^Bypass/ }).click();
+  const ask = page.getByRole('dialog', { name: 'Make Bypass the default?' });
+  await expect(ask).toContainText(
+    'Every new session can edit files and run commands without asking. Use only in sandboxes.',
+  );
+  await ask.getByRole('button', { name: 'Cancel' }).click();
+  expect(writes()).toEqual([]);
+
+  await page.getByRole('button', { name: /^Bypass/ }).click();
+  await ask.getByRole('button', { name: 'Turn on' }).click();
+  await expect.poll(writes).toEqual([{ defaultPermissionMode: 'bypassPermissions' }]);
+
+  // A safe mode needs no question.
+  await page.getByRole('button', { name: /^Plan/ }).click();
+  await expect.poll(writes).toHaveLength(2);
+
+  const trust = page.getByRole('checkbox', { name: 'Skip the approval' });
+  await expect(page.getByText('Sessions may act without asking')).toBeVisible();
+  await trust.click({ force: true });
+  const trustAsk = page.getByRole('dialog', { name: 'Let sessions act without your approval?' });
+  await expect(trustAsk).toBeVisible();
+  await expect(trust).not.toBeChecked();
+  await trustAsk.getByRole('button', { name: 'Cancel' }).click();
+  expect(writes()).toHaveLength(2);
+  await expect(trustAsk).toBeHidden();
+  await trust.click({ force: true });
+  await trustAsk.getByRole('button', { name: 'Turn on' }).click();
+  await expect.poll(() => writes().length).toBe(3);
+  expect(writes()[2]).toEqual({ trustSessions: true });
+  expect(errors).toEqual([]);
+});
+
+test('closing an idle Claude session is at once, with an undo toast that resumes it', async ({ page }) => {
+  const idle: Session = { ...session, status: 'your-turn', claudeSessionId: 'c-1' };
+  const { errors, calls } = await mockApi(page, {
+    '/api/sessions': [idle],
+    'POST /api/sessions': { status: 200, json: { ...idle, id: 's9' } },
+  });
+  await page.goto('/#/p/ai-portal/s1');
+  await page.getByRole('button', { name: 'Close MR 2136 review' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect.poll(() => calls.filter((c) => c.method === 'DELETE').map((c) => c.path)).toEqual(['/api/sessions/s1']);
+
+  const undo = page.locator('.toast').filter({ hasText: 'Closed MR 2136 review' });
+  await expect(undo).toContainText('resume the conversation');
+  await undo.getByRole('button', { name: 'Resume' }).click();
+  await expect
+    .poll(() => calls.find((c) => c.method === 'POST' && c.path === '/api/sessions')?.body)
+    .toMatchObject({ projectId: 'ai-portal', kind: 'claude', resumeClaudeSessionId: 'c-1' });
+  expect(errors).toEqual([]);
 });

@@ -158,6 +158,7 @@
 
   .actions {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-2);
     padding: 0 var(--space-3) var(--space-3);
   }

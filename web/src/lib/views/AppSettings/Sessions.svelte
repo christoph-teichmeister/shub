@@ -5,6 +5,7 @@
   import Button from '../../components/Button/Button.svelte';
   import Checkbox from '../../components/Checkbox/Checkbox.svelte';
   import ChoiceButton from '../../components/ChoiceButton/ChoiceButton.svelte';
+  import Dialog from '../../components/Dialog/Dialog.svelte';
   import Section from '../../components/Section/Section.svelte';
   import { api } from '../../stores/api.ts';
   import { PERMISSION_MODES } from '../../permissionModes.ts';
@@ -26,6 +27,29 @@
     const config = await api<Config>('settings', { body: { notifications } }).catch(toastError);
     if (config) app.config = config;
     else void loadConfig();
+  }
+
+  /** The change waiting for the user's confirm: a prompt-skipping mode or the trust switch. */
+  let risky = $state<{ title: string; body: string; run: () => void } | null>(null);
+
+  function chooseMode(m: (typeof MODES)[number]) {
+    if (!m.risky) return void setDefaultMode(m.value);
+    risky = {
+      title: `Make ${m.label} the default?`,
+      body: 'Every new session can edit files and run commands without asking. Use only in sandboxes.',
+      run: () => void setDefaultMode(m.value),
+    };
+  }
+
+  let trustKey = $state(0);
+
+  function chooseTrust(on: boolean) {
+    if (!on) return void setTrustSessions(false);
+    risky = {
+      title: 'Let sessions act without your approval?',
+      body: 'Project sessions can start sessions and change projects, buttons and links without asking you. The sessions they start skip every prompt.',
+      run: () => void setTrustSessions(true),
+    };
   }
 
   async function setDefaultMode(defaultPermissionMode: string) {
@@ -59,27 +83,50 @@
         <ChoiceButton
           shape="card"
           pressed={(app.config?.defaultPermissionMode ?? 'default') === m.value}
-          onclick={() => setDefaultMode(m.value)}
+          onclick={() => chooseMode(m)}
         >
           <span class="stack mode">
-            <span class="strong" class:risky={m.risky}>{m.label}{m.risky ? ' ⚠' : ''}</span>
+            <span class="strong" class:risky={m.risky}
+              >{m.label}{#if m.risky}<span aria-hidden="true"> ⚠</span> <span class="small">Risky</span>{/if}</span
+            >
             <span class="muted small">{m.hint}</span>
           </span>
         </ChoiceButton>
       {/each}
     </div>
   </Section>
+</div>
+<div class="card danger-zone">
   <Section
     title="Sessions may act without asking"
     description="A project session can start sessions and change projects, Quick actions and links without an approval. Sessions they start run with bypass permissions on. Still one level deep and limited to 5 starts an hour. Stays on this machine."
   >
-    <Checkbox
-      label="Skip the approval"
-      checked={!!app.config?.trustSessions}
-      onchange={(e) => setTrustSessions(e.currentTarget.checked)}
-    />
+    <!-- Re-created when a turn-on is asked about, so the box shows the saved value until the confirm. -->
+    {#key trustKey}
+      <Checkbox
+        label="Skip the approval"
+        checked={!!app.config?.trustSessions}
+        onchange={(e) => {
+          if (e.currentTarget.checked) trustKey++;
+          chooseTrust(e.currentTarget.checked);
+        }}
+      />
+    {/key}
   </Section>
 </div>
+
+<Dialog open={!!risky} title={risky?.title ?? ''} description={risky?.body} onclose={() => (risky = null)}>
+  {#snippet actions()}
+    <Button variant="ghost" onclick={() => (risky = null)}>Cancel</Button>
+    <Button
+      variant="danger"
+      onclick={() => {
+        risky?.run();
+        risky = null;
+      }}>Turn on</Button
+    >
+  {/snippet}
+</Dialog>
 
 <div class="card">
   <Section title="Notifications">
@@ -141,6 +188,10 @@
     border: var(--hairline) solid var(--line);
     border-radius: var(--radius-lg);
     background: var(--panel);
+  }
+
+  .danger-zone {
+    border-color: color-mix(in srgb, var(--danger) 40%, transparent);
   }
 
   .modes {
