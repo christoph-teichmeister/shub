@@ -111,7 +111,10 @@
       'Sync folder',
       'The folder a sync tool keeps equal on your machines. shub shares settings and sessions through it.',
     ],
-    ['Close', 'End a session or a worktree and clean up. Asks first when work is running.'],
+    [
+      'Close',
+      'End a session or a worktree and clean up. Asks first when work is running. "Prune" is Close for a worktree whose folder is already gone.',
+    ],
     [
       'Remove',
       'Take something off shub\'s list (a project, a machine). Files stay. Avoid "Delete" except for content you typed.',

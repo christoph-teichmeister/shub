@@ -124,7 +124,7 @@ async function signIn(machine: Machine): Promise<string> {
   if (!challenge.data.nonce) throw new Error(`sign-in failed (${challenge.status})`);
   const { nonce, hostId } = challenge.data;
   if (!hostId || (machine.hostId && machine.hostId !== hostId))
-    throw new Error('that machine is not the host it was paired with');
+    throw new Error('that is not the machine it was paired with');
   const raw = await crypto.subtle.sign(
     { name: 'ECDSA', hash: 'SHA-256' },
     keys.privateKey,

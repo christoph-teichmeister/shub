@@ -60,7 +60,7 @@ export const app = $state({
     name?: string;
     caller?: { kind: string; id: string; level?: DeviceLevel };
     device?: Device | null;
-    /** A trusted host or a Control phone: only here can devices be approved or raised. */
+    /** A trusted machine or a Control phone: only here can devices be approved or raised. */
     local?: boolean;
   } | null,
   /** Bumped on devices.changed so Settings > Devices refetches. */

@@ -36,7 +36,7 @@
   const left = $derived(pairing ? Math.max(0, Date.parse(pairing.expiresAt) - now) : 0);
   const countdown = $derived(mmss(left));
 
-  /** Approving and changing levels work on a trusted host and from a phone at level Control. */
+  /** Approving and changing levels work on a trusted machine and from a phone at level Control. */
   const local = $derived(!!app.me?.local);
   const LEVEL_OPTIONS = [
     { value: 'view', label: 'View' },
@@ -94,7 +94,8 @@
       <p class="muted small">
         View reads sessions and gets push. Prompts also answers approvals, permission questions and Run chips. Control
         also types in terminals and starts sessions. A new device (phone or browser) joins at Prompts once approved;
-        approving and changing levels work on a trusted host (opened via localhost) and from a phone at level Control.
+        approving and changing levels work on a trusted machine (opened via localhost) and from a phone at level
+        Control.
       </p>
     </details>
     {#if !devices.length}<p class="muted small">No paired devices yet.</p>{/if}
@@ -112,7 +113,7 @@
           {#if d.kind !== 'desktop'}
             {#if d.state === 'pending'}
               {#if local}<Button size="sm" variant="primary" onclick={() => onapprove(d)}>Approve</Button>
-              {:else}<span class="muted small">Approve on a trusted host</span>{/if}
+              {:else}<span class="muted small">Approve on a trusted machine</span>{/if}
             {:else if local}
               <span class="segment" role="group" aria-label="What {d.name} may do">
                 {#each LEVEL_OPTIONS as o (o.value)}

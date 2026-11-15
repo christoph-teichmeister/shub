@@ -142,7 +142,7 @@
   const ACTIONS: Record<Approval['action'], string> = {
     'session.start': 'wants to start a new session',
     'session.close': 'wants to close a session',
-    'buttons.write': 'wants to change project buttons',
+    'buttons.write': 'wants to change Quick actions',
     'projects.write': 'wants to change projects',
   };
   const who = (a: Approval) =>

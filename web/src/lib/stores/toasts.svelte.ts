@@ -51,17 +51,19 @@ export function plainError(err: unknown): string {
     // A message the server wrote on purpose stays; a bare status line gets a sentence.
     const bare =
       !err.message ||
-      /^(HTTP \d+|Unauthorized|Forbidden|Bad Gateway|Service Unavailable|Gateway Timeout|Internal Server Error)$/i.test(
+      /^(HTTP \d+|Unauthorized|Forbidden|Bad Gateway|Bad Request|Not Found|Conflict|Not Implemented|Too Many Requests|Method Not Allowed|Payload Too Large|Service Unavailable|Gateway Timeout|Internal Server Error)$/i.test(
         err.message,
       );
     if (!bare) return err.message;
-    if (err.status === 401 || err.status === 403)
-      return "This device isn't allowed to do that. Ask a trusted device to approve it.";
+    if (err.status === 401) return "This device isn't allowed to do that. Ask a trusted device to approve it.";
+    if (err.status === 403) return "This device isn't allowed to do that.";
     if (err.status >= 502 && err.status <= 504) return "Can't reach shub. Is it running?";
-    return err.status >= 500 ? 'shub hit a problem. Try again.' : `That did not work (code ${err.status}).`;
+    return err.status >= 500 ? 'shub hit a problem. Try again.' : `That did not work (error ${err.status}).`;
   }
   if (err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError'))
     return "shub didn't answer in time. Is it running?";
-  if (err instanceof TypeError) return "Can't reach shub. Is it running?";
+  // fetch rejects with a TypeError ("Failed to fetch", "NetworkError...", "Load failed"); other TypeErrors are bugs.
+  if (err instanceof TypeError && /fetch|network|load failed/i.test(err.message))
+    return "Can't reach shub. Is it running?";
   return err instanceof Error ? err.message : String(err);
 }
