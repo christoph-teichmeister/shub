@@ -1,12 +1,13 @@
 <script lang="ts">
   // Settings area Sessions: the default permission mode, trusted sessions and notifications.
   import { onMount } from 'svelte';
-  import type { Config, LaunchPermissionMode } from '../../../../../shared/api.ts';
+  import type { Config } from '../../../../../shared/api.ts';
   import Button from '../../components/Button/Button.svelte';
   import Checkbox from '../../components/Checkbox/Checkbox.svelte';
   import ChoiceButton from '../../components/ChoiceButton/ChoiceButton.svelte';
   import Section from '../../components/Section/Section.svelte';
   import { api } from '../../stores/api.ts';
+  import { PERMISSION_MODES } from '../../permissionModes.ts';
   import { pushEnabled, pushSupported, subscribePush } from '../../stores/push.ts';
   import { app, loadConfig } from '../../stores/state.svelte.ts';
   import { toast, toastError } from '../../stores/toasts.svelte.ts';
@@ -14,14 +15,7 @@
   /** Push was turned on here: the device list shows it. */
   let { onpush }: { onpush: () => void } = $props();
 
-  const MODES: { value: LaunchPermissionMode; label: string; hint: string; risky?: boolean }[] = [
-    { value: 'default', label: 'Ask first', hint: 'Asks before commands and edits.' },
-    { value: 'acceptEdits', label: 'Accept edits', hint: 'Edits files freely, asks for commands.' },
-    { value: 'plan', label: 'Plan', hint: 'Reads and plans, changes nothing.' },
-    { value: 'auto', label: 'Auto', hint: 'Skips prompts with a safety check.', risky: true },
-    { value: 'bypassPermissions', label: 'Bypass', hint: 'Skips every prompt. Only in sandboxes.', risky: true },
-    { value: 'inherit', label: 'My Claude settings', hint: 'Uses your ~/.claude settings as they are.' },
-  ];
+  const MODES = PERMISSION_MODES;
 
   let push = $state(false);
   onMount(() => void pushEnabled().then((on) => (push = on)));
@@ -58,7 +52,7 @@
 <div class="card">
   <Section
     title="Permission mode for new sessions"
-    description="Used by sessions you start and the global Claude. A project button's own mode wins."
+    description="Used by sessions you start and by the global Claude, the one session that belongs to no project (Alt G). A Quick action's own mode wins."
   >
     <div class="modes" role="group" aria-label="Permission mode for new sessions">
       {#each MODES as m (m.value)}
@@ -77,7 +71,7 @@
   </Section>
   <Section
     title="Sessions may act without asking"
-    description="A project session can start sessions and change projects, buttons and links without an approval. Sessions they start run with bypass permissions on. Still one level deep and limited to 5 starts an hour. Stays on this machine."
+    description="A project session can start sessions and change projects, Quick actions and links without an approval. Sessions they start run with bypass permissions on. Still one level deep and limited to 5 starts an hour. Stays on this machine."
   >
     <Checkbox
       label="Skip the approval"

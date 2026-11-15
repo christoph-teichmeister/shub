@@ -11,6 +11,7 @@
   import Sessions from './AppSettings/Sessions.svelte';
   import Sync from './AppSettings/Sync.svelte';
   import Updates from './AppSettings/Updates.svelte';
+  import SaveStatus from '../components/SaveStatus/SaveStatus.svelte';
   import { api } from '../stores/api.ts';
   import { href, router } from '../stores/router.svelte.ts';
   import { app, loadUpdate, ui } from '../stores/state.svelte.ts';
@@ -133,7 +134,7 @@
     if (app.devicesVersion) void loadDevices();
   });
 
-  /** Approving and changing levels work on a trusted host and from a phone at level Control. */
+  /** Approving and changing levels work on a trusted machine and from a phone at level Control. */
   const local = $derived(!!app.me?.local);
 
   async function approve(d: Device) {
@@ -228,6 +229,7 @@
 
     <main class="main" bind:this={main}>
       <a class="up" href={href('settings')}>‹ All settings</a>
+      <SaveStatus />
       {#if !words.length}
         {@render attention()}
       {:else if !Object.values(hits).some(Boolean)}
@@ -271,7 +273,7 @@
           {#if local}
             <Button size="sm" onclick={() => (unpair = d)}>Reject</Button>
             <Button size="sm" variant="primary" onclick={() => (approving = d)}>Approve</Button>
-          {:else}<span class="small">Approve on a trusted host</span>{/if}
+          {:else}<span class="small">Approve on a trusted machine</span>{/if}
         </div>
       {/each}
       {#if showUpdate && update?.latest}
@@ -307,7 +309,7 @@
   open={!!approving}
   title="Approve {approving?.name}?"
   description="A {approving?.kind} that redeemed a code made on {approving?.host ??
-    'a host'} wants to join your devices. Only approve it if you just paired it yourself."
+    'a machine'} wants to join your devices. Only approve it if you just paired it yourself."
   onclose={() => (approving = null)}
 >
   {#snippet actions()}

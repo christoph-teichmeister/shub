@@ -24,7 +24,7 @@
     if (!isObject(a) || !isObject(b)) return [{ field: 'value', a: a ?? '(removed)', b: b ?? '(removed)' }];
     return [...new Set([...Object.keys(a), ...Object.keys(b)])].map((field) => ({ field, a: a[field], b: b[field] }));
   });
-  const who = (hosts: string[]) => hosts.join(', ') || 'this host';
+  const who = (hosts: string[]) => hosts.join(', ') || 'this machine';
 
   async function pick(pick: 'ours' | 'theirs') {
     const res = await api('groupResolve', { body: { key, pick } }).catch(toastError);
@@ -56,8 +56,8 @@
   open={!!current}
   title="Two versions of {current?.key}"
   description={canPick
-    ? 'Changed on two hosts while apart. This host keeps its own until you pick one whole version.'
-    : 'Changed on two hosts while apart. A device with Control level can pick.'}
+    ? 'Changed on two machines while apart. This machine keeps its own until you pick one whole version.'
+    : 'Changed on two machines while apart. A device with Control level can pick.'}
   onclose={() => (key = null)}
 >
   {#if current}
@@ -75,7 +75,7 @@
   {#snippet actions()}
     <Button variant="ghost" onclick={() => (key = null)}>Close</Button>
     {#if canPick}
-      <Button variant="ghost" onclick={() => pick('ours')}>Keep this host's</Button>
+      <Button variant="ghost" onclick={() => pick('ours')}>Keep this machine's</Button>
       <Button onclick={() => pick('theirs')}>Take the other</Button>
     {/if}
   {/snippet}

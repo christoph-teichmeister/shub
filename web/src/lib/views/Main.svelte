@@ -607,7 +607,7 @@
   {@const w = worktreeMenu.worktree}
   <Menu
     label="Menu for {w.name}"
-    items={[{ id: 'delete', label: 'Delete worktree', danger: true }]}
+    items={[{ id: 'delete', label: 'Close worktree', danger: true }]}
     x={worktreeMenu.x}
     y={worktreeMenu.y}
     onselect={() => worktreesDialog?.askClose(w)}

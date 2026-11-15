@@ -26,7 +26,7 @@
       { id: 'visibility', label: p.visibility === 'pinned' ? 'Make dormant (search only)' : 'Pin to sidebar' },
       {
         id: 'remove',
-        label: 'Remove from hub',
+        label: 'Remove from shub',
         separator: true,
         danger: true,
         description: 'The folder and its sessions stay.',
@@ -45,7 +45,7 @@
       toast(visibility === 'dormant' ? `${p.name} is dormant; find it with Alt K` : `${p.name} is pinned`);
     } else if (id === 'remove')
       onconfirm({
-        title: `Remove ${p.name} from the hub?`,
+        title: `Remove ${p.name} from shub?`,
         body: `Only the entry goes. The folder ${p.path} and its Claude history stay on disk.`,
         action: 'Remove',
         danger: true,

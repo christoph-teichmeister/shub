@@ -21,7 +21,10 @@
   import Section from '../components/Section/Section.svelte';
   import SelectField from '../components/SelectField/SelectField.svelte';
   import TextField from '../components/TextField/TextField.svelte';
+  import { PERMISSION_MODES } from '../permissionModes.ts';
+  import SaveStatus from '../components/SaveStatus/SaveStatus.svelte';
   import { api } from '../stores/api.ts';
+  import { noteSaved } from '../stores/saved.svelte.ts';
   import { go, href } from '../stores/router.svelte.ts';
   import { app, loadProjects } from '../stores/state.svelte.ts';
   import { toast, toastError } from '../stores/toasts.svelte.ts';
@@ -40,19 +43,16 @@
     { value: 'number', label: 'Number' },
     { value: 'pick-worktree', label: 'Pick worktree' },
   ];
-  const MODES: { value: PermissionMode | 'locked'; label: string }[] = [
-    { value: 'default', label: 'Default' },
-    { value: 'acceptEdits', label: 'Accept edits' },
-    { value: 'plan', label: 'Plan' },
-    { value: 'auto', label: 'Auto' },
-    { value: 'bypassPermissions', label: 'Bypass permissions' },
-    { value: 'locked', label: 'Locked to default' },
+  const MODES = [
+    ...PERMISSION_MODES.filter((m) => m.value !== 'inherit'),
+    { value: 'locked', label: 'Locked to the default', hint: 'Always uses the default from Settings > Sessions.' },
   ];
+  const modeHint = (v: string) => MODES.find((m) => m.value === v)?.hint;
   const SCOPES: { scope: SkillInfo['scope'] | 'missing'; title: string }[] = [
     { scope: 'project', title: 'Project skills · .claude/skills in this repo' },
     { scope: 'global', title: 'Global skills · ~/.claude/skills' },
     { scope: 'plugin', title: 'Plugin skills' },
-    { scope: 'missing', title: 'Buttons whose skill is gone' },
+    { scope: 'missing', title: 'Quick actions whose skill is gone' },
   ];
 
   let name = $state('');
@@ -70,6 +70,8 @@
   let skillsError = $state('');
   let removing = $state(false);
   let saving = $state(false);
+  /** Why the last change was not saved (a required field is empty); empty while all is fine. */
+  let problem = $state('');
   let fileInput = $state<HTMLInputElement>();
   let form = $state<HTMLFormElement>();
   /** JSON of what the server has, so autosave only sends real changes. */
@@ -231,7 +233,14 @@
     const json = JSON.stringify(bodyOf());
     if (!savedJson) savedJson = json;
     clearTimeout(saveTimer);
-    if (json === savedJson || !form?.checkValidity()) return;
+    if (json === savedJson) return void (problem = '');
+    if (!form?.checkValidity()) {
+      const bad = form?.querySelector<HTMLInputElement>(':invalid');
+      const field = bad?.labels?.[0]?.textContent?.trim() || bad?.getAttribute('aria-label') || 'a field';
+      problem = `${field} needs a value`;
+      return;
+    }
+    problem = '';
     const target = id;
     const control = touched;
     saveTimer = setTimeout(() => void autosave(target, json, control), 600);
@@ -254,7 +263,7 @@
     savedJson = json;
     if (res.approval) toast('Waiting for your approval', 'needs-you');
     else {
-      toast('Saved', 'neutral', 1500);
+      noteSaved();
       flash(control);
     }
     await loadProjects();
@@ -278,7 +287,7 @@
     const ok = await api('projectDelete', { params: { id } }).then(() => true, toastError);
     if (!ok) return;
     await loadProjects();
-    toast(`Removed ${name} from the hub`);
+    toast(`Removed ${name} from shub`);
     go();
   }
 </script>
@@ -454,8 +463,8 @@
 
       {#if !isNew}
         <Section
-          title="Buttons from skills"
-          description="Found automatically. Tick a skill to show it as a button in this project."
+          title="Quick actions from skills"
+          description="Found automatically. Tick a skill to show it as a Quick action in this project."
         >
           {#if skillsError}
             <p class="muted">Could not read the skills: {skillsError}</p>
@@ -464,13 +473,13 @@
           {:else}
             <details class="skills">
               <summary
-                >{skillRows.length} skills, {skillRows.filter((s) => buttonFor(s)).length} shown as buttons</summary
+                >{skillRows.length} skills, {skillRows.filter((s) => buttonFor(s)).length} shown as Quick actions</summary
               >
               <div class="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th scope="col"><span class="visually-hidden">Show as button</span></th>
+                      <th scope="col"><span class="visually-hidden">Show as Quick action</span></th>
                       <th scope="col">Skill</th>
                       <th scope="col">Asks for</th>
                       <th scope="col">Confirm</th>
@@ -487,7 +496,7 @@
                           <tr>
                             <td>
                               <Checkbox
-                                label="Show {s.name} as button"
+                                label="Show {s.name} as Quick action"
                                 hideLabel
                                 checked={!!b}
                                 onchange={(e) => toggleSkill(s, e.currentTarget.checked)}
@@ -538,18 +547,19 @@
           {#each promptButtons as b (b.id)}
             <div class="prompt">
               <div class="grid">
-                <TextField label="Button label" bind:value={b.label} required />
+                <TextField label="Quick action label" bind:value={b.label} required />
                 <div class="row tight end">
                   <SelectField label="Asks for" size="sm" bind:value={b.ask} options={ASKS} />
                   <SelectField
                     label="Permission mode"
                     size="sm"
+                    hint={modeHint(modeOf(b))}
                     bind:value={() => modeOf(b), (v) => setMode(b, v)}
                     options={MODES}
                   />
                   <Checkbox label="Confirm" bind:checked={b.confirm} />
                   <IconButton
-                    label="Remove {b.label || 'this button'}"
+                    label="Remove {b.label || 'this Quick action'}"
                     icon="close"
                     tone="muted"
                     onclick={() => (buttons = buttons.filter((x) => x.id !== b.id))}
@@ -561,14 +571,14 @@
                     rows={3}
                     bind:value={() => b.prompt ?? '', (v) => (b.prompt = v)}
                     required
-                    hint={'{input} is replaced with what the button asks for.'}
+                    hint={'{input} is replaced with what the Quick action asks for.'}
                   />
                 </div>
               </div>
             </div>
           {/each}
           <div class="row">
-            <Button variant="dashed" icon="plus" onclick={addPromptButton}>Own prompt button</Button>
+            <Button variant="dashed" icon="plus" onclick={addPromptButton}>Own prompt</Button>
           </div>
           <p class="muted small">Your choices are saved in ~/.config/shub (versioned in your dotfiles).</p>
         </Section>
@@ -577,7 +587,7 @@
       <div class="foot">
         {#if !isNew}
           <div class="stack start">
-            <Button variant="danger" onclick={() => (removing = true)}>Remove from hub</Button>
+            <Button variant="danger" onclick={() => (removing = true)}>Remove from shub</Button>
             <span class="muted small">The folder and its sessions stay untouched.</span>
           </div>
         {/if}
@@ -586,7 +596,7 @@
           <Button variant="ghost" onclick={() => history.back()}>Cancel</Button>
           <Button variant="primary" type="submit" disabled={saving}>Add project</Button>
         {:else}
-          <span class="muted small" role="status">{saving ? 'Saving…' : 'Changes save automatically'}</span>
+          <SaveStatus {saving} {problem} />
         {/if}
       </div>
     {/if}
@@ -612,7 +622,7 @@
 
 <Dialog
   open={removing}
-  title="Remove {name} from the hub?"
+  title="Remove {name} from shub?"
   description="Only the entry goes. The folder {path} and its Claude history stay on disk; you can import it again later."
   onclose={() => (removing = false)}
 >

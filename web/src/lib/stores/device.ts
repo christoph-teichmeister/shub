@@ -165,7 +165,7 @@ export const normalizeOrigin = (url: string): string => {
   }
 };
 
-/** Group hosts this browser's user removed from the chips; kept only in this browser. */
+/** Group machines this browser's user removed from the chips; kept only in this browser. */
 export function hiddenHosts(): Set<string> {
   try {
     return new Set(JSON.parse(localStorage.getItem(HIDDEN) ?? '[]') as string[]);

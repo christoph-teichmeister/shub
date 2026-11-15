@@ -14,7 +14,7 @@
   <span class="text" aria-label={needsYou ? 'shub, a session needs you' : 'shub'}
     ><span aria-hidden="true">shub<span class="underscore" class:needs-you={needsYou}>_</span></span></span
   >
-  {#if tagline}<span class="tagline">your session hub</span>{/if}
+  {#if tagline}<span class="tagline">your Claude sessions</span>{/if}
 </span>
 
 <style>

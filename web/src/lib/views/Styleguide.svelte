@@ -77,6 +77,7 @@
 
   const sections = [
     'Brand',
+    'Voice and terms',
     'Tokens',
     'Icons',
     'Buttons',
@@ -94,6 +95,39 @@
     'Split view',
     'Bottom panel',
     'Terminal',
+  ];
+  const TERMS: [string, string][] = [
+    ['Machine', 'A computer running shub. Never "host" or "hub".'],
+    ['Device', 'A browser or phone that opens shub. Pair it, approve it, unpair it.'],
+    ['Project', 'A folder shub knows. It sits in a group in the sidebar. "Group" means a project group only.'],
+    ['Session', 'One Claude Code conversation. It has a status: working, needs you, your turn, done.'],
+    ['Global Claude', 'The one session that belongs to no project (Alt G). It can add projects and start sessions.'],
+    ['Quick action', 'A button that starts a session with a skill or a saved prompt. Never "button from a skill".'],
+    [
+      'Permission mode',
+      'How much a session may do without asking: Ask first, Accept edits, Plan, Auto, Bypass, My Claude settings.',
+    ],
+    [
+      'Sync folder',
+      'The folder a sync tool keeps equal on your machines. shub shares settings and sessions through it.',
+    ],
+    ['Close', 'End a session or a worktree and clean up. Asks first when work is running.'],
+    [
+      'Remove',
+      'Take something off shub\'s list (a project, a machine). Files stay. Avoid "Delete" except for content you typed.',
+    ],
+    [
+      'Saved',
+      'Settings save themselves. Say "Changes save automatically"; after a save show "Saved"; if one fails say "Not saved: field needs a value".',
+    ],
+    [
+      'Errors',
+      'Say what is wrong and what to do: "Can\'t reach shub. Is it running?", never "HTTP 502" or "fetch failed".',
+    ],
+    [
+      'Menus',
+      'A menu item ends in "…" only when it opens a dialog that asks for more input. Plain actions have no dots.',
+    ],
   ];
   const slug = (s: string) => s.toLowerCase().replaceAll(' ', '-');
 
@@ -144,12 +178,25 @@
         <Wordmark size="md" />
         <Wordmark size="sm" />
       </div>
-      <p class="note">shub — your session hub. All your Claude Code sessions in one window. Version {version}.</p>
+      <p class="note">shub: all your Claude Code sessions in one window. Version {version}.</p>
       <div class="row wrap">
         <span class="card">Project accent <Wordmark accent={PROJECTS[3].accent} /></span>
         <span class="card">Purple project <Wordmark accent={PROJECTS[2].accent} /></span>
         <span class="card">Needs you (blinks) <Wordmark needsYou /></span>
       </div>
+    </section>
+
+    <section id="voice-and-terms" aria-labelledby="h-voice">
+      <h2 id="h-voice">Voice and terms</h2>
+      <p class="note">
+        Plain words, sentence case, no jargon. Say what happens, not how it works. One word per thing, everywhere.
+      </p>
+      <dl class="terms">
+        {#each TERMS as [term, meaning] (term)}
+          <dt>{term}</dt>
+          <dd>{meaning}</dd>
+        {/each}
+      </dl>
     </section>
 
     <section id="tokens" aria-labelledby="h-tokens">
@@ -658,6 +705,22 @@
     padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-lg);
     background: var(--panel);
+    color: var(--fg-2);
+  }
+
+  .terms {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-1-5) var(--space-4);
+    margin: 0;
+  }
+
+  .terms dt {
+    font-weight: var(--weight-medium);
+  }
+
+  .terms dd {
+    margin: 0;
     color: var(--fg-2);
   }
 

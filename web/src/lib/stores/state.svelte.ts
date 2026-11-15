@@ -48,7 +48,7 @@ export const app = $state({
   /** A session started from a terminal (`shub claude`): Main jumps there when that terminal is the open tab. */
   jump: null as { from: string; to: Session } | null,
   approvals: [] as Approval[],
-  /** GET /api/group/conflicts: items changed on two hosts while apart (header badge, Settings > Sync). */
+  /** GET /api/group/conflicts: items changed on two machines while apart (header badge, Settings > Sync). */
   conflicts: [] as GroupConflict[],
   plugins: [] as PluginInfo[],
   /** GET /api/usage: the 5h/7d subscription limits for the sidebar footer. */
