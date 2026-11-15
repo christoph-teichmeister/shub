@@ -1,25 +1,18 @@
 <script lang="ts">
   import type { SessionStatus } from '../../../../../shared/api.ts';
-  import { STATUS_HELP } from '../../status.ts';
   import Icon from '../Icon/Icon.svelte';
 
   let { status, idle = false }: { status: SessionStatus; idle?: boolean } = $props();
 </script>
 
 {#if status === 'your-turn'}
-  <span title={STATUS_HELP[status]} class="mark your-turn" aria-hidden="true"
-    ><Icon name="check" size="xs" weight={2.4} /></span
-  >
+  <span class="mark your-turn" aria-hidden="true"><Icon name="check" size="xs" weight={2.4} /></span>
 {:else if status === 'waiting'}
-  <span title={STATUS_HELP[status]} class="mark waiting" aria-hidden="true"
-    ><Icon name="clock" size="xs" weight={2} /></span
-  >
+  <span class="mark waiting" aria-hidden="true"><Icon name="clock" size="xs" weight={2} /></span>
 {:else if status === 'paused'}
-  <span title={STATUS_HELP[status]} class="mark paused" aria-hidden="true"
-    ><Icon name="pause" size="xs" weight={2.4} /></span
-  >
+  <span class="mark paused" aria-hidden="true"><Icon name="pause" size="xs" weight={2.4} /></span>
 {:else}
-  <span title={STATUS_HELP[status]} class="dot {status}" class:idle aria-hidden="true"></span>
+  <span class="dot {status}" class:idle aria-hidden="true"></span>
 {/if}
 
 <style>

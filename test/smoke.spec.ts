@@ -192,6 +192,9 @@ test('app shell, wordmark and projects render', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'ai-portal', level: 1 })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'MR 2136 review' })).toBeVisible();
   await expect(page.locator('.xterm')).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'MR 2136 review' })).toHaveAccessibleDescription(
+    /needs you: Claude is blocked/,
+  );
 
   await page.keyboard.press('Alt+Slash');
   await expect(page.getByRole('dialog', { name: 'Shortcuts' })).toBeVisible();
@@ -204,7 +207,8 @@ test('status legend lists the five states', async ({ page }) => {
   await page.getByRole('button', { name: 'Status legend' }).click();
   const dialog = page.getByRole('dialog', { name: 'Status legend' });
   for (const state of ['needs you', 'your turn', 'working', 'waiting', 'paused'])
-    await expect(dialog.getByText(state, { exact: true })).toBeVisible();
+    await expect(dialog.locator('dt').filter({ hasText: state })).toBeVisible();
+  await expect(dialog.getByText('Parked until something outside happens')).toBeVisible();
   expect(errors).toEqual([]);
 });
 

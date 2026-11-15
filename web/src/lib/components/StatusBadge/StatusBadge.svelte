@@ -1,19 +1,12 @@
 <script lang="ts">
-  import { STATUS_HELP } from '../../status.ts';
-
   interface Props {
     text: string;
     tone?: 'needs-you' | 'working' | 'done' | 'neutral';
   }
   let { text, tone = 'neutral' }: Props = $props();
-  const help = $derived(
-    { 'needs-you': STATUS_HELP['needs-you'], working: STATUS_HELP.working, done: STATUS_HELP['your-turn'] }[
-      tone as string
-    ],
-  );
 </script>
 
-<span class="badge {tone}" title={help}>{text}</span>
+<span class="badge {tone}">{text}</span>
 
 <style>
   .badge {

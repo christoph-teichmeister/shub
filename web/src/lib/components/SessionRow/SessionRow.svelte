@@ -94,6 +94,7 @@
       {href}
       ondblclick={onrename ? (e) => (e.preventDefault(), (renaming = true)) : undefined}
       aria-current={selected ? 'page' : undefined}
+      aria-describedby="status-help-{session.id}"
       title={[
         STATUS_HELP[session.status],
         session.pendingCommands?.map((c) => c.command).join('\n') ?? waitTitle(session),
@@ -106,6 +107,7 @@
       <span class="name">{session.name}</span>
       <span class="status">{closing ? 'Closing' : statusLabel(session)}</span>
     </a>
+    <span id="status-help-{session.id}" class="visually-hidden">{STATUS_HELP[session.status]}</span>
   {/if}
   {#if onmenu && !closing && !renaming}
     <span class="actions"

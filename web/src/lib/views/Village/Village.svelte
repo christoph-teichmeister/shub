@@ -408,7 +408,7 @@
     if (mood === 'angry') return { text: '!!', tone: 'angry' };
     if (status === 'needs-you') return { text: '!', tone: 'needs-you' };
     if (status === 'your-turn') return { text: '...', tone: 'your-turn' };
-    if (status === 'waiting') return { text: '⏳', tone: 'waiting' };
+    if (status === 'waiting') return { text: 'wait', tone: 'waiting' };
     if (asleep(status)) return { text: zz, tone: 'paused' };
     return null;
   }
@@ -1173,11 +1173,11 @@
   <footer>
     <span><b class="needs-you">!</b> needs you</span>
     <span><b class="your-turn">...</b> your turn</span>
-    <span><b class="waiting">⏳</b> waiting, parked until something outside happens</span>
-    <span><b class="paused-tag">zZ</b> paused, stopped, conversation kept</span>
+    <span><b class="waiting">wait</b> waiting for something outside</span>
+    <span><b class="paused-tag">zZ</b> paused, Claude stopped, chat kept</span>
     <span id="village-things"
       >Backpack: context fill · tent: worktree · baby crab: sub-agent · machine: Docker service · lit house: a crab is
-      working</span
+      working, at night also a busy house</span
     >
     <span id="village-keys"
       >Click a crab to pin its card and use the card buttons, drag to pan, wheel to zoom. Click your desk to open the

@@ -127,7 +127,9 @@
     >
       {session.name}
     </button>
-    <span id="status-{session.id}" class="visually-hidden">{STATUS_LABEL[session.status]}</span>
+    <span id="status-{session.id}" class="visually-hidden"
+      >{STATUS_LABEL[session.status]}: {STATUS_HELP[session.status]}</span
+    >
   {/if}
   {#if closing}
     <span class="badge-closing">Closing</span>

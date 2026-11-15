@@ -15,8 +15,8 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
 export const STATUS_HELP: Record<SessionStatus, string> = {
   'needs-you': 'Claude is blocked on a permission or a question',
   'your-turn': 'Claude finished and waits for your next prompt',
-  working: 'Claude is busy on a turn',
-  waiting: 'Parked until something outside happens, then it carries on or tells you',
+  working: 'Claude is working on your last prompt',
+  waiting: 'Parked until something outside happens',
   paused: 'Claude is stopped, the conversation is kept',
   new: 'Claude is up but got no prompt yet',
   starting: 'Claude is starting',
