@@ -17,10 +17,11 @@
   const ICON: Record<ToastItem['tone'], IconName> = { neutral: 'check', error: 'warning', 'needs-you': 'bell' };
 </script>
 
-<div class="stack" class:fixed>
+<!-- The wrapper is always there, so a confirmation added later is announced politely. -->
+<div class="stack" class:fixed aria-live="polite">
   {#each items as item (item.id)}
-    <!-- Errors and needs-you interrupt (alert); confirmations wait their turn (status). -->
-    <div class="toast {item.tone}" role={item.tone === 'neutral' ? 'status' : 'alert'}>
+    <!-- Only failures interrupt (alert); confirmations and "needs you" notices wait their turn. -->
+    <div class="toast {item.tone}" role={item.tone === 'error' ? 'alert' : undefined}>
       <span class="icon"><Icon name={ICON[item.tone]} size="sm" weight={2} /></span>
       <div class="message">
         {item.message}

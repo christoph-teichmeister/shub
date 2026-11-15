@@ -1,6 +1,6 @@
 # Toast
 
-Stack of short messages, bottom right (top, full width, on a phone: the bottom is the message field), errors and needs-you are `role="alert"`, confirmations `role="status"`. Call `toast(message, tone, ms, details)` from `stores/toasts.svelte.ts`; mount one `<Toast />` in the app.
+Stack of short messages, bottom right (top, full width, on a phone: the bottom is the message field), announced politely by an always-present live region; errors are also `role="alert"`. Call `toast(message, tone, ms, details)` from `stores/toasts.svelte.ts`; mount one `<Toast />` in the app.
 
 | Prop        | Type           | Default            |
 | ----------- | -------------- | ------------------ |

@@ -5,13 +5,7 @@
   import CommandChip from '../components/CommandChip/CommandChip.svelte';
   import MachineSwitcher from '../components/MachineSwitcher/MachineSwitcher.svelte';
   import { fleet } from '../stores/machines.svelte.ts';
-  import {
-    API_VERSION,
-    type OldSession,
-    type ServiceContainer,
-    type Session,
-    type SessionStatus,
-  } from '../../../../shared/api.ts';
+  import { type OldSession, type ServiceContainer, type Session, type SessionStatus } from '../../../../shared/api.ts';
   import Button from '../components/Button/Button.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
   import TextField from '../components/TextField/TextField.svelte';
@@ -241,6 +235,7 @@
         />
       {/if}
     </header>
+    <ConnectionBanner />
 
     {#if panes.length > 1}
       <nav class="panes" aria-label="Panes">

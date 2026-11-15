@@ -35,7 +35,8 @@
 </script>
 
 {#if shown}
-  <div class="banner {shown}" role="alert">
+  <!-- Only "does not answer" interrupts; a short reconnect or a version note is polite. -->
+  <div class="banner {shown}" role={shown === 'offline' ? 'alert' : 'status'}>
     <Icon name="warning" size="sm" weight={2} />
     <p class="text">
       {#if shown === 'offline'}
@@ -43,8 +44,12 @@
       {:else if shown === 'reconnecting'}
         Connection lost. Reconnecting to {name}.
       {:else}
-        {name} runs a shub with API {apiVersion ?? app.apiMismatch}, this app speaks {API_VERSION}. Update the older
-        one; until then some things may fail.
+        {#if (apiVersion ?? app.apiMismatch ?? API_VERSION) < API_VERSION}
+          {name} runs an older shub than this app. Update shub on {name}; until then some things may fail.
+        {:else}
+          {name} runs a newer shub than this app. Update shub on the machine you opened this app from; until then some things
+          may fail.
+        {/if}
       {/if}
       {#if time && shown !== 'mismatch'}<span class="since">Showing data from {time}.</span>{/if}
     </p>
@@ -62,10 +67,11 @@
     background: color-mix(in srgb, var(--danger) 14%, var(--bg));
   }
 
-  .reconnecting {
-    border-color: var(--status-needs-you);
-    background: var(--status-needs-you-bg);
-    color: var(--status-needs-you-fg);
+  /* Not the needs-you orange: a blip is not a session waiting for you. */
+  .reconnecting,
+  .mismatch {
+    border-color: var(--line-strong);
+    background: var(--raised);
   }
 
   .text {

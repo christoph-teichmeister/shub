@@ -2481,11 +2481,11 @@ test('server down: the banner says so with the last good time, and Retry now bri
   await expect(banner).toHaveCount(0);
 });
 
-test('a 401 says the access token changed before the login form', async ({ page }) => {
+test('a 401 says you are signed out before the login form', async ({ page }) => {
   await mockApi(page);
   await page.route('**/api/config', (r) => r.fulfill({ status: 401, json: { error: 'login required' } }), { times: 1 });
   await page.goto('/#/');
-  await expect(page.getByRole('alert').filter({ hasText: 'Signed out: your access token changed' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Signed out. Sign in again.' })).toBeVisible();
   await expect(page.getByLabel('Access token')).toBeVisible();
 });
 
@@ -2493,4 +2493,22 @@ test('a failing call that is not a network error shows a toast instead of only l
   await mockApi(page, { '/api/usage': { status: 500, json: { error: 'usage store is broken' } } });
   await page.goto('/#/');
   await expect(page.getByRole('alert').filter({ hasText: 'usage store is broken' })).toBeVisible();
+});
+
+test('a failing call toasts once, however often the data reloads', async ({ page }) => {
+  await mockApi(page, { '/api/usage': { status: 500, json: { error: 'usage store is broken' } } });
+  await page.goto('/#/');
+  const toast = page.getByRole('alert').filter({ hasText: 'usage store is broken' });
+  await expect(toast).toBeVisible();
+  await toast.getByRole('button', { name: 'Dismiss' }).click();
+  await page.evaluate(() => dispatchEvent(new Event('online'))); // reconnect reloads everything
+  await page.waitForTimeout(500);
+  await expect(toast).toHaveCount(0);
+});
+
+test('a version mismatch says which side is older, politely', async ({ page }) => {
+  await mockApi(page, { '/api/health': { ok: true, version: '2026.10.0', apiVersion: 0, machine: 'laptop' } });
+  await page.goto('/#/');
+  const banner = page.getByRole('status').filter({ hasText: 'runs an older shub' });
+  await expect(banner).toBeVisible();
 });

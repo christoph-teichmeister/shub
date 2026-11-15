@@ -202,17 +202,18 @@ export function unpinSession(s: Session) {
 }
 
 let signedOutShown = false;
+const toasted = new Set<string>(); // each failure text toasts once per session, a reload repeating it stays quiet
+let netFailed = false; // a call in the current loadAll did not get through
 function guard<T>(p: Promise<T>): Promise<T | undefined> {
   return p.then(
     (v) => {
-      app.unreachable = false;
       app.lastOkAt = Date.now();
       return v;
     },
     (err: unknown) => {
       if (err instanceof ApiError && err.status === 401) {
         app.authRequired = true;
-        if (!signedOutShown) toast('Signed out: your access token changed. Sign in again.', 'error');
+        if (!signedOutShown) toast('Signed out. Sign in again.', 'error');
         signedOutShown = true;
       }
       // The machine is off or out of reach: fetch failed or timed out, or `tailscale serve` answers 502/504 for a stopped shub.
@@ -222,19 +223,27 @@ function guard<T>(p: Promise<T>): Promise<T | undefined> {
         (err instanceof ApiError && [502, 503, 504].includes(err.status))
       ) {
         app.unreachable = true;
+        netFailed = true;
       } else {
         console.warn(err);
-        toastError(err);
+        // An older or newer shub on the other side answers some endpoints with 4xx: the banner already says so.
+        const text = err instanceof Error ? err.message : String(err);
+        if (app.apiMismatch === null && !toasted.has(text)) {
+          toasted.add(text);
+          toastError(err);
+        }
       }
       return undefined;
     },
   );
 }
 
+let reconnectEvents: (() => void) | null = null;
+
 /** Asks again now instead of waiting for the next backoff: reloads everything and nudges the events socket. */
 export function retryNow(): void {
   void loadAll();
-  window.dispatchEvent(new Event('online')); // connectEvents reconnects on it
+  if (!app.connected) reconnectEvents?.(); // a healthy socket (and the terminals) stay as they are
 }
 
 function themeFromConfig(): void {
@@ -301,6 +310,7 @@ export async function loadUpdate(): Promise<void> {
 }
 
 export async function loadAll(): Promise<void> {
+  netFailed = false;
   await Promise.all([
     loadConfig(),
     loadProjects(),
@@ -316,6 +326,7 @@ export async function loadAll(): Promise<void> {
       app.apiMismatch = h && h.apiVersion !== API_VERSION ? h.apiVersion : null;
     }),
   ]);
+  app.unreachable = netFailed; // set once all calls are in: one answer must not hide another's failure
   app.ready = true;
 }
 
@@ -468,7 +479,7 @@ export function connectEvents(): () => void {
   };
   void open();
   // Back from sleep or offline: drop the (possibly dead) socket and connect now instead of waiting out the backoff.
-  const off = onResume(() => {
+  const reconnect = () => {
     if (stopped || app.authRequired) return;
     clearTimeout(timer);
     clearTimeout(watchdog);
@@ -477,9 +488,12 @@ export function connectEvents(): () => void {
     ws?.close();
     delay = 1000;
     void open();
-  });
+  };
+  const off = onResume(reconnect);
+  reconnectEvents = reconnect;
   return () => {
     stopped = true;
+    reconnectEvents = null;
     off();
     clearTimeout(timer);
     clearTimeout(watchdog);
