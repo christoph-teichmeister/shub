@@ -33,7 +33,7 @@ For the background service, install it again with the port set (it is stored in 
 - Claude Code: `npm i -g @anthropic-ai/claude-code`, then run `claude` once in a terminal and log in.
   Starting a session without it fails with "Claude Code not found".
 - Installed but still not found by the service: the service keeps the `PATH` it had when it was installed. Run
-  `shub service install` again from a terminal where `claude` works. shub also looks in `~/.local/bin`.
+  `shub service install` again from a terminal where `claude` works. When shub starts a session it also looks in `~/.local/bin`; `shub doctor` does not.
 
 ## A session is stuck
 
@@ -56,6 +56,6 @@ shub learns a session's state from Claude Code hooks. It adds them to every sess
 
 ## I lost the access token
 
-- `shub token` prints it again (it lives in `~/.local/state/shub/token`).
+- `shub token` prints it again (it lives in `token` in shub's state folder, `~/.local/state/shub/` unless `SHUB_STATE_DIR` or `XDG_STATE_HOME` moves it).
 - Signed in somewhere already: Settings > Account & security > Rotate access token writes a new one and signs out
   every other browser and phone.

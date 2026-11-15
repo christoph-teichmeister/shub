@@ -55,3 +55,26 @@ test('install, start, pass through to the app CLI, check for updates', async () 
   await assert.rejects(shub('rollback', 'now'), /unexpected argument "now"/);
   assert.match((await shub('--help')).stdout, /^shub — your session hub \(launcher /);
 });
+
+test('install --advanced parses, --yes ignores it; doctor points to the troubleshooting guide on a real problem', async () => {
+  const f = makeFixture([{ version: '2026.10.0' }]);
+  const root = mkdtempSync(join(tmpdir(), 'shub-cli-'));
+  const env = {
+    ...process.env,
+    HOME: root,
+    XDG_CONFIG_HOME: join(root, 'config'),
+    SHUB_CONFIG_DIR: join(root, 'config', 'shub'),
+    SHUB_HOME: join(root, 'home'),
+    SHUB_STATE_DIR: join(root, 'state'),
+    SHUB_TEST_RELEASES: f.url,
+  };
+  const shub = (e: NodeJS.ProcessEnv, ...args: string[]) =>
+    run(process.execPath, ['--no-warnings', cli, ...args], { env: e });
+  // No terminal here, so even a bare --advanced takes the plain install path; --yes wins over it anyway.
+  assert.match((await shub(env, 'install', '--yes', '--advanced')).stdout, /Installed 2026\.10\.0/);
+  assert.match((await shub(env, 'install', '--advanced')).stdout, /shub 2026\.10\.0 is installed/);
+  // An empty PATH: tmux and claude are missing, a real problem.
+  await assert.rejects(shub({ ...env, PATH: root }, 'doctor'), (err: { stdout: string }) =>
+    /FAIL[\s\S]*Help: https:\/\/\S+TROUBLESHOOTING\.md/.test(err.stdout),
+  );
+});

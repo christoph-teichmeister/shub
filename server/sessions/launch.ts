@@ -1,7 +1,8 @@
 // Pure helpers for starting sessions: prompts from buttons, permission modes, names, commands.
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
+import { promisify } from 'node:util';
 import { HttpError } from '../api/router.ts';
 import {
   PERMISSION_MODES,
@@ -132,24 +133,37 @@ export const defaultLauncher: Launcher = (spec) => {
   ];
 };
 
+const execFileAsync = promisify(execFile);
+
 export const CLAUDE_MISSING =
   'Claude Code not found: install it (npm i -g @anthropic-ai/claude-code), then run `claude` once to log in.';
 
-/** 503 when `claude` cannot be found the way defaultLauncher would run it (login shell, ~/.local/bin added). */
-export function requireClaude(): void {
-  const shell = process.env.SHELL || '/bin/bash';
-  const login = ['bash', 'zsh'].includes(basename(shell));
-  try {
-    execFileSync(login ? shell : '/bin/sh', [...(login ? ['-l'] : []), '-c', 'command -v claude'], {
-      env: { ...process.env, PATH: `${process.env.PATH ?? ''}:${join(homedir(), '.local', 'bin')}` },
-      stdio: 'ignore',
-      timeout: 10_000,
-    });
-  } catch (err) {
-    // A slow profile is not proof that claude is missing.
-    if ((err as NodeJS.ErrnoException).code !== 'ETIMEDOUT') throw new HttpError(503, CLAUDE_MISSING);
-  }
+/**
+ * A checker that answers 503 when `claude` cannot be found. It approximates the real launch (bash and zsh: login
+ * shell, other shells such as fish: /bin/sh; ~/.local/bin added) without running it, so a profile that only
+ * changes PATH in the pane itself can still differ. Async, so a slow profile never blocks the event loop; a
+ * positive answer is cached for the life of the checker.
+ */
+export function claudeChecker(): () => Promise<void> {
+  let found = false;
+  return async () => {
+    if (found) return;
+    const shell = process.env.SHELL || '/bin/bash';
+    const login = ['bash', 'zsh'].includes(basename(shell));
+    try {
+      await execFileAsync(login ? shell : '/bin/sh', [...(login ? ['-l'] : []), '-c', 'command -v claude'], {
+        env: { ...process.env, PATH: `${process.env.PATH ?? ''}:${join(homedir(), '.local', 'bin')}` },
+        timeout: 10_000,
+      });
+      found = true;
+    } catch (err) {
+      // A slow profile (killed by the timeout) is not proof that claude is missing.
+      if (!(err as { killed?: boolean }).killed) throw new HttpError(503, CLAUDE_MISSING);
+    }
+  };
 }
+
+export const requireClaude = claudeChecker();
 
 /** `claude ...` argv without the shell fallback. */
 export const claudeArgs = (spec: LaunchSpec): string[] => {

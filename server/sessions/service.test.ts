@@ -19,6 +19,7 @@ import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { WebSocket } from 'ws';
 import type { Config, Project, ServerEvent } from '../../shared/api.ts';
+import { HttpError } from '../api/router.ts';
 import { installUpgrades } from '../api/upgrade.ts';
 import { EventBus, type Context } from '../context.ts';
 import type { Services } from '../services.ts';
@@ -83,11 +84,19 @@ const services = {
   },
 } as unknown as Services;
 const notified: string[] = [];
+/** The next this many claude checks fail (the tests have no claude of their own). */
+let claudeMissing = 0;
 let checkAnswer: CheckResult | null = null;
 const checks: string[] = [];
 const svc = new SessionsService(ctx, services, {
   restoreGapMs: 300,
   startedGapMs: 50,
+  checkClaude: async () => {
+    if (claudeMissing > 0) {
+      claudeMissing--;
+      throw new HttpError(503, 'Claude Code not found');
+    }
+  },
   launcher: (spec) => (launches.push(spec), ['bash', '--norc', '--noprofile']),
   titler: async (prompt) => (prompt === 'do the thing' ? 'Thing Doing' : null),
   mrLookup: async (ref) =>
@@ -267,7 +276,7 @@ test('after a reboot: restorable list, global Claude comes up, restore resumes',
     queued.map((q) => q.status),
     ['starting', 'starting'],
   );
-  assert.ok(svc.tmux.has(tmuxName(s.id)), 'first one resumes at once');
+  await waitFor(() => svc.tmux.has(tmuxName(s.id)), 'first one resumes at once');
   assert.ok(!svc.tmux.has(tmuxName(second.id)), 'the next waits its turn');
   assert.equal(svc.get(second.id)?.status, 'starting');
   await waitFor(() => svc.tmux.has(tmuxName(second.id)), 'second resumes after the gap');
@@ -613,4 +622,33 @@ test('stop clears the reconcile timer even after a second startup', () => {
     reconcile.mock.restore();
     mock.timers.reset();
   }
+});
+
+test('a missing claude: start is a 503 without leaving a row or launch; a resume queue keeps going', async () => {
+  const before = svc.list().length;
+  const launched = launches.length;
+  claudeMissing = 1;
+  await assert.rejects(
+    svc.start({ kind: 'claude', projectId: 'p1' }, 'chris'),
+    (err) => err instanceof HttpError && err.status === 503,
+  );
+  assert.equal(svc.list().length, before, 'no session row');
+  assert.equal(launches.length, launched, 'nothing launched');
+  assert.ok((await svc.start({ kind: 'shell', projectId: 'p1' }, 'chris')).id, 'shells need no claude');
+
+  const a = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  const b = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  svc.tmux.kill(tmuxName(a.id));
+  svc.tmux.kill(tmuxName(b.id));
+  svc.startup();
+  claudeMissing = 1; // the first resume fails, the second must still run
+  svc.restore([a.id, b.id], 'chris');
+  await waitFor(() => svc.tmux.has(tmuxName(b.id)), 'second resumes although the first failed');
+  assert.equal(svc.get(a.id)?.status, 'exited');
+  await svc.start({ kind: 'global', projectId: null }, 'chris');
+  svc.tmux.killServer();
+  claudeMissing = 1;
+  svc.startup(); // restorable global with a missing claude: logged, never thrown
+  await new Promise((r) => setTimeout(r, 100));
+  assert.notEqual(svc.get('global')?.status, 'your-turn');
 });

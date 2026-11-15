@@ -8,6 +8,11 @@ session's worktree next to it, and a phone view to answer permission questions o
 
 > Status: early. Version scheme: CalVer `YYYY.M.MICRO`.
 
+## Requirements
+
+Linux or macOS, Node 24+, tmux 3.3+, Claude Code, optionally Docker and Tailscale. Windows only inside WSL2: install
+and run shub there.
+
 ## Quickstart (5 min)
 
 1. Run `claude` once in a terminal and log in. shub starts the real Claude Code, so it must already work.
@@ -32,11 +37,6 @@ Something wrong? Run `shub doctor` and see [docs/TROUBLESHOOTING.md](docs/TROUBL
 
 All features: [docs/FEATURES.md](docs/FEATURES.md).
 
-## Requirements
-
-Linux or macOS, Node 24+, tmux 3.3+, Claude Code, optionally Docker and Tailscale. Windows only inside WSL2: install
-and run shub there.
-
 ## Install
 
 ```sh
@@ -44,15 +44,18 @@ npm i -g @christoph-teichmeister/shub && shub install
 ```
 
 The npm package is only the launcher (`shub`). In a terminal, `shub install` walks you through the setup: it checks
-Node, tmux and Claude Code (and says how to install what is missing), downloads the latest signed release from GitHub, runs it as a systemd user unit (Linux) or a launchd agent
-(macOS) at http://127.0.0.1:4780 and prints the access token you log in with (`shub token` prints it again). For
-scripts, `shub install --advanced` also asks for the update channel, port and phone address, and
+Node, tmux and Claude Code (and says how to install what is missing), downloads the latest signed release from GitHub,
+runs it as a systemd user unit (Linux) or a launchd agent (macOS) at http://127.0.0.1:4780 and prints the access token
+you log in with (`shub token` prints it again). Run again over an installed service, it keeps that service's port and
+phone address. `shub install --advanced` also asks for the update channel, port and phone address. For scripts,
 `shub install --yes [--channel beta]` only installs the release, and `shub service install` adds the service.
-`shub doctor` says what is missing (help: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)). Versions live side by side in
-`~/.local/share/shub/versions/` (`SHUB_HOME`); Settings > Updates checks as soon as a release is published (a push via ntfy.sh) and every 6 hours, shows new versions with their notes
-and installs one when you click (or by itself with "Install automatically"; "off" skips the check), `shub update` and `shub rollback` do the same in a terminal. If a new version does not come up
-within 30 seconds, the launcher switches back. Sessions keep running in tmux through updates. Every other command
-(`shub status`, `shub session start`, ...) goes to the installed version. Releases: [docs/RELEASING.md](docs/RELEASING.md).
+`shub doctor` says what is missing (help: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)). Versions live side by
+side in `~/.local/share/shub/versions/` (`SHUB_HOME`). Settings > Updates checks as soon as a release is published (a
+push via ntfy.sh) and every 6 hours, shows new versions with their notes and installs one when you click (or by itself
+with "Install automatically"; "off" skips the check). `shub update` and `shub rollback` do the same in a terminal. If a
+new version does not come up within 30 seconds, the launcher switches back. Sessions keep running in tmux through
+updates. Every other command (`shub status`, `shub session start`, ...) goes to the installed version. Releases:
+[docs/RELEASING.md](docs/RELEASING.md).
 
 ## Run from a git checkout
 
@@ -65,7 +68,7 @@ npm start            # http://127.0.0.1:4780
 Started like this, shub's updates are managed by git (Settings > Updates is read-only).
 
 On first start shub creates an access token and prints the file it lives in. Open the URL, paste the token, done.
-shub only ever listens on `127.0.0.1`. For your phone, Settings > Phone walks you through it: it checks Tailscale, runs
+shub only ever listens on `127.0.0.1`. For your phone, Settings > Devices > Phone access walks you through it: it checks Tailscale, runs
 `tailscale serve` for shub (tailnet only, never Funnel), stores the address as `publicUrl` in `local.json` and shows the
 pairing QR code. `SHUB_PUBLIC_URL` still works and wins over `publicUrl`. A systemd user unit example is in [deploy/shub.service](deploy/shub.service).
 

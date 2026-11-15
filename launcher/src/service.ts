@@ -114,6 +114,8 @@ export interface Service {
   active(home: string): boolean;
   /** The node binary our systemd unit starts, or null (no unit, not ours, or launchd). */
   unitNode(): string | null;
+  /** The environment our installed service file carries (empty when there is none). */
+  unitEnv(): Record<string, string>;
   /**
    * Points our systemd unit's ExecStart at `o`'s node and launcher when it starts others (nvm replaced the node it was
    * installed with). Only that line changes and nothing restarts; true when it rewrote the file.
@@ -181,6 +183,21 @@ export function service(
     unitNode() {
       const unit = text();
       return !darwin && unit && ours() ? (/^ExecStart="([^"]+)"/m.exec(unit)?.[1] ?? null) : null;
+    },
+    unitEnv() {
+      const unit = text();
+      const out: Record<string, string> = {};
+      if (!unit || !ours()) return out;
+      if (darwin) {
+        for (const [, k, v] of unit.matchAll(/<key>([A-Z_]+)<\/key><string>([^<]*)<\/string>/g)) {
+          out[k] = v.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+        }
+      } else {
+        for (const [, k, v] of unit.matchAll(/^Environment="([A-Z_]+)=((?:[^"\\]|\\.)*)"$/gm)) {
+          out[k] = v.replace(/\\(.)/g, '$1');
+        }
+      }
+      return out;
     },
     refresh(o) {
       const unit = text();

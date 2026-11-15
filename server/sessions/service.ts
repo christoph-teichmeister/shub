@@ -61,6 +61,8 @@ const now = (): string => new Date().toISOString();
 
 export interface SessionsOptions {
   launcher?: Launcher;
+  /** Rejects with a 503 when Claude Code is missing; tests pass a no-op. */
+  checkClaude?: () => Promise<void>;
   titler?: Titler;
   mrLookup?: MrLookup;
   waitChecker?: WaitChecker;
@@ -79,7 +81,7 @@ export class SessionsService implements Sessions {
   #ctx: Context;
   #services: Services;
   #launcher: Launcher;
-  #checkClaude: boolean;
+  #checkClaude: () => Promise<void>;
   #naming: AutoNamer;
   #waits: WaitChecks;
   #tmux!: Tmux;
@@ -100,7 +102,7 @@ export class SessionsService implements Sessions {
     this.#ctx = ctx;
     this.#services = services;
     this.#launcher = options.launcher ?? defaultLauncher;
-    this.#checkClaude = !options.launcher; // tests swap the launcher and have no claude
+    this.#checkClaude = options.checkClaude ?? requireClaude;
     this.#naming = new AutoNamer(this, options.titler ?? defaultTitler, options.mrLookup ?? defaultMrLookup);
     this.#waits = new WaitChecks(
       {
@@ -194,7 +196,14 @@ export class SessionsService implements Sessions {
     return 1 + Math.max(0, ...ids.map((r) => Number(pattern.exec(r.id)?.[1] ?? 0)));
   }
 
+  /** 503 when Claude Code is missing. Async, so callers run it before the sync #launch/resume. */
+  async ensureClaude(id?: string): Promise<void> {
+    if (id && this.get(id)?.kind === 'shell') return;
+    await this.#checkClaude();
+  }
+
   async start(request: StartSessionRequest, startedBy: string, byUser = false): Promise<Session> {
+    if (request.kind !== 'shell') await this.#checkClaude();
     if (request.kind === 'global') {
       const existing = this.get(GLOBAL_ID);
       if (existing && existing.status !== 'exited') {
@@ -355,7 +364,6 @@ export class SessionsService implements Sessions {
       }
       env.SHUB_TOKEN = token;
     }
-    if (row.kind === 'claude' && this.#checkClaude) requireClaude();
     const argv = this.#launcher({
       kind: row.kind,
       claudeSessionId: row.claude_session_id,
@@ -626,6 +634,7 @@ export class SessionsService implements Sessions {
       // Closed or paused while it waited its turn.
       if (this.get(id)?.status !== 'starting') continue;
       try {
+        await this.ensureClaude(id);
         this.resume(id, actor);
       } catch (err) {
         console.error(`shub: resume ${id}`, err);
@@ -773,8 +782,12 @@ export class SessionsService implements Sessions {
       if (live && !running.has(tmuxName(row.id))) this.#restorable.add(row.id);
     }
     const global = this.get(GLOBAL_ID);
-    if (global && this.#restorable.has(GLOBAL_ID)) this.resume(GLOBAL_ID, 'shub');
-    else if (!global || global.status === 'exited') {
+    if (global && this.#restorable.has(GLOBAL_ID)) {
+      // A missing claude must not crash startup: the global Claude just stays down.
+      this.ensureClaude()
+        .then(() => this.resume(GLOBAL_ID, 'shub'))
+        .catch((err) => console.error('shub: global Claude', err));
+    } else if (!global || global.status === 'exited') {
       this.start({ kind: 'global', projectId: null }, 'shub').catch((err) => console.error('shub: global Claude', err));
     }
     this.stop(); // a second startup must not leave the first timer running past stop()

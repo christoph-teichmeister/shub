@@ -15,7 +15,7 @@ import {
   RUN_HINT,
   isSimpleInput,
   permissionModeFor,
-  requireClaude,
+  claudeChecker,
   shellRc,
 } from './launch.ts';
 import { encodeCwd, summarizeTranscript } from './old.ts';
@@ -190,21 +190,32 @@ test('claude sessions start in a login shell when $SHELL is bash or zsh', () => 
   }
 });
 
-test('a missing claude is a clear 503, a present one passes', (t) => {
+test('a missing claude is a clear 503, a present one passes and is remembered', async (t) => {
   const env = { ...process.env };
   const dir = mkdtempSync(join(tmpdir(), 'shub-no-claude-'));
   t.after(() => {
     process.env = env;
     rmSync(dir, { recursive: true, force: true });
   });
-  process.env.SHELL = '/bin/sh';
   process.env.HOME = dir;
   process.env.PATH = dir;
-  assert.throws(
-    requireClaude,
-    (err) => err instanceof HttpError && err.status === 503 && err.message === CLAUDE_MISSING,
-  );
+  // /bin/sh and fish both use the plain /bin/sh branch (as defaultLauncher does); bash and zsh a login shell.
+  for (const shell of ['/bin/sh', '/usr/bin/fish', '/bin/bash']) {
+    process.env.SHELL = shell;
+    await assert.rejects(
+      claudeChecker()(),
+      (err) => err instanceof HttpError && err.status === 503 && err.message === CLAUDE_MISSING,
+      shell,
+    );
+  }
   writeFileSync(join(dir, 'claude'), '#!/bin/sh\n');
   chmodSync(join(dir, 'claude'), 0o755);
-  requireClaude();
+  for (const shell of ['/bin/sh', '/usr/bin/fish', '/bin/bash']) {
+    process.env.SHELL = shell;
+    await claudeChecker()();
+  }
+  const check = claudeChecker();
+  await check();
+  rmSync(join(dir, 'claude'));
+  await check(); // cached: no second lookup
 });

@@ -20,7 +20,7 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
   version: string;
 };
 
-const TROUBLESHOOTING = 'https://github.com/christoph-teichmeister/shub/blob/develop/docs/TROUBLESHOOTING.md';
+const TROUBLESHOOTING = 'https://github.com/christoph-teichmeister/shub/blob/HEAD/docs/TROUBLESHOOTING.md';
 
 const HELP = `shub — your session hub (launcher ${pkg.version})
 
@@ -39,11 +39,8 @@ Usage: shub [command]
   doctor                        check Node, tmux, Claude Code, Docker and the port
   --version                     launcher and app version
 
-Every other command goes to the installed app ("shub <command> --help" for its help):
-  status                        is shub running, how many sessions need you
-  project                       list, show or add projects
-  session                       list, start, rename, park or inspect sessions
-  open                          open shub in the browser
+Every other command goes to the installed app (status, project, session, open, device, plugin, ...);
+"shub <command> --help" explains one.
 
 First commands:
   shub install                  set up shub (once)
@@ -131,6 +128,10 @@ async function guided(home: string, advanced: boolean): Promise<void> {
       ask: (q) => rl.question(q),
       log: (l) => console.log(l),
       platform: process.platform,
+      existing: () => {
+        const e = service().unitEnv();
+        return { port: Number(e.SHUB_PORT) || undefined, publicUrl: e.SHUB_PUBLIC_URL };
+      },
       doctor: async () =>
         (await doctor(realDoctorDeps(env, Number(env.SHUB_PORT ?? 4780)))).filter((f) => f.name !== 'Port'),
       portState: realDoctorDeps(env, 0).portState,
@@ -225,7 +226,7 @@ async function main(argv: string[]): Promise<void> {
       for (const f of findings)
         console.log(`${f.ok ? 'ok  ' : f.optional ? 'note' : 'FAIL'}  ${f.name.padEnd(12)}${f.detail}`);
       if (findings.some((f) => !f.ok && !f.optional)) process.exitCode = 1;
-      if (findings.some((f) => !f.ok)) console.log(`\nHelp: ${TROUBLESHOOTING}`);
+      if (findings.some((f) => !f.ok && !f.optional)) console.log(`\nHelp: ${TROUBLESHOOTING}`);
       return;
     }
     case '--version':

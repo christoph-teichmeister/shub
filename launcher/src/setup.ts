@@ -14,6 +14,8 @@ export interface SetupDeps {
   ask(question: string): Promise<string>;
   log(line: string): void;
   platform: NodeJS.Platform;
+  /** Port and phone address of the service that is already installed, if any. */
+  existing?(): { port?: number; publicUrl?: string };
   /** Machine checks; the port is asked for in its own step. */
   doctor(): Promise<Finding[]>;
   portState(port: number): Promise<'free' | 'shub' | 'busy'>;
@@ -58,9 +60,9 @@ function box(lines: string[]): string[] {
 /** Returns false when the user quit. */
 export async function setup(d: SetupDeps): Promise<boolean> {
   let n = 0;
-  const steps = d.advanced ? 6 : 5;
+  let steps = d.advanced ? 6 : 5; // the simple flow gains a port step when its port is taken
   const step = (title: string) => d.log(`\n${bold(`[${++n}/${steps}] ${title}`)}`);
-  d.log(bold('shub setup') + dim(`  (Ctrl+C quits, nothing is changed before step ${steps - 2})`));
+  d.log(bold('shub setup') + dim('  (Ctrl+C quits, nothing is changed before "Install shub")'));
 
   step('Check this machine');
   for (;;) {
@@ -79,8 +81,10 @@ export async function setup(d: SetupDeps): Promise<boolean> {
 
   const preset = d.configuredChannel === 'beta' ? 'beta' : 'stable';
   let channel: Channel = preset;
-  let port = DEFAULT_PORT;
-  let publicUrl = '';
+  // Run again over an installed service: keep its port and phone address instead of silently resetting them.
+  const seed = d.existing?.() ?? {};
+  let port = seed.port ?? DEFAULT_PORT;
+  let publicUrl = seed.publicUrl ?? '';
   if (d.advanced) {
     step('Update channel');
     d.log(dim('  stable: tested releases. beta: every merge into develop, earlier and rougher.'));
@@ -94,29 +98,31 @@ export async function setup(d: SetupDeps): Promise<boolean> {
     }
   } else {
     step('Settings');
-    d.log(`  Updates: ${preset}. Port: ${DEFAULT_PORT}. No phone address yet.`);
+    d.log(`  Updates: ${preset}. Port: ${port}. Phone address: ${publicUrl || 'none yet'}.`);
     d.log(
       dim(
-        '  Change later: channel in Settings > Updates, phone in Settings > Phone, everything with: shub install --advanced',
+        '  Change later: channel in Settings > Updates, phone in Settings > Devices > Phone access, everything with: shub install --advanced',
       ),
     );
   }
 
-  const state = d.advanced ? undefined : await d.portState(DEFAULT_PORT);
-  if (d.advanced || state === 'busy') {
-    if (d.advanced) step('Port and access');
-    else d.log(`  127.0.0.1:${DEFAULT_PORT} is used by another program, pick another port.`);
+  const portBusy = !d.advanced && (await d.portState(port)) === 'busy';
+  if (d.advanced || portBusy) {
+    if (portBusy) steps++;
+    step('Port and access');
+    if (portBusy) d.log(`  127.0.0.1:${port} is used by another program, pick another port.`);
+    const first = port;
     for (;;) {
-      const answer = (await d.ask(`  Port (${DEFAULT_PORT}): `)).trim() || String(DEFAULT_PORT);
+      const answer = (await d.ask(`  Port (${first}): `)).trim() || String(first);
       const p = Number(answer);
       if (!Number.isInteger(p) || p < 1024 || p > 65535) {
         d.log('  A port is a number from 1024 to 65535.');
         continue;
       }
-      const state = await d.portState(p);
-      if (state !== 'busy') {
+      const found = await d.portState(p);
+      if (found !== 'busy') {
         port = p;
-        if (state === 'shub') d.log(`  shub already answers on ${p}.`);
+        if (found === 'shub') d.log(`  shub already answers on ${p}.`);
         break;
       }
       d.log(`  127.0.0.1:${p} is used by another program, pick another one.`);
@@ -125,7 +131,12 @@ export async function setup(d: SetupDeps): Promise<boolean> {
   if (d.advanced) {
     d.log(dim('  shub listens on 127.0.0.1 only. To open it on your phone, put it behind `tailscale serve`.'));
     for (;;) {
-      publicUrl = (await d.ask('  Phone address, the https:// URL tailscale serve gives you (Enter skips): '))
+      const kept = publicUrl;
+      publicUrl = (
+        (await d.ask(
+          `  Phone address, the https:// URL tailscale serve gives you (Enter ${kept ? `keeps ${kept}` : 'skips'}): `,
+        )) || kept
+      )
         .trim()
         .replace(/\/$/, '');
       if (publicUrl === '' || /^https:\/\/\S+$/.test(publicUrl)) break;

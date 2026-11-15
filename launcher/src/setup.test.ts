@@ -51,13 +51,32 @@ test('defaults all the way: stable, 4780, service, token, browser', async () => 
   assert.match(f.text(), /│ abc123 │/);
   assert.match(f.text(), /Copied to the clipboard/);
   assert.match(f.text(), /shub install --advanced/);
-  assert.doesNotMatch(f.text(), /Channel, stable or beta|Public URL|Phone address/);
+  assert.doesNotMatch(f.text(), /Channel, stable or beta|Phone address, the https/);
 });
 
 test('without --advanced a busy default port is still asked for', async () => {
   const f = fake(['4781', '', ''], { portState: async (p) => (p === 4780 ? 'busy' : 'free') });
   assert.equal(await setup(f.deps), true);
   assert.deepEqual(f.did.slice(0, 3), ['channel stable', 'install stable', 'service {"SHUB_PORT":"4781"}']);
+  assert.match(f.text(), /\[3\/6\] Port and access\n.*4780 is used by another program/);
+});
+
+test('re-running the simple flow keeps the installed port and phone address', async () => {
+  const f = fake(['', ''], { existing: () => ({ port: 4790, publicUrl: 'https://pc.tail.ts.net' }) });
+  assert.equal(await setup(f.deps), true);
+  assert.equal(f.did[2], 'service {"SHUB_PORT":"4790","SHUB_PUBLIC_URL":"https://pc.tail.ts.net"}');
+  assert.match(f.text(), /Port: 4790\. Phone address: https:\/\/pc\.tail\.ts\.net/);
+  assert.match(f.text(), /Settings > Devices > Phone access/);
+});
+
+test('--advanced offers the installed values; Enter keeps them', async () => {
+  const f = fake(['', '', '', '', ''], {
+    advanced: true,
+    existing: () => ({ port: 4790, publicUrl: 'https://pc.tail.ts.net' }),
+  });
+  await setup(f.deps);
+  assert.equal(f.did[2], 'service {"SHUB_PORT":"4790","SHUB_PUBLIC_URL":"https://pc.tail.ts.net"}');
+  assert.match(f.text(), /Port \(4790\)/);
 });
 
 test('missing tmux: shows the install command and checks again until it is there', async () => {

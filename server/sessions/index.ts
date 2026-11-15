@@ -189,8 +189,9 @@ function routes(sessions: SessionsService, services: Services, router: Router, c
     requireUser(req.caller);
     return sessions.pause(req.params.id, req.caller.id);
   });
-  router.add(ROUTES.sessionResume, (req) => {
+  router.add(ROUTES.sessionResume, async (req) => {
     requireUser(req.caller);
+    await sessions.ensureClaude(req.params.id);
     return sessions.resume(req.params.id, req.caller.id);
   });
   router.add(ROUTES.sessionCommand, async (req) => {
