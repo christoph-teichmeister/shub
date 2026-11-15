@@ -8,6 +8,7 @@
   import Button from '../../components/Button/Button.svelte';
   import CommandChip from '../../components/CommandChip/CommandChip.svelte';
   import EmptyState from '../../components/EmptyState/EmptyState.svelte';
+  import IntroBanner from '../../components/IntroBanner/IntroBanner.svelte';
   import IconButton from '../../components/IconButton/IconButton.svelte';
   import Icon from '../../components/Icon/Icon.svelte';
   import SelectField from '../../components/SelectField/SelectField.svelte';
@@ -31,9 +32,10 @@
     swap,
     type Layout,
   } from '../../overview.ts';
+  import { api } from '../../stores/api.ts';
   import { store, storedJson } from '../../stored.ts';
   import { villageBack } from '../../stores/router.svelte.ts';
-  import { toast } from '../../stores/toasts.svelte.ts';
+  import { toast, toastError } from '../../stores/toasts.svelte.ts';
   import {
     app,
     childrenOf,
@@ -47,7 +49,6 @@
 
   let projectId = $state('');
   let focusId = $state<string | null>(null);
-  let maxId = $state<string | null>(null);
   let w = $state(0);
   let h = $state(0);
   const shown = $derived(overviewSessions(app.sessions, projectId || null));
@@ -224,11 +225,7 @@
     } else if (e.code in ARROWS && e.shiftKey) {
       // Swap the focused pane with its neighbour on screen (the tree is always there, auto grid included).
       const nb = layout && live[i] ? neighbourByRect(layout, live[i].id, ARROWS[e.code as keyof typeof ARROWS]) : '';
-      if (layout && nb && nb !== focusId && !maxId) setLayout(swap(layout, focusId!, nb));
-    } else if (e.code in ARROWS && maxId) {
-      // Only one pane is visible: the arrows step through the panes in order.
-      const back = e.code === 'ArrowLeft' || e.code === 'ArrowUp';
-      target = live[(Math.max(i, 0) + (back ? -1 : 1) + live.length) % live.length];
+      if (layout && nb && nb !== focusId) setLayout(swap(layout, focusId!, nb));
     } else if (e.code in ARROWS) {
       const dir = ARROWS[e.code as keyof typeof ARROWS];
       const id = i < 0 ? live[0]?.id : custom[projectId] ? neighbourByRect(layout, live[i].id, dir) : undefined;
@@ -241,7 +238,6 @@
     e.preventDefault();
     e.stopPropagation();
     if (target) focusId = target.id;
-    if (target && maxId) maxId = target.id; // a maximized pane follows the focus
   }
 </script>
 
@@ -279,6 +275,7 @@
       options={[{ value: '', label: 'All projects' }, ...app.projects.map((p) => ({ value: p.id, label: p.name }))]}
     />
   </header>
+  <IntroBanner id="overview">All running sessions as live terminals, up to {MAX_LIVE}.</IntroBanner>
   <div class="live" bind:clientWidth={w} bind:clientHeight={h}>
     {#if live.length}
       <SplitView
@@ -291,7 +288,6 @@
         selectedId={focusId}
         onselect={(id) => (focusId = id)}
         maximizable
-        bind:maximizedId={maxId}
         onmaximize={(id) => (location.hash = sessionHref(live.find((s) => s.id === id)!))}
         onminimize={closeIt}
       >
@@ -363,6 +359,11 @@
       <Icon name={stripHidden ? 'chevron-right' : 'chevron-down'} size="xs" />
       {quiet.length} parked
     </button>
+    {#if capped.over.length}
+      <p class="cap">
+        Max {MAX_LIVE} live terminals so cells stay readable. Parked sessions keep running; Show brings one back.
+      </p>
+    {/if}
   {/if}
   {#if quiet.length && !stripHidden}
     <div class="quiet">
@@ -375,10 +376,12 @@
           accent={p?.accent}
           panes={childrenOf(s.id).length}
           flagged={s.status === 'your-turn' && !isOpen(s.id)}
+          note={capped.over.includes(s) ? `Over the limit of ${MAX_LIVE} live terminals` : undefined}
           onallow={() => void sendKeys(s.id, ['1'])}
           ondeny={() => void sendKeys(s.id, ['3'])}
-          onrestore={LIVE.has(s.status)
+          onrestore={LIVE.has(s.status) || s.status === 'paused'
             ? () => {
+                if (s.status === 'paused') void api('sessionResume', { params: { id: s.id } }).catch(toastError);
                 openIt(s.id);
                 promoted = [...promoted, s.id];
               }
@@ -472,6 +475,13 @@
     font: inherit;
     font-size: var(--text-sm);
     cursor: pointer;
+  }
+
+  .cap {
+    flex: none;
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--text-sm);
   }
 
   /* One line until tapped; open it shows the whole question, above the Allow button. */

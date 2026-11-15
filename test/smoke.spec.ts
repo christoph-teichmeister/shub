@@ -1371,7 +1371,7 @@ test('a tab menu parks the session with a background check', async ({ page }) =>
   await page.getByRole('menuitem', { name: 'Wait for…' }).click();
   const dialog = page.getByRole('dialog', { name: 'Wait for…' });
   await dialog.getByLabel('Waiting for').fill("Kai's answer on MR !2213");
-  await dialog.getByLabel('How can Haiku tell it happened?').fill('Has Kai commented on MR !2213 in ai/ai-portal?');
+  await dialog.getByLabel('How should shub check it happened?').fill('Has Kai commented on MR !2213 in ai/ai-portal?');
   await dialog.getByLabel('Check every').selectOption('60');
   await dialog.getByLabel('When it happened').selectOption('send');
   await dialog
@@ -2596,4 +2596,27 @@ test('closing an idle Claude session is at once, with an undo toast that resumes
     .poll(() => calls.find((c) => c.method === 'POST' && c.path === '/api/sessions')?.body)
     .toMatchObject({ projectId: 'ai-portal', kind: 'claude', resumeClaudeSessionId: 'c-1' });
   expect(errors).toEqual([]);
+});
+
+test('the overview and village explain themselves once, and the dismissal sticks', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  await page.goto('/#/overview');
+  const intro = page.getByRole('note').filter({ hasText: 'All running sessions as live terminals, up to 6' });
+  await expect(intro).toBeVisible();
+  await intro.getByRole('button', { name: 'Dismiss' }).click();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
+  await expect(intro).toHaveCount(0);
+  await page.goto('/#/village');
+  await expect(
+    page.getByRole('note').filter({ hasText: 'A map of your sessions: triage who needs you' }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('a narrow window says why the overview shows the phone view', async ({ page }) => {
+  await mockApi(page);
+  await page.setViewportSize({ width: 400, height: 800 });
+  await page.goto('/#/overview');
+  await expect(page.getByText('The overview needs a wider window, so this is the phone view.')).toBeVisible();
 });

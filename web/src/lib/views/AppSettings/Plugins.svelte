@@ -66,7 +66,9 @@
             <details class="more">
               <summary>Rights: {p.grantedRights.length} of {p.requestedRights.length} granted</summary>
               <fieldset class="rights">
-                <legend class="muted small">Rights it asks for (tick to grant)</legend>
+                <legend class="muted small"
+                  >Rights it asks for (tick to grant; "you approve" means shub asks you each time)</legend
+                >
                 {#each p.requestedRights as r (r)}
                   <Checkbox
                     label={RIGHTS[r] ?? r}

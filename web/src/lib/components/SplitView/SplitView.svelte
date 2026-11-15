@@ -25,7 +25,7 @@
     columns?: number;
     selectedId?: string | null;
     onselect?: (id: string) => void;
-    /** Adds a minimize button to each header. */
+    /** Adds a park button to each header: the pane closes, the session keeps running. */
     onminimize?: (id: string) => void;
     /** Project name and accent colour of a session: shown as a chip and a colour strip in its header. */
     projectOf?: (s: Session) => { name: string; accent?: string } | undefined;
@@ -202,18 +202,18 @@
       </button>
       {@render actions?.(session)}
       {#if hrefFor}
-        <IconButton label="Open" icon="open" size="xs" href={hrefFor(session)} />
+        <IconButton label="Open full size" icon="open" size="xs" href={hrefFor(session)} />
       {/if}
       {#if maximizable}
         <IconButton
-          label={maximizedId ? 'Restore' : 'Maximize'}
+          label={maximizedId ? 'Restore' : onmaximize ? 'Open full size' : 'Maximize'}
           icon={maximizedId ? 'restore' : 'maximize'}
           size="xs"
           onclick={() => toggleMax(session.id)}
         />
       {/if}
       {#if onminimize && !maximizedId}
-        <IconButton label="Minimize" icon="minus" size="xs" onclick={() => onminimize(session.id)} />
+        <IconButton label="Park (keeps running)" icon="minus" size="xs" onclick={() => onminimize(session.id)} />
       {/if}
     </div>
     <div class="body">{@render pane(session)}</div>

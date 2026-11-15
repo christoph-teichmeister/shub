@@ -301,7 +301,11 @@
 {/snippet}
 
 {#snippet overviewButton()}
-  <a class="rail-item" href={href('overview')} title="All sessions at a glance (Alt O)">
+  <a
+    class="rail-item"
+    href={href('overview')}
+    title="Overview: all running sessions as live terminals, up to 6 (Alt O)"
+  >
     <Icon name="grid" />
     <span class="visually-hidden">Session overview</span>
   </a>
@@ -311,7 +315,7 @@
   <a
     class="rail-item"
     href={href('village')}
-    title={villageQueue ? `Crab village · ${villageQueue} in line (Alt V)` : 'Crab village (Alt V)'}
+    title={`Crab village: a map of your sessions, triage who needs you${villageQueue ? ` · ${villageQueue} in line` : ''} (Alt V)`}
   >
     <Icon name="crab" />
     <span class="visually-hidden">Crab village{villageQueue ? `, ${villageQueue} in line` : ''}</span>

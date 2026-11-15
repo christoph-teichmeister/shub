@@ -13,5 +13,6 @@ One session as a status card, in the overview's strip of quiet (paused, not star
 | `ondeny`    | `() => void` |
 | `onrestore` | `() => void` | Show button: brings a minimized session back                |
 | `flagged`   | `boolean`    | Your-turn frame for a minimized session that is ready       |
+| `note`      | `string`     | Line shown when nothing else is (why it is parked)          |
 
 States: needs-you (orange frame), needs-you with a permission question (Allow / Deny), working, your-turn, waiting (line: what for), paused and starting (dimmed), with commands waiting (`▶ N commands`), with agents (line: the last tool call), context fill.
