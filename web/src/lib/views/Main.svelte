@@ -381,13 +381,15 @@
       title={route.name === 'project' && app.ready ? 'Project not found' : 'Pick a project'}
       body="A project is a folder you run Claude in."
     >
-      <ol class="tip">
-        <li>Pick or add a project in the sidebar.</li>
-        <li>Press New session.</li>
-        <li>A badge on the session row shows when Claude needs you.</li>
-      </ol>
-      <p class="tip">Alt G opens the global Claude: a Claude not tied to a project, optional.</p>
-      <p class="tip">Press Alt ? for all shortcuts.</p>
+      <div class="guide">
+        <ol class="steps">
+          <li>Pick or add a project in the sidebar.</li>
+          <li>Press New session.</li>
+          <li>A badge on the session row shows when Claude needs you.</li>
+        </ol>
+        <p class="tip">Alt G opens the global Claude: a Claude not tied to a project, optional.</p>
+        <p class="tip">Press Alt ? for all shortcuts.</p>
+      </div>
     </EmptyState>
   {:else}
     <TabBar label="Panes">
@@ -654,20 +656,25 @@
 <WorktreesDialog bind:this={worktreesDialog} onconfirm={(c) => (confirm = c)} onnewsession={newSession} />
 
 <style>
-  .tip {
-    margin: var(--space-4) 0 0;
-    max-width: 40ch;
+  .guide {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+    max-width: 44ch;
     color: var(--muted);
     font-size: var(--text-sm);
   }
 
-  ol.tip {
-    padding: 0;
-    list-style-position: inside;
+  .steps {
+    margin: 0 0 var(--space-2);
+    padding-left: var(--space-5);
+    text-align: left;
   }
 
-  ol.tip + .tip {
-    margin-top: var(--space-2);
+  .tip {
+    margin: 0;
   }
 
   .work {
