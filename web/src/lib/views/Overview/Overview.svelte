@@ -49,6 +49,7 @@
 
   let projectId = $state('');
   let focusId = $state<string | null>(null);
+  let maxId = $state<string | null>(null);
   let w = $state(0);
   let h = $state(0);
   const shown = $derived(overviewSessions(app.sessions, projectId || null));
