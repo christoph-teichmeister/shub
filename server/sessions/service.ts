@@ -32,6 +32,7 @@ import {
   autoName,
   buttonPrompt,
   defaultLauncher,
+  requireClaude,
   permissionModeFor,
   shellQuote,
   shellRc,
@@ -78,6 +79,7 @@ export class SessionsService implements Sessions {
   #ctx: Context;
   #services: Services;
   #launcher: Launcher;
+  #checkClaude: boolean;
   #naming: AutoNamer;
   #waits: WaitChecks;
   #tmux!: Tmux;
@@ -98,6 +100,7 @@ export class SessionsService implements Sessions {
     this.#ctx = ctx;
     this.#services = services;
     this.#launcher = options.launcher ?? defaultLauncher;
+    this.#checkClaude = !options.launcher; // tests swap the launcher and have no claude
     this.#naming = new AutoNamer(this, options.titler ?? defaultTitler, options.mrLookup ?? defaultMrLookup);
     this.#waits = new WaitChecks(
       {
@@ -352,6 +355,7 @@ export class SessionsService implements Sessions {
       }
       env.SHUB_TOKEN = token;
     }
+    if (row.kind === 'claude' && this.#checkClaude) requireClaude();
     const argv = this.#launcher({
       kind: row.kind,
       claudeSessionId: row.claude_session_id,

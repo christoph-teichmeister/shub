@@ -1,5 +1,8 @@
 // Pure helpers for starting sessions: prompts from buttons, permission modes, names, commands.
-import { basename } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { homedir } from 'node:os';
+import { basename, join } from 'node:path';
+import { HttpError } from '../api/router.ts';
 import {
   PERMISSION_MODES,
   type ButtonDef,
@@ -128,6 +131,25 @@ export const defaultLauncher: Launcher = (spec) => {
     ...args,
   ];
 };
+
+export const CLAUDE_MISSING =
+  'Claude Code not found: install it (npm i -g @anthropic-ai/claude-code), then run `claude` once to log in.';
+
+/** 503 when `claude` cannot be found the way defaultLauncher would run it (login shell, ~/.local/bin added). */
+export function requireClaude(): void {
+  const shell = process.env.SHELL || '/bin/bash';
+  const login = ['bash', 'zsh'].includes(basename(shell));
+  try {
+    execFileSync(login ? shell : '/bin/sh', [...(login ? ['-l'] : []), '-c', 'command -v claude'], {
+      env: { ...process.env, PATH: `${process.env.PATH ?? ''}:${join(homedir(), '.local', 'bin')}` },
+      stdio: 'ignore',
+      timeout: 10_000,
+    });
+  } catch (err) {
+    // A slow profile is not proof that claude is missing.
+    if ((err as NodeJS.ErrnoException).code !== 'ETIMEDOUT') throw new HttpError(503, CLAUDE_MISSING);
+  }
+}
 
 /** `claude ...` argv without the shell fallback. */
 export const claudeArgs = (spec: LaunchSpec): string[] => {

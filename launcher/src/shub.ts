@@ -20,13 +20,16 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
   version: string;
 };
 
+const TROUBLESHOOTING = 'https://github.com/christoph-teichmeister/shub/blob/develop/docs/TROUBLESHOOTING.md';
+
 const HELP = `shub — your session hub (launcher ${pkg.version})
 
 Usage: shub [command]
 
   start                         run the installed shub (the default)
-  install [--channel stable|beta] [--yes]
-                                guided setup in a terminal: checks, settings, service, token;
+  install [--channel stable|beta] [--yes] [--advanced]
+                                guided setup in a terminal: checks, service, token (--advanced also asks
+                                for update channel, port and phone address);
                                 --yes (or no terminal) only downloads and installs the latest release
   token                         print the access token to log in with
   update [--to <version>] [--channel stable|beta] [--check] [--json]
@@ -36,8 +39,18 @@ Usage: shub [command]
   doctor                        check Node, tmux, Claude Code, Docker and the port
   --version                     launcher and app version
 
-Every other command goes to the installed app: shub status, shub project, shub session, shub open, ...
-("shub <command> --help" for its help).
+Every other command goes to the installed app ("shub <command> --help" for its help):
+  status                        is shub running, how many sessions need you
+  project                       list, show or add projects
+  session                       list, start, rename, park or inspect sessions
+  open                          open shub in the browser
+
+First commands:
+  shub install                  set up shub (once)
+  shub token                    the token to log in with
+  shub open                     open the web UI
+  shub doctor                   something wrong? this says what
+  Troubleshooting: ${TROUBLESHOOTING}
 
 Environment: SHUB_HOME (default ~/.local/share/shub), SHUB_PORT (default 4780).`;
 
@@ -105,7 +118,7 @@ function exec(home: string, args: (dir: string) => string[]): never {
   });
 }
 
-async function guided(home: string): Promise<void> {
+async function guided(home: string, advanced: boolean): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   // Ctrl+C at a prompt: leave like any other command would.
   rl.on('SIGINT', () => {
@@ -114,6 +127,7 @@ async function guided(home: string): Promise<void> {
   });
   try {
     const done = await setup({
+      advanced,
       ask: (q) => rl.question(q),
       log: (l) => console.log(l),
       platform: process.platform,
@@ -156,7 +170,7 @@ async function main(argv: string[]): Promise<void> {
     }
     case 'install': {
       const f = flags(rest, ['channel']);
-      if (!f.yes && process.stdin.isTTY && process.stdout.isTTY) return guided(home);
+      if (!f.yes && process.stdin.isTTY && process.stdout.isTTY) return guided(home, !!f.advanced);
       const current = currentVersion(home);
       if (current) return void console.log(`shub ${current} is installed. Newer versions: shub update`);
       await update(deps(home), { channel: channelFor(str(f.channel), configuredChannel(), null) });
@@ -211,6 +225,7 @@ async function main(argv: string[]): Promise<void> {
       for (const f of findings)
         console.log(`${f.ok ? 'ok  ' : f.optional ? 'note' : 'FAIL'}  ${f.name.padEnd(12)}${f.detail}`);
       if (findings.some((f) => !f.ok && !f.optional)) process.exitCode = 1;
+      if (findings.some((f) => !f.ok)) console.log(`\nHelp: ${TROUBLESHOOTING}`);
       return;
     }
     case '--version':

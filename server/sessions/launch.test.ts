@@ -5,14 +5,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import type { ButtonDef } from '../../shared/api.ts';
+import { HttpError } from '../api/router.ts';
 import {
   autoName,
   buttonPrompt,
   claudeArgs,
+  CLAUDE_MISSING,
   defaultLauncher,
   RUN_HINT,
   isSimpleInput,
   permissionModeFor,
+  requireClaude,
   shellRc,
 } from './launch.ts';
 import { encodeCwd, summarizeTranscript } from './old.ts';
@@ -185,4 +188,23 @@ test('claude sessions start in a login shell when $SHELL is bash or zsh', () => 
   } finally {
     process.env.SHELL = saved;
   }
+});
+
+test('a missing claude is a clear 503, a present one passes', (t) => {
+  const env = { ...process.env };
+  const dir = mkdtempSync(join(tmpdir(), 'shub-no-claude-'));
+  t.after(() => {
+    process.env = env;
+    rmSync(dir, { recursive: true, force: true });
+  });
+  process.env.SHELL = '/bin/sh';
+  process.env.HOME = dir;
+  process.env.PATH = dir;
+  assert.throws(
+    requireClaude,
+    (err) => err instanceof HttpError && err.status === 503 && err.message === CLAUDE_MISSING,
+  );
+  writeFileSync(join(dir, 'claude'), '#!/bin/sh\n');
+  chmodSync(join(dir, 'claude'), 0o755);
+  requireClaude();
 });

@@ -20,6 +20,15 @@ function token(): string {
   }
 }
 
+/** Platform-aware: the service manager differs, a git checkout has none. */
+export function unreachable(url: string, platform: NodeJS.Platform = process.platform): string {
+  const status =
+    platform === 'darwin'
+      ? 'launchctl print gui/$(id -u)/com.github.christoph-teichmeister.shub'
+      : 'systemctl --user status shub';
+  return `shub is not reachable at ${url}. Run \`shub doctor\`. Not started yet: \`shub start\` (or \`shub service install\` to run it in the background). Installed as a service: \`${status}\`.`;
+}
+
 export async function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
@@ -30,7 +39,7 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
     });
   } catch (err) {
     if (err instanceof CliError) throw err;
-    throw new CliError(`shub is not reachable at ${baseUrl()} (is it running? systemctl --user status shub)`);
+    throw new CliError(unreachable(baseUrl()));
   }
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
