@@ -2,6 +2,7 @@
   // The desktop sidebar: projects by group (or the Active group) with their sessions, child worktrees and subagents,
   // plugin sections, the collapsed rail and the footer with usage and settings.
   import type { ChildWorktree, Config, ProjectView, Session } from '../../../../../shared/api.ts';
+  import Button from '../../components/Button/Button.svelte';
   import Conflicts from '../../components/Conflicts/Conflicts.svelte';
   import AgentRow from '../../components/AgentRow/AgentRow.svelte';
   import Icon from '../../components/Icon/Icon.svelte';
@@ -19,7 +20,7 @@
   import { childStart, placeChildren, sessionsIn } from '../../children.ts';
   import { dropPositions, projectBadge } from '../../status.ts';
   import { api } from '../../stores/api.ts';
-  import { href } from '../../stores/router.svelte.ts';
+  import { go, href } from '../../stores/router.svelte.ts';
   import {
     app,
     loadProjects,
@@ -435,7 +436,8 @@
   {/if}
 
   {#if app.ready && !app.config?.activeGroup && groups.length === 0}
-    <p class="hint">No projects yet. Add one with the + button.</p>
+    <p class="hint">No projects yet. Use "Search or add project" above (<Kbd keys="Alt K" />) or add one here.</p>
+    <Button size="sm" variant="primary" onclick={() => go('settings', 'project', 'new')}>Add project</Button>
   {/if}
 
   {#snippet rail()}

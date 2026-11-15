@@ -78,6 +78,9 @@
     {#if firstRun}<Wordmark size="lg" tagline />{:else}<a class="back" href={href('settings')}>← Settings</a>{/if}
     <h1>Pick your projects</h1>
     <p class="muted">
+      A project is a folder you run Claude in. A group is a heading in the sidebar that holds projects.
+    </p>
+    <p class="muted">
       Found in your Claude history (~/.claude/projects). Worktree folders are merged into their main project; icons come
       from the git remote. Unticked ones are not added; you can add them later.
     </p>
@@ -87,7 +90,7 @@
     {:else if !rows}
       <p class="muted">Looking through ~/.claude/projects…</p>
     {:else if !rows.length}
-      <p class="muted">No new folders found. Add one by hand.</p>
+      <p class="muted">No Claude history yet: point shub at any code folder.</p>
     {:else}
       <div class="table-wrap">
         <table>
@@ -97,7 +100,9 @@
               <th scope="col">Folder</th>
               <th scope="col" class="num">Sessions</th>
               <th scope="col">Last used</th>
-              <th scope="col">Add as</th>
+              <th scope="col" title="Pinned: always in the sidebar. Dormant: hidden, find it with Alt K."
+                >Add as (pinned or dormant)</th
+              >
             </tr>
           </thead>
           <tbody>
@@ -156,14 +161,19 @@
           </tbody>
         </table>
       </div>
-      <p class="muted small">Rule of thumb: used in the last 2 weeks → pinned, older → dormant.</p>
+      <p class="muted small">
+        Pinned = always in the sidebar. Dormant = hidden; find it with Alt K. Rule of thumb: used in the last 2 weeks →
+        pinned, older → dormant.
+      </p>
     {/if}
 
     <div class="actions">
-      <Button variant="ghost" onclick={() => go('settings', 'project', 'new')}>Add a folder by hand</Button>
+      <Button variant={rows && !rows.length ? 'primary' : 'ghost'} onclick={() => go('settings', 'project', 'new')}
+        >Add a folder</Button
+      >
       <span class="grow"></span>
       {#if !firstRun}<Button variant="ghost" onclick={() => go('settings')}>Cancel</Button>{/if}
-      <Button variant="primary" disabled={!count || adding} onclick={addAll}
+      <Button variant={rows && !rows.length ? 'ghost' : 'primary'} disabled={!count || adding} onclick={addAll}
         >Add {count} {count === 1 ? 'project' : 'projects'}</Button
       >
     </div>
