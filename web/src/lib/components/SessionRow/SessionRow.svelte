@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Session } from '../../../../../shared/api.ts';
-  import { contextFill, idleWithAgents, statusLabel, waitTitle } from '../../status.ts';
+  import { contextFill, idleWithAgents, STATUS_HELP, statusLabel, waitTitle } from '../../status.ts';
   import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
 
@@ -94,7 +94,12 @@
       {href}
       ondblclick={onrename ? (e) => (e.preventDefault(), (renaming = true)) : undefined}
       aria-current={selected ? 'page' : undefined}
-      title={[session.pendingCommands?.map((c) => c.command).join('\n') ?? waitTitle(session), fill?.title]
+      aria-describedby="status-help-{session.id}"
+      title={[
+        STATUS_HELP[session.status],
+        session.pendingCommands?.map((c) => c.command).join('\n') ?? waitTitle(session),
+        fill?.title,
+      ]
         .filter(Boolean)
         .join('\n') || undefined}
     >
@@ -102,6 +107,7 @@
       <span class="name">{session.name}</span>
       <span class="status">{closing ? 'Closing' : statusLabel(session)}</span>
     </a>
+    <span id="status-help-{session.id}" class="visually-hidden">{STATUS_HELP[session.status]}</span>
   {/if}
   {#if onmenu && !closing && !renaming}
     <span class="actions"

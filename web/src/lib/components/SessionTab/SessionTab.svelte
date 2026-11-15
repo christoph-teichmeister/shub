@@ -1,6 +1,13 @@
 <script lang="ts">
   import type { Session } from '../../../../../shared/api.ts';
-  import { canCompact as compactable, contextFill, idleWithAgents, STATUS_LABEL, waitTitle } from '../../status.ts';
+  import {
+    canCompact as compactable,
+    contextFill,
+    idleWithAgents,
+    STATUS_HELP,
+    STATUS_LABEL,
+    waitTitle,
+  } from '../../status.ts';
   import Icon from '../Icon/Icon.svelte';
   import IconButton from '../IconButton/IconButton.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
@@ -116,11 +123,13 @@
       aria-describedby="status-{session.id}"
       onclick={onselect}
       ondblclick={() => (renaming = true)}
-      title={[session.name, waitTitle(session), fill?.title].filter(Boolean).join('\n')}
+      title={[session.name, STATUS_HELP[session.status], waitTitle(session), fill?.title].filter(Boolean).join('\n')}
     >
       {session.name}
     </button>
-    <span id="status-{session.id}" class="visually-hidden">{STATUS_LABEL[session.status]}</span>
+    <span id="status-{session.id}" class="visually-hidden"
+      >{STATUS_LABEL[session.status]}: {STATUS_HELP[session.status]}</span
+    >
   {/if}
   {#if closing}
     <span class="badge-closing">Closing</span>

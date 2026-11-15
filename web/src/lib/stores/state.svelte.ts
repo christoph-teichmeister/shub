@@ -80,6 +80,7 @@ export const ui = $state({
   search: false,
   drawer: false,
   shortcuts: false,
+  legend: false,
   /** Set by the overview while open: search shows a session as a pane there instead of navigating away. */
   showInGrid: null as ((s: Session) => void) | null,
   phone: matchMedia('(max-width: 699px)').matches,

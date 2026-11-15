@@ -11,6 +11,21 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
   exited: 'exited',
 };
 
+/** What each status means, one plain sentence: tooltips and the legends read from here. */
+export const STATUS_HELP: Record<SessionStatus, string> = {
+  'needs-you': 'Claude is blocked on a permission or a question',
+  'your-turn': 'Claude finished and waits for your next prompt',
+  working: 'Claude is working on your last prompt',
+  waiting: 'Parked until something outside happens',
+  paused: 'Claude is stopped, the conversation is kept',
+  new: 'Claude is up but got no prompt yet',
+  starting: 'Claude is starting',
+  exited: 'The process ended',
+};
+
+/** The five states the legends explain, in the order of the sidebar. */
+export const LEGEND_STATES = ['needs-you', 'your-turn', 'working', 'waiting', 'paused'] as const;
+
 /** The turn is over and only background agents still run: working underneath, but nothing is typing. */
 export const idleWithAgents = (s: Session): boolean => s.status === 'working' && !!s.background && !!s.agents?.length;
 
