@@ -238,40 +238,23 @@ export const loadConflicts = async () =>
   (app.conflicts = (await guard(api<GroupConflict[]>('groupConflicts'))) ?? app.conflicts);
 export const loadPlugins = async () => (app.plugins = (await guard(api<PluginInfo[]>('plugins'))) ?? app.plugins);
 let pendingVersion: string | undefined;
-/** Reloads into a new app once that cannot lose input (see canReloadNow); says so once while it waits. */
+/** Tells once that an update is downloaded, then reloads into it on the next focus move (see canReloadNow). */
 export function reloadForUpdate(version: string): void {
   if (version === loadedVersion) return; // the loader announces its own activation too: nothing new to load
   const waiting = pendingVersion;
   pendingVersion = version; // a newer one while waiting replaces it; the pending check reads this
   if (waiting) return;
-  let told = false;
-  let timer: ReturnType<typeof setInterval>;
-  const arm = () => {
-    timer = setInterval(tryNow, 5000);
-    document.addEventListener('visibilitychange', tryNow);
-  };
+  toast(`shub ${version} is downloaded. It applies when you switch away from the app.`, 'neutral', 15_000);
   const tryNow = () => {
-    if (!canReloadNow(idleState())) {
-      if (!told)
-        toast(`shub ${pendingVersion} is ready. It loads when you stop typing or leave the app.`, 'neutral', 15_000);
-      told = true;
-      return;
-    }
-    clearInterval(timer);
+    if (!canReloadNow(idleState())) return;
+    window.removeEventListener('blur', tryNow);
     document.removeEventListener('visibilitychange', tryNow);
-    // Curtain first, so the reload reads as "updating" instead of a flicker; the new page fades it out.
     app.reloadingTo = pendingVersion ?? version;
     store('shub-updated', app.reloadingTo, 'session');
-    setTimeout(() => {
-      // A hidden page's timers freeze, so this can fire late: look again before throwing input away.
-      if (canReloadNow(idleState())) return location.reload();
-      app.reloadingTo = null;
-      store('shub-updated', null, 'session');
-      arm();
-    }, 900);
+    location.reload(); // the user just looked away: no wait, no freeze
   };
-  arm();
-  tryNow();
+  window.addEventListener('blur', tryNow);
+  document.addEventListener('visibilitychange', tryNow);
 }
 
 /** The server version this page's code came with; another one means an update ran, so reload to get its frontend. */

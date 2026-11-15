@@ -2264,39 +2264,41 @@ const announceUpdate = () =>
     new MessageEvent('message', { data: { type: 'app-updated', version: '2099.1.0' } }),
   );
 
-test('update reload waits for unsent text, then reloads once it is safe', async ({ page }) => {
+const leaveApp = () => {
+  document.hasFocus = () => false; // a real focus move; the headless page always has focus
+  window.dispatchEvent(new Event('blur'));
+};
+
+test('update toasts once, then applies on the next focus move, never over unsent text', async ({ page }) => {
   await mockApi(page);
   await page.goto('/#/');
   await expect(page.getByRole('navigation', { name: 'Projects' })).toBeVisible();
-  // A draft in a focused field makes the reload unsafe; the marker disappears if the page reloads.
   await page.evaluate(() => {
-    (window as Marked).alive = true;
+    (window as Marked).alive = true; // disappears if the page reloads
     const input = document.body.appendChild(document.createElement('input'));
     input.value = 'unsent draft';
     input.focus();
   });
   await page.evaluate(announceUpdate);
-  await expect(page.getByText('shub 2099.1.0 is ready. It loads when you stop typing or leave the app.')).toHaveCount(
-    1,
-  );
-  await page.waitForTimeout(1500); // longer than the 900 ms curtain delay
+  await expect(
+    page.getByText('shub 2099.1.0 is downloaded. It applies when you switch away from the app.'),
+  ).toHaveCount(1);
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => (window as Marked).alive)).toBe(true); // no reload without a focus move
+
+  await page.evaluate(leaveApp); // unsent draft: still no reload
+  await page.waitForTimeout(500);
   expect(await page.evaluate(() => (window as Marked).alive)).toBe(true);
 
-  // Draft gone: the next check (here the visibilitychange trigger) reloads.
-  await page.evaluate(() => {
-    document.querySelector('input')?.remove();
-    document.dispatchEvent(new Event('visibilitychange'));
-  });
-  await expect.poll(() => page.evaluate(() => (window as Marked).alive)).toBeUndefined();
-});
-
-test('update reload happens right away when nothing is unsent', async ({ page }) => {
-  await mockApi(page);
-  await page.goto('/#/');
-  await expect(page.getByRole('navigation', { name: 'Projects' })).toBeVisible();
-  await page.evaluate(() => ((window as Marked).alive = true));
-  await page.evaluate(announceUpdate);
-  await expect.poll(() => page.evaluate(() => (window as Marked).alive)).toBeUndefined();
+  await page
+    .evaluate(() => {
+      document.querySelector('input')?.remove();
+      window.dispatchEvent(new Event('blur'));
+    })
+    .catch(() => {}); // the reload destroys the context
+  await expect
+    .poll(() => page.evaluate(() => (window as Marked).alive).catch(() => undefined)) // mid-reload
+    .toBeUndefined();
 });
 
 test('clicking a Markdown draft path in the terminal opens it in the notes panel', async ({ page }) => {
