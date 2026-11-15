@@ -1,5 +1,6 @@
 <script lang="ts">
   import { dismissToast, toasts, type ToastItem } from '../../stores/toasts.svelte.ts';
+  import Button from '../Button/Button.svelte';
   import Icon from '../Icon/Icon.svelte';
   import type { IconName } from '../Icon/icons.ts';
   import IconButton from '../IconButton/IconButton.svelte';
@@ -27,6 +28,16 @@
         {item.message}
         {#if item.details}<div class="details"><Markdown md={item.details} /></div>{/if}
       </div>
+      {#if item.action}
+        {@const action = item.action}
+        <Button
+          size="sm"
+          onclick={() => {
+            ondismiss(item.id);
+            action.run();
+          }}>{action.label}</Button
+        >
+      {/if}
       <IconButton label="Dismiss" icon="close" size="xs" tone="muted" onclick={() => ondismiss(item.id)} />
       {#if item.ms}
         <!-- The draining line is the timer: it pauses on hover and dismisses when it runs out. -->

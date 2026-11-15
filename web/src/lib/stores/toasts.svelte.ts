@@ -8,6 +8,8 @@ export interface ToastItem {
   ms?: number;
   /** Markdown under the message, e.g. the release notes of an update; scrolls when long. */
   details?: string;
+  /** A button beside the message, e.g. Undo; clicking runs it and dismisses the toast. */
+  action?: { label: string; run: () => void };
 }
 
 /** Beyond this many the oldest confirmation goes; errors and needs-you are never dropped by the cap (up to five in all). */
@@ -23,9 +25,10 @@ export function toast(
   tone: ToastItem['tone'] = 'neutral',
   ms = tone === 'neutral' ? 4000 : 0,
   details?: string,
+  action?: ToastItem['action'],
 ): void {
   if (tone !== 'neutral' && toasts.some((t) => t.tone === tone && t.message === message)) return; // a reload repeating the same failure
-  toasts.push({ id: next++, message, tone, ms: ms || undefined, details });
+  toasts.push({ id: next++, message, tone, ms: ms || undefined, details, action });
   while (toasts.length > MAX) {
     const i = toasts.findIndex((t, k) => t.tone === 'neutral' && k < toasts.length - 1); // never the one just pushed
     if (i < 0) break;

@@ -146,10 +146,33 @@ export async function openChild(w: ChildWorktree): Promise<void> {
 }
 
 export async function closeSession(id: string): Promise<void> {
+  const s = app.sessions.find((x) => x.id === id);
   app.closing[id] = true;
-  await api('sessionClose', { params: { id } }).catch((err: unknown) => {
-    delete app.closing[id];
-    toastError(err);
+  const failed = await api('sessionClose', { params: { id } }).then(
+    () => false,
+    (err: unknown) => {
+      delete app.closing[id];
+      toastError(err);
+      return true;
+    },
+  );
+  // A Claude conversation survives the close: the toast brings it back (the idle ones close without asking).
+  if (failed || s?.kind !== 'claude' || !s.claudeSessionId || !s.projectId) return;
+  const { projectId, name, cwd, parentId, claudeSessionId: resumeClaudeSessionId } = s;
+  const resume = async () => {
+    const back = await startSession({
+      projectId,
+      kind: 'claude',
+      name,
+      cwd,
+      parentId: parentId ?? undefined,
+      resumeClaudeSessionId,
+    });
+    if (back) location.hash = sessionHref(back);
+  };
+  toast(`Closed ${name}. You can resume the conversation.`, 'neutral', 10000, undefined, {
+    label: 'Resume',
+    run: resume,
   });
 }
 
