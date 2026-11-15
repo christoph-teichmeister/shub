@@ -301,7 +301,7 @@
             <Button size="sm" variant="primary" onclick={() => void sendKeys(s.id, ['1'])}>Allow</Button>
             <Button size="sm" onclick={() => void sendKeys(s.id, ['3'])}>Deny</Button>
           {/if}
-          <IconButton label="Close session" icon="close" size="xs" onclick={() => closePane(s)} />
+          <IconButton label="End session" icon="close" size="xs" onclick={() => closePane(s)} />
         {/snippet}
         {#snippet pane(s)}
           {@const shell = shellOf(s)}
@@ -419,6 +419,7 @@
   header {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: var(--space-3);
   }
 

@@ -2357,11 +2357,21 @@ test('the overview and shortcuts have buttons for what the keys do', async ({ pa
   await expect(dialog.getByText('On macOS, Alt is the Option key.')).toBeVisible();
   expect(errors).toEqual([]);
 });
-
-test('the village desk is a button', async ({ page }) => {
-  const { errors } = await mockApi(page);
+test('the village desk is a button that opens the first crab in line, and stands you up to sit again', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const { errors } = await mockApi(page, crabVillage().mocks);
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/#/village');
-  await expect(page.getByRole('region', { name: 'Crab village map' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /desk/i })).toBeVisible();
+  const map = page.getByRole('region', { name: 'Crab village map' });
+  await map.getByRole('button', { name: 'Your desk: open the first crab in line' }).click();
+  await expect(page.getByRole('dialog', { name: 'Export CSV fix' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(map).toBeFocused();
+  await page.keyboard.press('a'); // stands you up
+  await map.locator('.prompt').click(); // the E prompt is a button too
+  await expect(map.getByRole('button', { name: 'Your desk: open the first crab in line' })).toBeVisible();
   expect(errors).toEqual([]);
 });

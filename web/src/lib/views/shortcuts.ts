@@ -38,7 +38,11 @@ export const SHORTCUT_GROUPS: { title: string; items: [string, string[]][] }[] =
     title: 'Village',
     items: [
       ['Walk (optional; click a crab and use the card buttons instead)', ['W', 'A', 'S', 'D']],
+      ['Talk to the crab or sit at your desk, whichever is in reach', ['E']],
+      ['At your desk: walk the line / open the first crab', ['↑', '↓', 'Enter']],
       ['Allow / deny the pinned crab', ['Y', 'N']],
+      ['Run the pinned crab / close its card', ['R', 'Esc']],
+      ['Close the chat window', ['Alt W']],
     ],
   },
   {

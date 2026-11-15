@@ -1051,7 +1051,12 @@
           style:left="{world.you.x}px"
           style:top="{world.you.y}px"
           style:z-index={world.you.y}
-          title={seated ? 'Open the first crab in line' : 'Sit at your desk'}
+          title={!seated ? 'Sit at your desk' : queue.length ? 'Open the first crab in line' : 'Nobody is in line'}
+          aria-label={!seated
+            ? 'Sit at your desk'
+            : queue.length
+              ? 'Your desk: open the first crab in line'
+              : 'Your desk: nobody is in line'}
           onclick={() => (deskClick(), viewport?.focus({ preventScroll: true }))}
         >
           <img
@@ -1077,6 +1082,7 @@
             style:left="{me.x}px"
             style:top="{me.y - 78}px"
             style:z-index={Math.round(me.y) + 2}
+            aria-label={target.kind === 'crab' ? 'Talk to this crab' : 'Sit at your desk'}
             onclick={() => (interact(), viewport?.focus({ preventScroll: true }))}
             ><kbd>E</kbd> {target.kind === 'crab' ? 'talk' : 'sit'}</button
           >
@@ -1169,8 +1175,8 @@
     <span><b class="your-turn">...</b> your turn</span>
     <span><b class="waiting">zZ</b> waiting · <b class="paused-tag">zZ</b> paused</span>
     <span id="village-keys"
-      >Click a crab to pin its card and use the card buttons, drag to pan, wheel to zoom. Click your desk to sit and
-      work the line, <kbd>Alt W</kbd> closes the chat, <kbd>Alt V</kbd> goes back. Optional keys: <kbd>W</kbd><kbd
+      >Click a crab to pin its card and use the card buttons, drag to pan, wheel to zoom. Click your desk to open the
+      first crab in line, <kbd>Alt W</kbd> closes the chat, <kbd>Alt V</kbd> goes back. Optional keys: <kbd>W</kbd><kbd
         >A</kbd
       ><kbd>S</kbd><kbd>D</kbd>
       walk · <kbd>E</kbd> talk to a crab, sit at your desk · at your desk: <kbd>↑</kbd><kbd>↓</kbd> queue ·
