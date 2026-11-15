@@ -12,6 +12,7 @@
   import Dialog from '../components/Dialog/Dialog.svelte';
   import ImageViewer from '../components/ImageViewer/ImageViewer.svelte';
   import EmptyState from '../components/EmptyState/EmptyState.svelte';
+  import IntroBanner from '../components/IntroBanner/IntroBanner.svelte';
   import Icon from '../components/Icon/Icon.svelte';
   import { ICONS, type IconName } from '../components/Icon/icons.ts';
   import IconButton from '../components/IconButton/IconButton.svelte';
@@ -523,6 +524,13 @@
         <EmptyState title="No session yet" body="Start one here or with Alt N.">
           <Button variant="primary">New session</Button>
         </EmptyState>
+      </div>
+    </section>
+
+    <section id="intro-banner" aria-labelledby="h-intro">
+      <h2 id="h-intro">Intro banner</h2>
+      <div class="box">
+        <IntroBanner id="styleguide">One sentence that says what this view is for.</IntroBanner>
       </div>
     </section>
 

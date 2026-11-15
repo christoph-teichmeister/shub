@@ -66,7 +66,7 @@ export function waitTitle(s: Session): string | undefined {
   if (!check) return `Waiting for: ${s.waitingFor}`;
   const last = check.last ?? 'first check running…';
   const then = check.onDone ? `Then sends: ${check.onDone}` : 'Then notifies you.';
-  return `Waiting for: ${s.waitingFor}\nHaiku checks every ${check.everyMinutes} min. ${then} Last: ${last}`;
+  return `Waiting for: ${s.waitingFor}\nA small Claude model checks every ${check.everyMinutes} min. ${then} Last: ${last}`;
 }
 
 /** Default order of a project's sessions in the sidebar; everything else after these, oldest first. */

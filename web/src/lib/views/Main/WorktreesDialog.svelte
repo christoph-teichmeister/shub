@@ -53,6 +53,15 @@
   });
   /** Closing would lose work, git would refuse, or the session must end first. */
   const KEEP = ['active', 'locked', 'dirty', 'not-pushed'];
+  const STATE_HINT: Record<string, string> = {
+    active: 'A session runs here.',
+    locked: 'Git locked it; run git worktree unlock to free it.',
+    dirty: 'Has changes that are not committed.',
+    'not-pushed': 'Has commits that exist only here.',
+    merged: 'Its work is in the main branch; safe to close.',
+    'remote-gone': 'Its remote branch was deleted, usually after a merge.',
+    'folder-gone': 'The folder was deleted; Prune makes git forget it.',
+  };
   const mergedWorktrees = $derived(worktrees.filter((w) => w.state === 'merged'));
   const closer = (p: ProjectView) => p.buttons.find((b) => b.skill === '/worktree-close');
 
@@ -157,6 +166,7 @@
                 <code class="muted" title={w.path}
                   >{[w.branch || 'detached', dayAge(w.lastCommitAt)].filter(Boolean).join(' · ')}</code
                 >
+                {#if STATE_HINT[w.state]}<span class="muted hint">{STATE_HINT[w.state]}</span>{/if}
               </span>
               {#if w.state !== 'folder-gone'}
                 <Button size="sm" icon="terminal" aria-label="Terminal in {w.name}" onclick={() => startIn(w, 'shell')}
@@ -199,6 +209,10 @@
 
   .muted {
     color: var(--muted);
+  }
+
+  .hint {
+    font-size: var(--text-sm);
   }
 
   code {

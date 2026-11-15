@@ -60,7 +60,12 @@
         : [
             s.waitingFor
               ? { id: 'ready', label: 'Stop waiting', description: s.waitingFor, separator: true }
-              : { id: 'wait', label: 'Wait for…', separator: true },
+              : {
+                  id: 'wait',
+                  label: 'Wait for…',
+                  description: 'Claude keeps running but stays out of your queue until it happened',
+                  separator: true,
+                },
           ]),
       ...(fill?.compact
         ? [
@@ -69,11 +74,16 @@
               label: 'Compact',
               hint: `${fill.pct} %`,
               disabled: !canCompact(s),
-              description: canCompact(s) ? undefined : 'Once it is your turn',
+              description: canCompact(s) ? 'Shortens the conversation to free up context' : 'Once it is your turn',
             },
           ]
         : []),
-      { id: 'pause', label: s.status === 'paused' ? 'Resume session' : 'Pause session' },
+      {
+        id: 'pause',
+        label: s.status === 'paused' ? 'Resume session' : 'Pause session',
+        description:
+          s.status === 'paused' ? 'Starts Claude again, conversation kept' : 'Stops Claude, the conversation is kept',
+      },
       ...plugin.map((a, i) => ({ ...a, separator: i === 0 })),
       ...buttons,
       { id: 'close', label: 'Close session', separator: true, danger: true },
@@ -164,7 +174,7 @@
 <Dialog
   open={!!waitDraft}
   title="Wait for…"
-  description="Parks the session as waiting, so it stops asking for your turn."
+  description="Parks the session as waiting, so it stops asking for your turn. A small Claude model (Haiku) checks in the background whether it happened."
   onclose={() => (waitDraft = null)}
 >
   {#if waitDraft}
@@ -179,20 +189,20 @@
       <label class="field"
         ><span>Waiting for</span><input
           bind:value={waitDraft.reason}
-          placeholder="Kai's answer on MR !2213"
+          placeholder="The review on my pull request"
           required
         /></label
       >
       <label class="field"
-        ><span>How can Haiku tell it happened?</span><textarea
+        ><span>How should shub check it happened?</span><textarea
           bind:value={waitDraft.check}
           rows="3"
-          placeholder="Look at merge request !2213 in ai/ai-portal on GitLab. Done once Kai has written a new comment or approved it after today 11:00."
+          placeholder="Look at the pull request on GitHub. Done once a reviewer has commented or approved it after today 11:00."
         ></textarea></label
       >
       <p class="wait-hint">
-        Where to look, whose action, what counts as done. Haiku checks read-only, right away and then at the interval.
-        Empty = only park.
+        Where to look, whose action, what counts as done. The check is read-only, runs right away and then at the
+        interval. Empty = only park.
       </p>
       {#if waitDraft.check.trim()}
         <div class="wait-row">
@@ -212,8 +222,8 @@
         {#if waitDraft.then === 'send'}
           <label class="field"><span>Prompt</span><textarea bind:value={waitDraft.onDone} rows="2"></textarea></label>
           <p class="wait-hint">
-            Claude carries on by itself. <code>{'{summary}'}</code> = Haiku's answer. Haiku can be wrong: use this for clear
-            yes/no waits.
+            Claude carries on by itself. <code>{'{summary}'}</code> = the checker's answer. It can be wrong: use this for
+            clear yes/no waits.
           </p>
         {/if}
       {/if}

@@ -15,12 +15,25 @@
     panes?: number;
     onallow?: () => void;
     ondeny?: () => void;
-    /** Shows a button that brings a minimized session back into the grid. */
+    /** Shows a button (Resume while paused, else Show) that brings a parked session back into the grid. */
     onrestore?: () => void;
     /** Accent frame: a minimized session that is your turn now. */
     flagged?: boolean;
+    /** A line for a session with nothing else to say, e.g. why it sits in the strip. */
+    note?: string;
   }
-  let { session, href, project, accent, panes = 0, onallow, ondeny, onrestore, flagged = false }: Props = $props();
+  let {
+    session,
+    href,
+    project,
+    accent,
+    panes = 0,
+    onallow,
+    ondeny,
+    onrestore,
+    flagged = false,
+    note,
+  }: Props = $props();
 
   const fill = $derived(contextFill(session));
   const agent = $derived(session.agents?.find((a) => a.activity)?.activity);
@@ -28,9 +41,7 @@
   const line = $derived(
     session.pendingPermission
       ? `${session.pendingPermission.tool}: ${session.pendingPermission.summary}`
-      : session.waitingFor
-        ? `Waiting for ${session.waitingFor}`
-        : (agent ?? ''),
+      : (note ?? (session.waitingFor ? `Waiting for ${session.waitingFor}` : (agent ?? ''))),
   );
 </script>
 
@@ -54,7 +65,8 @@
         <Button size="sm" variant="primary" onclick={onallow}>Allow</Button>
         <Button size="sm" onclick={ondeny}>Deny</Button>
       {/if}
-      {#if onrestore}<Button size="sm" onclick={onrestore}>Show</Button>{/if}
+      {#if onrestore}<Button size="sm" onclick={onrestore}>{session.status === 'paused' ? 'Resume' : 'Show'}</Button
+        >{/if}
     </div>
   {/if}
   {#if fill}<span class="fill {fill.level}" style:--fill="{fill.pct}%" title={fill.title}></span>{/if}

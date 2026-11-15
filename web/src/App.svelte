@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, type Component } from 'svelte';
+  import { onMount, untrack, type Component } from 'svelte';
   import Button from './lib/components/Button/Button.svelte';
   import EmptyState from './lib/components/EmptyState/EmptyState.svelte';
   import Toast from './lib/components/Toast/Toast.svelte';
@@ -8,6 +8,7 @@
   import { select } from './lib/stores/device.ts';
   import { checkAppUpdate } from './lib/stores/loader.ts';
   import { fleet, loadMachines } from './lib/stores/machines.svelte.ts';
+  import { toast } from './lib/stores/toasts.svelte.ts';
   import { go, router } from './lib/stores/router.svelte.ts';
   import {
     app,
@@ -25,6 +26,23 @@
 
   const route = $derived(router.route);
   const signIn = $derived(route.name === 'pair' || route.name === 'login' || app.authRequired);
+
+  // The village and the overview need room: on a narrow window they fall back to the phone view, say why once per view
+  // (not while the first-run or sign-in screens win over the fallback).
+  const explained = new Set<string>();
+  $effect(() => {
+    if (
+      ui.phone &&
+      (route.name === 'village' || route.name === 'overview') &&
+      !signIn &&
+      app.ready &&
+      app.projects.length > 0 &&
+      !explained.has(route.name)
+    ) {
+      explained.add(route.name);
+      untrack(() => toast(`The ${route.name} needs a wider window, so this is the phone view.`));
+    }
+  });
 
   onMount(() => {
     if (route.name === 'pair' || route.name === 'login') return;

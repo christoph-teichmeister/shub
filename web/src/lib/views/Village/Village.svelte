@@ -3,6 +3,7 @@
   // their status gives them (crabs.ts) on a 140 ms step; the map itself is laid out once per set of projects
   // (world.ts).
   import { onMount, tick, untrack } from 'svelte';
+  import IntroBanner from '../../components/IntroBanner/IntroBanner.svelte';
   import type { Session, SessionStatus } from '../../../../../shared/api.ts';
   import { commandTarget } from '../../../../../shared/commands.ts';
   import { api } from '../../stores/api.ts';
@@ -914,6 +915,7 @@
     </div>
     <span class="muted">{Math.round(zoom * 100)} %</span>
   </header>
+  <IntroBanner id="village">A map of your sessions: triage who needs you.</IntroBanner>
 
   <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
   <div class="frame">
@@ -1217,6 +1219,11 @@
     padding: var(--space-4);
     background: var(--village-bg);
     color: var(--village-parchment);
+
+    --intro-bg: transparent;
+    --intro-fg: var(--village-parchment);
+    --intro-line: var(--village-parchment-line);
+
     font-family: var(--font-pixel);
   }
 

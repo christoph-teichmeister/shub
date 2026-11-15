@@ -9,7 +9,7 @@
   interface Props {
     /** The session (or one of its panes) whose draft this is. */
     sessionId: string;
-    /** Claude session that gets "Tell Claude"; omitted when the session is a plain terminal. */
+    /** Claude session that gets "Send to Claude's prompt"; omitted when the session is a plain terminal. */
     claudeId?: string;
     onhide: () => void;
     /** A knowledge base note to show instead of the draft. */
@@ -125,7 +125,7 @@
     {#if note}
       <IconButton label="Back to the draft" icon="chevron-left" size="xs" tone="muted" onclick={onback} />
       <h2 title={path}>{path.split('/').pop()}</h2>
-    {:else}<h2>Notes</h2>{/if}
+    {:else}<h2 title="Your scratch file for this session; Claude can read and edit it">Notes</h2>{/if}
     <span class="state">{theirs ? 'changed outside' : dirty ? 'saving…' : 'saved'}</span>
     <span class="modes">
       <Button size="sm" variant="ghost" pressed={!preview} onclick={() => (preview = false)}>Write</Button>
@@ -138,7 +138,8 @@
         variant="ghost"
         icon="sparkle"
         onclick={tellClaude}
-        title="Paste the file path and how to work on it into Claude's prompt">Tell Claude</Button
+        title="Paste the file path and how to work on it into Claude's prompt (you still press Enter)"
+        >Send to Claude's prompt</Button
       >{/if}
     <IconButton label="Hide notes (Alt M)" icon="close" size="xs" tone="muted" onclick={onhide} />
   </div>
@@ -157,7 +158,8 @@
       oninput={typed}
       spellcheck="true"
       aria-label="Markdown draft"
-      placeholder="Write Markdown here. Claude edits the same file."></textarea>
+      placeholder="Your scratch notes for this session, in Markdown. Claude can read and edit the same file."
+    ></textarea>
   {/if}
   {#if path}<div class="path" title={path}>{path}</div>{/if}
 </section>

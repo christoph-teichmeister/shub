@@ -141,7 +141,9 @@
         {/if}
       </li>
     {/each}
-    {#if containers.length === 0}<li class="none" role="none">No containers for this session</li>{/if}
+    {#if containers.length === 0}<li class="none" role="none">
+        No containers for this session. Containers of its Docker Compose project show up here.
+      </li>{/if}
   </ul>
 
   <div class="details">

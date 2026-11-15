@@ -8,8 +8,8 @@
   let { session }: { session: Session } = $props();
 </script>
 
-<EmptyState title="Session paused" body={session.name}>
+<EmptyState title="This session is paused" body="Claude is stopped; the conversation is kept.">
   <Button variant="primary" onclick={() => void api('sessionResume', { params: { id: session.id } }).catch(toastError)}
-    >Wake it up?</Button
+    >Resume</Button
   >
 </EmptyState>
