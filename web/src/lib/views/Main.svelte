@@ -35,7 +35,6 @@
   import SessionMenu from './Main/SessionMenu.svelte';
   import WorktreesDialog from './Main/WorktreesDialog.svelte';
   import { api, ApiError } from '../stores/api.ts';
-  import { TIPS } from './shortcuts.ts';
   import { go, href, parseHash, router } from '../stores/router.svelte.ts';
   import {
     app,
@@ -380,9 +379,15 @@
   {:else if !project}
     <EmptyState
       title={route.name === 'project' && app.ready ? 'Project not found' : 'Pick a project'}
-      body="Or open the global Claude with Alt G."
+      body="A project is a folder you run Claude in."
     >
-      <p class="tip">{TIPS[Math.floor(Math.random() * TIPS.length)]}</p>
+      <ol class="tip">
+        <li>Pick or add a project in the sidebar.</li>
+        <li>Press New session.</li>
+        <li>A badge on the session row shows when Claude needs you.</li>
+      </ol>
+      <p class="tip">Alt G opens the global Claude: a Claude not tied to a project, optional.</p>
+      <p class="tip">Press Alt ? for all shortcuts.</p>
     </EmptyState>
   {:else}
     <TabBar label="Panes">
@@ -486,9 +491,9 @@
         {:else}
           <EmptyState
             title="No session yet"
-            body={sessions.length
-              ? 'Open a session from the sidebar or start one with Alt N.'
-              : 'Start one here or with Alt N.'}
+            body="A session is Claude Code running in this project's folder, even with the browser closed. {sessions.length
+              ? 'Open one from the sidebar or press Alt N.'
+              : 'Start one here or press Alt N.'}"
           >
             <Button variant="primary" onclick={() => newSession()}>New session</Button>
           </EmptyState>
@@ -632,7 +637,10 @@
       <TerminalView sessionId={globalSession.id} label="Global Claude" focused />
     {/key}
   {:else}
-    <EmptyState title="The global Claude is not running" body="It can add projects and start sessions for you.">
+    <EmptyState
+      title="The global Claude is not running"
+      body="Optional: a general Claude, not tied to a project. It can add projects and start sessions for you."
+    >
       <Button variant="primary" onclick={() => newSession(null)}>Start it</Button>
     </EmptyState>
   {/if}
@@ -651,6 +659,15 @@
     max-width: 40ch;
     color: var(--muted);
     font-size: var(--text-sm);
+  }
+
+  ol.tip {
+    padding: 0;
+    list-style-position: inside;
+  }
+
+  ol.tip + .tip {
+    margin-top: var(--space-2);
   }
 
   .work {

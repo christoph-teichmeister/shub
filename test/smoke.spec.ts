@@ -434,7 +434,9 @@ test('a phone pairs with a code and waits for approval', async ({ page }) => {
   await page.getByLabel('Device name').fill('Pixel');
   await page.getByRole('button', { name: 'Pair this device' }).click();
   // Not approved on the machine yet: the challenge answers 409 and the page waits.
-  await expect(page.getByText(/Now approve Pixel on a trusted host or a Control phone/)).toBeVisible();
+  await expect(
+    page.getByText(/Now approve Pixel in Settings > Devices, on your computer or a trusted Control phone/),
+  ).toBeVisible();
   const redeem = calls.find((c) => c.path === '/api/auth/pairing/redeem')?.body as Record<string, unknown>;
   expect(redeem).toMatchObject({ code: 'abc123', deviceName: 'Pixel', publicKey: { kty: 'EC', crv: 'P-256' } });
   expect(redeem.publicKey).not.toHaveProperty('d');
@@ -452,10 +454,12 @@ test('the approval wait stops when the sign-in page closes', async ({ page }) =>
   await page.goto('/pair/abc123');
   await page.getByLabel('Device name').fill('Pixel');
   await page.getByRole('button', { name: 'Pair this device' }).click();
-  await expect(page.getByText(/Now approve Pixel/)).toBeVisible();
+  await expect(
+    page.getByText(/Now approve Pixel in Settings > Devices, on your computer or a trusted Control phone/),
+  ).toBeVisible();
   // Back later: the sign-in page waits again, then the user leaves it.
   await page.goto('/#/login');
-  await expect(page.getByText(/Now approve/)).toBeVisible();
+  await expect(page.getByText(/Now approve .* in Settings > Devices/)).toBeVisible();
   await page.evaluate(() => (location.hash = '#/styleguide'));
   await expect(page.getByRole('heading', { name: 'Drawer' })).toBeVisible();
   const asked = () => calls.filter((c) => c.path === '/api/auth/challenge').length;
@@ -792,6 +796,70 @@ test('first run import screen', async ({ page }) => {
       group: 'Side',
     });
   expect(errors).toEqual([]);
+});
+
+test('first run without Claude history explains the words and leads with Add a folder', async ({ page }) => {
+  const { errors } = await mockApi(page, { '/api/projects': [], '/api/projects/import': [] });
+  await page.goto('/#/');
+  await expect(page.getByText('A project is a folder you run Claude in.')).toBeVisible();
+  await expect(page.getByText('No Claude history yet: point shub at any code folder.')).toBeVisible();
+  await page.getByRole('button', { name: 'Add a folder' }).click();
+  await expect(page).toHaveURL(/#\/settings\/project\/new$/);
+  expect(errors).toEqual([]);
+});
+
+test('no project open: quickstart steps; the empty sidebar offers Add project', async ({ page }) => {
+  const { errors } = await mockApi(page, {
+    '/api/projects': [dormant],
+    '/api/config': { ...config, projects: [], groups: [] },
+  });
+  await page.goto('/#/p/none');
+  await expect(page.getByText('Press New session.')).toBeVisible();
+  await expect(page.getByText('a Claude not tied to a project, optional')).toBeVisible();
+  await expect(page.getByText('Press Alt ? for all shortcuts.')).toBeVisible();
+  await page.getByRole('button', { name: 'Add project', exact: true }).click();
+  await expect(page).toHaveURL(/#\/settings\/project\/new$/);
+  // The global Claude is optional, and the drawer says so.
+  await page.keyboard.press('Alt+KeyG');
+  await expect(page.getByText('Optional: a general Claude, not tied to a project.')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('a project without sessions explains what a session is', async ({ page }) => {
+  const { errors } = await mockApi(page, { '/api/sessions': [] });
+  await page.goto('/#/p/ai-portal');
+  await expect(page.getByText(/A session is Claude Code running in this project's folder/)).toBeVisible();
+  await expect(page.getByText(/Start one here or press Alt N\./)).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('login with a wrong token tells where to find it, without markdown backticks', async ({ page }) => {
+  const { errors } = await mockApi(page, {
+    '/api/config': { status: 401, json: { error: 'login required' } },
+    'POST /api/auth/bootstrap': { status: 401, json: { error: 'bad token' } },
+  });
+  await page.goto('/#/');
+  await expect(page.getByText(/Run shub token in a terminal/)).toBeVisible();
+  await page.getByLabel('Access token').fill('nope');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByText(/Wrong token\. Print it again with shub token/)).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('`');
+  expect(errors.filter((e) => !e.includes('401'))).toEqual([]);
+});
+
+test('the pairing form says a code is needed away from the host', async ({ page }) => {
+  const { errors } = await mockApi(page, { '/api/config': { status: 401, json: { error: 'login required' } } });
+  // Open the page under another host name: the form then asks for a pairing code, not the host token.
+  await page.route('http://shub.test/**', (r) =>
+    r
+      .fetch({ url: r.request().url().replace('http://shub.test', 'http://127.0.0.1:4791') })
+      .then((res) => r.fulfill({ response: res })),
+  );
+  await page.goto('http://shub.test/#/login');
+  await expect(
+    page.getByText('Not on the machine that runs shub? You need a pairing code, not the token.'),
+  ).toBeVisible();
+  expect(errors.filter((e) => !e.includes('401'))).toEqual([]);
 });
 
 test('phone overview answers a permission', async ({ page }) => {
