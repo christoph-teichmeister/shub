@@ -80,10 +80,12 @@
     <p class="muted">
       A project is a folder you run Claude in. A group is a heading in the sidebar that holds projects.
     </p>
-    <p class="muted">
-      Found in your Claude history (~/.claude/projects). Worktree folders are merged into their main project; icons come
-      from the git remote. Unticked ones are not added; you can add them later.
-    </p>
+    {#if rows?.length}
+      <p class="muted">
+        Found in your Claude history (~/.claude/projects). Worktree folders are merged into their main project; icons
+        come from the git remote. Unticked ones are not added; you can add them later.
+      </p>
+    {/if}
 
     {#if error}
       <p class="muted" role="alert">Could not read your Claude history: {error}</p>
@@ -100,9 +102,7 @@
               <th scope="col">Folder</th>
               <th scope="col" class="num">Sessions</th>
               <th scope="col">Last used</th>
-              <th scope="col" title="Pinned: always in the sidebar. Dormant: hidden, find it with Alt K."
-                >Add as (pinned or dormant)</th
-              >
+              <th scope="col">Add as</th>
             </tr>
           </thead>
           <tbody>
@@ -162,8 +162,8 @@
         </table>
       </div>
       <p class="muted small">
-        Pinned = always in the sidebar. Dormant = hidden; find it with Alt K. Rule of thumb: used in the last 2 weeks →
-        pinned, older → dormant.
+        Pinned = always in the sidebar. Dormant = hidden; find it with Alt K (Option K on macOS). Rule of thumb: used in
+        the last 2 weeks → pinned, older → dormant.
       </p>
     {/if}
 

@@ -384,9 +384,10 @@
       <ol class="tip">
         <li>Pick or add a project in the sidebar.</li>
         <li>Press New session.</li>
-        <li>shub shows a badge when Claude needs you.</li>
+        <li>A badge on the session row shows when Claude needs you.</li>
       </ol>
       <p class="tip">Alt G opens the global Claude: a Claude not tied to a project, optional.</p>
+      <p class="tip">Press Alt ? for all shortcuts.</p>
     </EmptyState>
   {:else}
     <TabBar label="Panes">
@@ -490,9 +491,9 @@
         {:else}
           <EmptyState
             title="No session yet"
-            body="A session is Claude Code running in this project's folder. It keeps running if you close the browser. {sessions.length
-              ? 'Open one from the sidebar or start one with Alt N.'
-              : 'Start one here or with Alt N.'} The + menu adds a terminal or skill buttons."
+            body="A session is Claude Code running in this project's folder, even with the browser closed. {sessions.length
+              ? 'Open one from the sidebar or press Alt N.'
+              : 'Start one here or press Alt N.'}"
           >
             <Button variant="primary" onclick={() => newSession()}>New session</Button>
           </EmptyState>
@@ -658,6 +659,15 @@
     max-width: 40ch;
     color: var(--muted);
     font-size: var(--text-sm);
+  }
+
+  ol.tip {
+    padding: 0;
+    list-style-position: inside;
+  }
+
+  ol.tip + .tip {
+    margin-top: var(--space-2);
   }
 
   .work {

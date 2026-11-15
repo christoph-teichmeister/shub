@@ -140,7 +140,9 @@
   onclose={close}
 >
   {#if waitingFor}
-    <p role="status">Now approve this device on {waitingFor}: shub > Settings > Devices. This goes on by itself.</p>
+    <p role="status">
+      Now approve this device on {waitingFor} or a trusted Control phone: Settings > Devices. This goes on by itself.
+    </p>
   {:else}
     <form class="form" onsubmit={submit}>
       {#if canScan}

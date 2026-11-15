@@ -59,7 +59,7 @@
     err instanceof ApiError && err.status === 401
       ? pairCode
         ? 'This code is used or ran out. Make a new one in Settings > Devices on a trusted device.'
-        : 'Wrong token. Print it again with `shub token` on the machine that runs shub (paste the whole line).'
+        : 'Wrong token. Print it again with shub token on the machine that runs shub (paste the whole line).'
       : err instanceof Error
         ? err.message
         : String(err);
@@ -112,8 +112,8 @@
 
     {#if waiting}
       <p class="ok" role="status">
-        Paired. Open shub on your computer, go to Settings > Devices and click Approve next to {deviceName}. This page
-        goes on by itself.
+        Paired. Now approve {deviceName} in Settings > Devices, on your computer or a trusted Control phone: click Approve
+        next to {deviceName}. This page goes on by itself.
       </p>
     {:else if paired}
       <p class="ok" role="status">This device is signed in as {deviceName}.</p>
@@ -133,7 +133,7 @@
         required
         autocomplete="current-password"
         mono
-        hint="Run `shub token` in a terminal, or read ~/.local/state/shub/token. This browser gets its own key and signs in with it from now on."
+        hint="Run shub token in a terminal, or read ~/.local/state/shub/token. This browser gets its own key and signs in with it from now on."
       />
       <Button block variant="primary" type="submit" disabled={busy}>Sign in</Button>
     {:else}

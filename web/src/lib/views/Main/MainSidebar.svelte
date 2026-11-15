@@ -448,6 +448,7 @@
       onclick={() => (ui.search = true)}
     >
       <Icon name="search" />
+      <span class="visually-hidden">Search or add project</span>
     </button>
     <button
       type="button"
