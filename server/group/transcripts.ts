@@ -29,6 +29,8 @@ export interface SessionItem {
   host: string;
   /** The owner's Claude process is up (not paused or exited). Missing in items of older hosts. */
   running?: boolean;
+  /** The owner's machine shut down with this conversation open: another host may pick it up (see handovers). */
+  released?: boolean;
   /** Bytes of the owner's transcript: the offset a copy elsewhere has to reach before a resume is safe. */
   size?: number;
 }
@@ -70,6 +72,24 @@ export function takenOver(group: GroupStore, sessions: Session[]): Session[] {
   );
 }
 
+/**
+ * Conversations another host released at its shutdown that this host can pick up now: the project is here and the
+ * copy of the transcript is whole. `localSize(project, id)` is the bytes of this host's copy.
+ */
+export function handovers(
+  group: GroupStore,
+  projects: { id: string; path: string }[],
+  localSize: (projectPath: string, id: string) => number,
+): (SessionItem & { cwd: string })[] {
+  return remoteSessions(group).flatMap((r) => {
+    const project = projects.find((p) => p.id === r.projectId);
+    // ponytail: only the project's own folder; a transcript of a subfolder lands in the project's folder here
+    if (!r.released || r.rel !== '' || !project || localSize(project.path, r.claudeSessionId) < (r.size ?? 0))
+      return [];
+    return [{ ...r, cwd: project.path }];
+  });
+}
+
 /** What the transcript sync needs from the host link; HostSync is one. */
 interface Link {
   peers(): HostPeer[];
@@ -93,6 +113,7 @@ export class Transcripts {
   #again = false;
   #watchers = new Map<string, FSWatcher>();
   #debounce?: ReturnType<typeof setTimeout>;
+  #lastServed = 0;
 
   constructor(group: GroupStore, link: Link, deps: TranscriptDeps) {
     this.#group = group;
@@ -141,6 +162,27 @@ export class Transcripts {
   }
 
   /**
+   * The machine is shutting down: the sessions still running are not going to run any more. Publish their final size,
+   * mark them released so another host resumes them, and let it fetch the transcript before this host disappears.
+   */
+  async release(push: () => Promise<void>, maxWaitMs = 30_000): Promise<void> {
+    this.publishSessions();
+    let any = false;
+    for (const i of this.#group.list()) {
+      const b = i.body as SessionItem;
+      if (i.deleted || !i.key.startsWith('session:') || b.hostId !== this.#group.hostId || !b.running) continue;
+      this.#group.put(i.key, { ...b, running: false, released: true });
+      any = true;
+    }
+    if (!any) return;
+    this.#lastServed = Date.now();
+    await push();
+    // The peers pull the new bytes from us now: wait until they stop asking.
+    const until = Date.now() + maxWaitMs;
+    while (Date.now() < until && Date.now() - this.#lastServed < 2000) await new Promise((r) => setTimeout(r, 250));
+  }
+
+  /**
    * Near-live sync: a transcript only grows, so when one of ours does, the new size goes into the session item and
    * the normal push carries it to the peers, which then fetch just the new byte range (see run). Idempotent: call
    * it again after projects changed. The 5-minute round stays the safety net.
@@ -180,6 +222,7 @@ export class Transcripts {
   async serve(action: 'manifest' | 'chunk', body: Record<string, unknown>): Promise<unknown> {
     // Off here means nothing leaves this host.
     if (!syncOn(this.#deps.sync(), 'transcripts')) throw new HttpError(403, 'transcripts are not synced here');
+    this.#lastServed = Date.now();
     return action === 'manifest' ? { entries: await this.#manifest() } : this.#chunk(body);
   }
 
@@ -275,6 +318,11 @@ export class Transcripts {
     }
     if (offset > have) await rename(part, file);
     else await rm(part);
+  }
+
+  /** Bytes of this host's copy of a conversation of `projectPath`. */
+  localSize(projectPath: string, id: string): number {
+    return statSync(join(this.#dir(projectPath), `${id}.jsonl`), { throwIfNoEntry: false })?.size ?? 0;
   }
 
   async progress(): Promise<TranscriptProgress> {

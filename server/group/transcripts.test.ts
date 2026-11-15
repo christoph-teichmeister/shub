@@ -18,7 +18,7 @@ import { encodeCwd } from '../sessions/old.ts';
 import { claudeArgs } from '../sessions/launch.ts';
 import { GroupStore } from './index.ts';
 import { HostSync } from './sync.ts';
-import { Transcripts, claimSession, remoteSessions, resumeGuard, takenOver } from './transcripts.ts';
+import { Transcripts, claimSession, handovers, remoteSessions, resumeGuard, takenOver } from './transcripts.ts';
 
 const ID = '11111111-2222-3333-4444-555555555555';
 const MB = 1024 * 1024;
@@ -278,4 +278,43 @@ test('a session another host took over is reported to its old owner, paused or n
   await a.sync.flush();
   assert.deepEqual(takenOver(b.group, b.sessions), [mine]);
   assert.deepEqual(takenOver(b.group, [{ ...mine, status: 'paused' }]), []);
+});
+
+test('a shutdown releases the open conversations; the other host gets them whole and may pick them up', async () => {
+  const { a, b } = await pair();
+  const line = JSON.stringify({ type: 'user', n: 1 }) + '\n';
+  writeFileSync(join(b.dir, `${ID}.jsonl`), line);
+  b.sessions = [
+    {
+      kind: 'claude',
+      claudeSessionId: ID,
+      projectId: 'app',
+      cwd: b.path,
+      name: 'work',
+      status: 'your-turn',
+      lastActivityAt: new Date().toISOString(),
+    },
+  ] as unknown as Session[];
+  b.transcripts.publishSessions();
+  // while it runs, nothing is up for pick-up
+  a.group.merge(b.group.get(`session:${ID}`)!);
+  assert.deepEqual(
+    handovers(a.group, [{ id: 'app', path: a.path }], (p, id) => a.transcripts.localSize(p, id)),
+    [],
+  );
+  await b.transcripts.release(async () => {
+    a.group.merge(b.group.get(`session:${ID}`)!);
+    await a.transcripts.run();
+  }, 0);
+  const [h] = handovers(a.group, [{ id: 'app', path: a.path }], (p, id) => a.transcripts.localSize(p, id));
+  assert.equal(h.claudeSessionId, ID);
+  assert.equal(h.cwd, a.path);
+  assert.equal(h.running, false);
+  // and the resume guard lets it through, as the copy is whole
+  assert.equal(resumeGuard(a.group, ID, a.transcripts.localSize(a.path, ID)), undefined);
+  // a copy that is behind is not picked up
+  assert.deepEqual(
+    handovers(a.group, [{ id: 'app', path: a.path }], () => 0),
+    [],
+  );
 });

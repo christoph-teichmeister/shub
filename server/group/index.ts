@@ -1,6 +1,7 @@
 // The device group's store: versioned items in shub.db. Settings, projects and (later) devices live here as one
 // item each; every item carries a version vector (host id -> change counter) and a deleted flag (tombstone).
 // Host-to-host sync, pairing and the conflict UI build on this; nothing here talks to the network.
+import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import type { DatabaseSync } from 'node:sqlite';
@@ -19,7 +20,7 @@ import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { HostSync } from './sync.ts';
-import { Transcripts, takenOver } from './transcripts.ts';
+import { Transcripts, handovers, takenOver } from './transcripts.ts';
 
 /** Host id -> how many changes that host made to the item. */
 export type Version = Record<string, number>;
@@ -363,6 +364,15 @@ export function conflictViews(group: GroupStore): GroupConflict[] {
   }));
 }
 
+/** systemd is taking the machine down (poweroff or reboot), not only this service. */
+export function machineStopping(): boolean {
+  try {
+    return execFileSync('systemctl', ['is-system-running'], { encoding: 'utf8' }).trim() === 'stopping';
+  } catch (err) {
+    return String((err as { stdout?: string }).stdout ?? '').trim() === 'stopping'; // non-zero exit when not "running"
+  }
+}
+
 export function create(ctx: Context, services: Services): { module: ShubModule; service: GroupStore } {
   const group = new GroupStore(services.state.db, services.state.migrate);
   const sync = new HostSync(group, {
@@ -375,12 +385,12 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
       // Another host took a conversation over: stop our process, or two Claudes write one transcript.
       for (const s of takenOver(group, services.sessions.list()))
         services.sessions.pause(s.id, 'group:take-over', false);
-      void transcripts.run(); // a session item may say a transcript grew: fetch the new bytes now, not in 5 minutes
+      void transcripts.run().then(adopt); // a session item may say a transcript grew: fetch the new bytes now
     },
     serve: (action, body) => transcripts.serve(action, body),
     onRound: () => {
       transcripts.publishSessions();
-      void transcripts.run();
+      void transcripts.run().then(adopt);
     },
   });
   const transcripts: Transcripts = new Transcripts(group, sync, {
@@ -389,6 +399,29 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
     sessions: () => services.sessions.list(),
     hostName: hostname(),
   });
+  /** Resume here what another host had open when its machine shut down (start() claims it and runs the guards). */
+  async function adopt(): Promise<void> {
+    if (!syncOn(services.config.get().sync, 'sessions')) return;
+    const projects = services.config.get().projects;
+    for (const r of handovers(group, projects, (path, id) => transcripts.localSize(path, id))) {
+      const here = services.sessions.list().filter((s) => s.claudeSessionId === r.claudeSessionId);
+      if (here.some((s) => !['paused', 'exited'].includes(s.status))) continue;
+      // The old row here (paused when the other host took the conversation over) gives way to the resumed one.
+      for (const s of here) if (s.status === 'paused') services.sessions.close(s.id, 'shub:handover');
+      await services.sessions
+        .start(
+          {
+            kind: 'claude',
+            projectId: r.projectId,
+            cwd: r.cwd,
+            resumeClaudeSessionId: r.claudeSessionId,
+            name: r.name,
+          },
+          'shub:handover',
+        )
+        .catch((err) => console.error(`shub: handover ${r.claudeSessionId}`, err));
+    }
+  }
   const timers: ReturnType<typeof setInterval>[] = [];
   const actions = [
     ['challenge', ROUTES.groupChallenge],
@@ -463,7 +496,9 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
         timer.unref();
         timers.push(timer);
       },
-      stop: () => {
+      stop: async () => {
+        // Machine shutdown, not just a shub restart (tmux keeps the sessions then): hand the open ones over first.
+        if (machineStopping()) await transcripts.release(() => sync.flush()).catch(() => {});
         sync.stop();
         transcripts.unwatch();
         timers.forEach(clearInterval);
