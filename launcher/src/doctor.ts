@@ -74,7 +74,7 @@ export async function doctor(d: DoctorDeps): Promise<Finding[]> {
           ? `127.0.0.1:${d.port} is free`
           : port === 'shub'
             ? `shub already answers on 127.0.0.1:${d.port}`
-            : `127.0.0.1:${d.port} is used by another program: stop it or set SHUB_PORT`,
+            : `127.0.0.1:${d.port} is used by another program: stop it, or run shub on another port: SHUB_PORT=4781 shub start`,
     },
     // nvm deletes the old node on an upgrade; a unit that still starts it cannot restart and cannot update.
     ...(unitNode && !d.exists(unitNode)

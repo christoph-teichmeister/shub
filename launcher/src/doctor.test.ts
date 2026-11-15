@@ -37,7 +37,7 @@ test('says what is missing', async () => {
     'Docker (optional): no Docker socket at /var/run/docker.sock (optional: the services panel stays empty)',
   ]);
   assert.deepEqual(await failing({ portState: async () => 'busy' }), [
-    'Port: 127.0.0.1:4780 is used by another program: stop it or set SHUB_PORT',
+    'Port: 127.0.0.1:4780 is used by another program: stop it, or run shub on another port: SHUB_PORT=4781 shub start',
   ]);
 });
 

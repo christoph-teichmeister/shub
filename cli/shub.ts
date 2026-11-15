@@ -35,6 +35,8 @@ async function help(): Promise<string> {
   for (const name of commandNames()) lines.push(`  ${name.padEnd(10)} ${(await load(name))?.summary ?? ''}`);
   lines.push(
     '',
+    'First commands: shub status (is it running), shub open (web UI), shub session start (new session).',
+    '',
     'Options:',
     '  --json       machine-readable output',
     '  --help, -h   help for shub or a command',

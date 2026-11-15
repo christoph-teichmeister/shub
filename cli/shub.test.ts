@@ -38,3 +38,12 @@ test('status talks to SHUB_URL with SHUB_TOKEN; unknown commands fail clearly', 
   server.close();
   await assert.rejects(run('node', [cli, 'nope'], { env }), /unknown command "nope"/);
 });
+
+test('an unreachable server says what to run, per platform', async () => {
+  const { unreachable } = await import('./commands/lib/client.ts');
+  assert.match(
+    unreachable('http://x', 'linux'),
+    /shub doctor.*shub start.*shub service install.*systemctl --user status shub/,
+  );
+  assert.match(unreachable('http://x', 'darwin'), /launchctl print/);
+});

@@ -125,3 +125,18 @@ test('refresh leaves a unit that shub did not write alone', () => {
   assert.equal(s.refresh(opts), false);
   assert.equal(readFileSync(s.file, 'utf8'), own);
 });
+
+test('unitEnv reads the port and phone address back from our unit and plist', () => {
+  const env = { ...opts.env, SHUB_PUBLIC_URL: 'https://pc.tail.ts.net', SHUB_STATE_DIR: '/a "b"&c' };
+  const root = mkdtempSync(join(tmpdir(), 'shub-service-'));
+  const linux = service('linux', { XDG_CONFIG_HOME: root, HOME: root }, () => {});
+  assert.deepEqual(linux.unitEnv(), {}, 'no unit');
+  linux.install({ ...opts, env });
+  assert.equal(linux.unitEnv().SHUB_PORT, '4790');
+  assert.equal(linux.unitEnv().SHUB_PUBLIC_URL, 'https://pc.tail.ts.net');
+  assert.equal(linux.unitEnv().SHUB_STATE_DIR, '/a "b"&c');
+  const mac = service('darwin', { HOME: root }, () => {});
+  mac.install({ ...opts, env });
+  assert.equal(mac.unitEnv().SHUB_PORT, '4790');
+  assert.equal(mac.unitEnv().SHUB_STATE_DIR, '/a "b"&c');
+});

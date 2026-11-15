@@ -1,5 +1,6 @@
 // `shub install` in a terminal: a guided setup. Checks the machine, asks for channel, port and public URL, installs the
-// release, starts the background service and ends with the URL and the access token.
+// release, starts the background service and ends with the URL and the access token. Channel, port and public URL
+// are only asked with --advanced; the defaults are right for almost everyone.
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -8,9 +9,13 @@ import type { Finding } from './doctor.ts';
 import type { Channel } from './releases.ts';
 
 export interface SetupDeps {
+  /** `shub install --advanced`: also ask for update channel, port and public URL. */
+  advanced?: boolean;
   ask(question: string): Promise<string>;
   log(line: string): void;
   platform: NodeJS.Platform;
+  /** Port and phone address of the service that is already installed, if any. */
+  existing?(): { port?: number; publicUrl?: string };
   /** Machine checks; the port is asked for in its own step. */
   doctor(): Promise<Finding[]>;
   portState(port: number): Promise<'free' | 'shub' | 'busy'>;
@@ -28,7 +33,6 @@ export interface SetupDeps {
   open(url: string): void;
 }
 
-const STEPS = 6;
 const DEFAULT_PORT = 4780;
 
 const bold = (s: string) => styleText('bold', s);
@@ -56,8 +60,9 @@ function box(lines: string[]): string[] {
 /** Returns false when the user quit. */
 export async function setup(d: SetupDeps): Promise<boolean> {
   let n = 0;
-  const step = (title: string) => d.log(`\n${bold(`[${++n}/${STEPS}] ${title}`)}`);
-  d.log(bold('shub setup') + dim('  (Ctrl+C quits, nothing is changed before step 4)'));
+  let steps = d.advanced ? 6 : 5; // the simple flow gains a port step when its port is taken
+  const step = (title: string) => d.log(`\n${bold(`[${++n}/${steps}] ${title}`)}`);
+  d.log(bold('shub setup') + dim('  (Ctrl+C quits, nothing is changed before "Install shub")'));
 
   step('Check this machine');
   for (;;) {
@@ -74,42 +79,69 @@ export async function setup(d: SetupDeps): Promise<boolean> {
     if (answer.trim().toLowerCase() === 'q') return false;
   }
 
-  step('Update channel');
-  d.log(dim('  stable: tested releases. beta: every merge into develop, earlier and rougher.'));
   const preset = d.configuredChannel === 'beta' ? 'beta' : 'stable';
   let channel: Channel = preset;
-  for (;;) {
-    const answer = (await d.ask(`  Channel, stable or beta (${preset}): `)).trim().toLowerCase() || preset;
-    if (answer === 'stable' || answer === 'beta') {
-      channel = answer;
-      break;
+  // Run again over an installed service: keep its port and phone address instead of silently resetting them.
+  const seed = d.existing?.() ?? {};
+  let port = seed.port ?? DEFAULT_PORT;
+  let publicUrl = seed.publicUrl ?? '';
+  if (d.advanced) {
+    step('Update channel');
+    d.log(dim('  stable: tested releases. beta: every merge into develop, earlier and rougher.'));
+    for (;;) {
+      const answer = (await d.ask(`  Channel, stable or beta (${preset}): `)).trim().toLowerCase() || preset;
+      if (answer === 'stable' || answer === 'beta') {
+        channel = answer;
+        break;
+      }
+      d.log(`  "${answer}" is not a channel.`);
     }
-    d.log(`  "${answer}" is not a channel.`);
+  } else {
+    step('Settings');
+    d.log(`  Updates: ${preset}. Port: ${port}. Phone address: ${publicUrl || 'none yet'}.`);
+    d.log(
+      dim(
+        '  Change later: channel in Settings > Updates, phone in Settings > Devices > Phone access, everything with: shub install --advanced',
+      ),
+    );
   }
 
-  step('Port and access');
-  let port = DEFAULT_PORT;
-  for (;;) {
-    const answer = (await d.ask(`  Port (${DEFAULT_PORT}): `)).trim() || String(DEFAULT_PORT);
-    const p = Number(answer);
-    if (!Number.isInteger(p) || p < 1024 || p > 65535) {
-      d.log('  A port is a number from 1024 to 65535.');
-      continue;
+  const portBusy = !d.advanced && (await d.portState(port)) === 'busy';
+  if (d.advanced || portBusy) {
+    if (portBusy) steps++;
+    step('Port and access');
+    if (portBusy) d.log(`  127.0.0.1:${port} is used by another program, pick another port.`);
+    const first = port;
+    for (;;) {
+      const answer = (await d.ask(`  Port (${first}): `)).trim() || String(first);
+      const p = Number(answer);
+      if (!Number.isInteger(p) || p < 1024 || p > 65535) {
+        d.log('  A port is a number from 1024 to 65535.');
+        continue;
+      }
+      const found = await d.portState(p);
+      if (found !== 'busy') {
+        port = p;
+        if (found === 'shub') d.log(`  shub already answers on ${p}.`);
+        break;
+      }
+      d.log(`  127.0.0.1:${p} is used by another program, pick another one.`);
     }
-    const state = await d.portState(p);
-    if (state !== 'busy') {
-      port = p;
-      if (state === 'shub') d.log(`  shub already answers on ${p}.`);
-      break;
-    }
-    d.log(`  127.0.0.1:${p} is used by another program, pick another one.`);
   }
-  d.log(dim('  shub listens on 127.0.0.1 only. For the phone, put it behind `tailscale serve` and enter that URL.'));
-  let publicUrl = '';
-  for (;;) {
-    publicUrl = (await d.ask('  Public URL (Enter skips): ')).trim().replace(/\/$/, '');
-    if (publicUrl === '' || /^https:\/\/\S+$/.test(publicUrl)) break;
-    d.log('  The public URL starts with https://');
+  if (d.advanced) {
+    d.log(dim('  shub listens on 127.0.0.1 only. To open it on your phone, put it behind `tailscale serve`.'));
+    for (;;) {
+      const kept = publicUrl;
+      publicUrl = (
+        (await d.ask(
+          `  Phone address, the https:// URL tailscale serve gives you (Enter ${kept ? `keeps ${kept}` : 'skips'}): `,
+        )) || kept
+      )
+        .trim()
+        .replace(/\/$/, '');
+      if (publicUrl === '' || /^https:\/\/\S+$/.test(publicUrl)) break;
+      d.log('  The address starts with https://');
+    }
   }
 
   step('Install shub');

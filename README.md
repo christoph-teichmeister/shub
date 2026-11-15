@@ -8,33 +8,34 @@ session's worktree next to it, and a phone view to answer permission questions o
 
 > Status: early. Version scheme: CalVer `YYYY.M.MICRO`.
 
-## What it does
-
-- **Projects** with a folder, a group and an icon (detected from the git remote). Pinned ones live in the sidebar,
-  dormant ones are one `Alt K` away.
-- **Sessions** are real `claude` processes in tmux (`tmux -L shub`). They survive closing the browser and restarting
-  shub; after a reboot shub offers to resume them.
-- **Status** per session from Claude Code hooks: _needs you_, _your turn_, _working_. Desktop notifications and web push (the phone stays quiet while the desktop UI is in use).
-- **Waiting**: park a session (tab menu > Wait for…, or `shub session wait`) until something outside happens; optionally Haiku checks it read-only in the background (files, web, MCP reads, read-only `gh`/`glab`/`git`) and, once it happened, either notifies you or sends a prompt you chose into the session so Claude carries on by itself. Three failed checks in a row notify you.
-- **Buttons** for your skills: shub lists the project's and your global Claude skills; tick the ones you want as buttons.
-- **Permission mode** for new sessions in Settings (default `default`; `auto` and the like skip prompts, `inherit` uses your Claude settings); a button's own mode wins.
-- **Worktrees** button on every project: search its worktrees by name, branch or state (merged, remote gone, dirty, not pushed, …), open a terminal or a Claude session in one, or close it: through the project's `/worktree-close` button when it has one, else plain git that never forces.
-- **Services panel** with the Docker Compose containers of the session's folder or worktree, PyCharm style.
-- **Control center**: the sidebar is the only list of sessions; the right side is the open session's control center, a tab (or split pane) for its Claude and for every extra pane: a second Claude or a terminal (`+` menu, `Alt T` for a terminal). A pane that needs you or works shows on the session's sidebar row.
-- **Notes** (`Alt M`, the Notes button): a Markdown draft beside the terminal that you and Claude write together. It is one file per session in shub's state folder (the path is shown); you type, Claude edits the same file, and each side sees the other's changes within two seconds. "Tell Claude" pastes the path and how to work on it into Claude's prompt.
-- **Plain terminals** as their own session (`Alt Shift T`; `claude`, "Start Claude here" or `shub claude` opens a tracked Claude session in the folder you cd-ed to).
-- **Global Claude**: one session not tied to a project, for quick questions or setting up new projects.
-- **Overview** (`Alt O`, the grid button in the sidebar): every active session as a live terminal in one grid that fills the screen, in a stable order (oldest first; attention shows as an orange border, panes never jump), with a project filter, a project chip and colour strip per pane, a clear focus ring on the selected one and the needs-you count in the tab title. A pane that asks for permission shows the request with Allow/Deny in its header. Click a pane and type (or move with `Alt` arrows, `Alt 1` to `9`, `Alt J` for the next that needs you, `Alt Enter` to open it full size): you work in many sessions at once. Maximize a pane (button or double-click its title) to open it in its normal view; minimize it with `−` to park it below as a small card (remembered per browser; a session that needs you comes back by itself, one that is your turn gets a highlighted frame); paused and not-started sessions wait there too. At most 6 panes are live at once (needs-you always gets one; the newest others wait in the strip until you press Show), so the terminals stay readable.
-  The overview is desktop-only: on a phone `#/overview` shows the phone list instead (sessions as cards, one terminal at a time).
-- **Crab village** (`Alt V`, the crab button in the sidebar): every session as a pixel crab on a map of your groups and projects. Working crabs sit at their desk, those that need you or have their turn queue at yours (needs-you first, getting impatient the longer they wait, with an optional chime), waiting and paused ones nap on a lounger by their house. Drag to pan, wheel or pinch to zoom. You are a character at your desk: `W A S D` walks you round the big map (houses, fences and water block you, gates let you through), `E` talks to the crab beside you (pins its card) or sits you back at your desk, where the queue keys work (arrows or `J K` walk the line, `Enter` opens, `Y` allows, `N` denies, `R` runs). Hover for the details; allow, deny, run or open from the card; opening a crab (double-click, `Enter` or Open) shows its live terminal in a floating window over the map, with a tab per crab (drag it by the title bar, resize it at the corner, `Alt W` closes it, Open full view leaves for the session; the phone opens the full view); start a session or build a new project from the map. Context shows as a backpack, worktrees as tents, Docker services as machines. The village follows the clock (morning dew, lanterns and fireflies at night) and cheers with confetti when a turn ends or a worktree gets merged.
-- **Phone**: install as a PWA over Tailscale, pair with a QR code, answer permission prompts with one tap.
-- **Themes**: Monokai, Dracula, Neutral dark, or your own.
-- **Plugins** in any language, talking to shub's HTTP/WebSocket API. See [docs/PLUGINS.md](docs/PLUGINS.md).
-
 ## Requirements
 
 Linux or macOS, Node 24+, tmux 3.3+, Claude Code, optionally Docker and Tailscale. Windows only inside WSL2: install
 and run shub there.
+
+## Quickstart (5 min)
+
+1. Run `claude` once in a terminal and log in. shub starts the real Claude Code, so it must already work.
+2. Install and set up: `npm i -g @christoph-teichmeister/shub && shub install` (the guided setup checks Node, tmux and
+   Claude Code and says how to install what is missing).
+3. Open <http://127.0.0.1:4780> (`shub open`) and paste the token from `shub token`.
+4. Add a project: use the app's "Add a project" page (it has a folder picker) or `shub project add ~/code/my-repo`.
+5. Press **New session** on a project. Claude starts in a terminal in the browser; the sidebar row shows when it needs you.
+
+Something wrong? Run `shub doctor` and see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
+## Words you will see
+
+- **Project**: a folder (usually a git repo) you work in. **Group**: a heading in the sidebar that holds projects.
+- **Session**: one running Claude Code (or a plain terminal) in a project, kept alive in tmux.
+- **Pane**: one terminal inside a session, its Claude or an extra Claude or shell. Panes sit in tabs or splits.
+- **Control center**: the right side of the app, where the open session's panes live.
+- **Button** (skill button): a one-click shortcut that runs a Claude skill in a new session. Tick skills in
+  Project settings (the gear next to a project) > Buttons from skills.
+- **Worktree**: a second checkout of the same repo on its own branch; the Worktrees button lists and opens them.
+- **Waiting**: a session you parked until something outside happens (a build, a review).
+
+All features: [docs/FEATURES.md](docs/FEATURES.md).
 
 ## Install
 
@@ -43,15 +44,18 @@ npm i -g @christoph-teichmeister/shub && shub install
 ```
 
 The npm package is only the launcher (`shub`). In a terminal, `shub install` walks you through the setup: it checks
-Node, tmux and Claude Code (and says how to install what is missing), asks for the update channel, port and an optional
-public URL, downloads the latest signed release from GitHub, runs it as a systemd user unit (Linux) or a launchd agent
-(macOS) at http://127.0.0.1:4780 and prints the access token you log in with (`shub token` prints it again). For
-scripts, `shub install --yes [--channel beta]` only installs the release, and `shub service install` adds the service.
-`shub doctor` says what is missing. Versions live side by side in
-`~/.local/share/shub/versions/` (`SHUB_HOME`); Settings > Updates checks as soon as a release is published (a push via ntfy.sh) and every 6 hours, shows new versions with their notes
-and installs one when you click (or by itself with "Install automatically"; "off" skips the check), `shub update` and `shub rollback` do the same in a terminal. If a new version does not come up
-within 30 seconds, the launcher switches back. Sessions keep running in tmux through updates. Every other command
-(`shub status`, `shub session start`, ...) goes to the installed version. Releases: [docs/RELEASING.md](docs/RELEASING.md).
+Node, tmux and Claude Code (and says how to install what is missing), downloads the latest signed release from GitHub,
+runs it as a systemd user unit (Linux) or a launchd agent (macOS) at http://127.0.0.1:4780 and prints the access token
+you log in with (`shub token` prints it again). Run again over an installed service, it keeps that service's port and
+phone address. `shub install --advanced` also asks for the update channel, port and phone address. For scripts,
+`shub install --yes [--channel beta]` only installs the release, and `shub service install` adds the service.
+`shub doctor` says what is missing (help: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)). Versions live side by
+side in `~/.local/share/shub/versions/` (`SHUB_HOME`). Settings > Updates checks as soon as a release is published (a
+push via ntfy.sh) and every 6 hours, shows new versions with their notes and installs one when you click (or by itself
+with "Install automatically"; "off" skips the check). `shub update` and `shub rollback` do the same in a terminal. If a
+new version does not come up within 30 seconds, the launcher switches back. Sessions keep running in tmux through
+updates. Every other command (`shub status`, `shub session start`, ...) goes to the installed version. Releases:
+[docs/RELEASING.md](docs/RELEASING.md).
 
 ## Run from a git checkout
 
@@ -64,7 +68,7 @@ npm start            # http://127.0.0.1:4780
 Started like this, shub's updates are managed by git (Settings > Updates is read-only).
 
 On first start shub creates an access token and prints the file it lives in. Open the URL, paste the token, done.
-shub only ever listens on `127.0.0.1`. For your phone, Settings > Phone walks you through it: it checks Tailscale, runs
+shub only ever listens on `127.0.0.1`. For your phone, Settings > Devices > Phone access walks you through it: it checks Tailscale, runs
 `tailscale serve` for shub (tailnet only, never Funnel), stores the address as `publicUrl` in `local.json` and shows the
 pairing QR code. `SHUB_PUBLIC_URL` still works and wins over `publicUrl`. A systemd user unit example is in [deploy/shub.service](deploy/shub.service).
 

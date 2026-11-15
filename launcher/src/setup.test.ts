@@ -44,17 +44,44 @@ function fake(answers: string[], over: Partial<SetupDeps> = {}) {
 }
 
 test('defaults all the way: stable, 4780, service, token, browser', async () => {
-  const f = fake(['', '', '', '', '']);
+  const f = fake(['', '']);
   assert.equal(await setup(f.deps), true);
   assert.deepEqual(f.did, ['channel stable', 'install stable', 'service {}', 'copy', 'open http://127.0.0.1:4780']);
-  assert.match(f.text(), /\[1\/6\] Check this machine[\s\S]*\[6\/6\] Log in/);
+  assert.match(f.text(), /\[1\/5\] Check this machine[\s\S]*\[5\/5\] Log in/);
   assert.match(f.text(), /│ abc123 │/);
   assert.match(f.text(), /Copied to the clipboard/);
+  assert.match(f.text(), /shub install --advanced/);
+  assert.doesNotMatch(f.text(), /Channel, stable or beta|Phone address, the https/);
+});
+
+test('without --advanced a busy default port is still asked for', async () => {
+  const f = fake(['4781', '', ''], { portState: async (p) => (p === 4780 ? 'busy' : 'free') });
+  assert.equal(await setup(f.deps), true);
+  assert.deepEqual(f.did.slice(0, 3), ['channel stable', 'install stable', 'service {"SHUB_PORT":"4781"}']);
+  assert.match(f.text(), /\[3\/6\] Port and access\n.*4780 is used by another program/);
+});
+
+test('re-running the simple flow keeps the installed port and phone address', async () => {
+  const f = fake(['', ''], { existing: () => ({ port: 4790, publicUrl: 'https://pc.tail.ts.net' }) });
+  assert.equal(await setup(f.deps), true);
+  assert.equal(f.did[2], 'service {"SHUB_PORT":"4790","SHUB_PUBLIC_URL":"https://pc.tail.ts.net"}');
+  assert.match(f.text(), /Port: 4790\. Phone address: https:\/\/pc\.tail\.ts\.net/);
+  assert.match(f.text(), /Settings > Devices > Phone access/);
+});
+
+test('--advanced offers the installed values; Enter keeps them', async () => {
+  const f = fake(['', '', '', '', ''], {
+    advanced: true,
+    existing: () => ({ port: 4790, publicUrl: 'https://pc.tail.ts.net' }),
+  });
+  await setup(f.deps);
+  assert.equal(f.did[2], 'service {"SHUB_PORT":"4790","SHUB_PUBLIC_URL":"https://pc.tail.ts.net"}');
+  assert.match(f.text(), /Port \(4790\)/);
 });
 
 test('missing tmux: shows the install command and checks again until it is there', async () => {
   let checks = 0;
-  const f = fake(['', '', '', '', '', '', 'n'], {
+  const f = fake(['', '', 'n'], {
     doctor: async () =>
       ++checks === 1 ? [ok[0], { name: 'tmux', ok: false, detail: 'tmux is not installed' }, ok[2]] : ok,
   });
@@ -72,6 +99,7 @@ test('q at the check quits before anything is changed', async () => {
 
 test('beta, busy port, public URL, no service', async () => {
   const f = fake(['nightly', 'beta', '80', '4780', '4781', 'http://x', 'https://pc.tail.ts.net/', 'n'], {
+    advanced: true,
     portState: async (p) => (p === 4780 ? 'busy' : 'free'),
     token: () => null,
   });
@@ -88,6 +116,7 @@ test('beta, busy port, public URL, no service', async () => {
 test('service gets port and public URL; a foreign unit is replaced only when asked', async () => {
   let tries = 0;
   const f = fake(['', '4781', 'https://pc.tail.ts.net', '', 'y', 'n'], {
+    advanced: true,
     installed: () => '2026.10.0',
     installService: (env, force) => {
       if (++tries === 1) throw new Error('shub.service exists and was not written by shub');
