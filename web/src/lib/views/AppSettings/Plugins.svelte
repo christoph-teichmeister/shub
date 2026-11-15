@@ -14,9 +14,9 @@
     read: 'read sessions',
     'projects.write': 'change projects',
     'sessions.start': 'start sessions with a free prompt (asks)',
-    'sessions.start.button': 'start sessions with project buttons',
+    'sessions.start.button': 'start sessions with Quick actions',
     'sessions.link': 'add session links',
-    'buttons.write': 'change project buttons (asks)',
+    'buttons.write': 'change Quick actions (asks)',
     'ui.contribute': 'sidebar sections and menu actions',
   };
 

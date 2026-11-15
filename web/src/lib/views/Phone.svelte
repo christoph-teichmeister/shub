@@ -453,7 +453,7 @@
     {/each}
     {#if others.length}
       <section class="section" aria-labelledby="h-others">
-        <h2 id="h-others">On other hosts · {others.length}</h2>
+        <h2 id="h-others">On other machines · {others.length}</h2>
         {#each others as o (o.claudeSessionId)}
           <button class="card row child" onclick={() => resumeOther(o)}>
             <span class="grow stack"

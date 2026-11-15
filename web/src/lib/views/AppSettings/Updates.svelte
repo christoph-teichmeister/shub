@@ -26,7 +26,7 @@
   const UPDATE_MODES = [
     { value: 'ask', label: 'Ask me first' },
     { value: 'auto', label: 'Install automatically' },
-    { value: 'off', label: 'Don\'t check (only "Check now")' },
+    { value: 'off', label: "Don't check automatically" },
   ];
 
   let releases = $state<ReleaseNotes[] | null>(null);
@@ -98,7 +98,7 @@
           {/if}
           <SelectField
             label="Release channel"
-            hint="Beta gets new versions first, from every merge into develop."
+            hint="Beta gets every change early and may break. Stable gets tested releases."
             bind:value={() => update.channel, (v) => setChannel(v)}
             options={CHANNELS}
           />

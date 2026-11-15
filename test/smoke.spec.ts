@@ -324,7 +324,7 @@ test('login on 401: the host browser bootstraps with the token', async ({ page }
     'POST /api/auth/challenge': { status: 409, json: { error: 'waiting for approval' } },
   });
   await page.goto('/#/');
-  await expect(page.getByText('your session hub')).toBeVisible();
+  await expect(page.getByText('your Claude sessions')).toBeVisible();
   await page.getByLabel('Access token').fill('secret');
   // Login reloads the page; wait for that, or the reload races the goto below.
   const reloaded = page.waitForEvent('load');
@@ -543,10 +543,10 @@ test('app settings and project settings', async ({ page }) => {
   await expect(page.getByLabel('Group').locator('option')).toHaveText(['Work', 'Private', 'New group…']);
   await page.getByLabel('Group').selectOption('New group…');
   await page.getByLabel('New group name').fill('Side');
-  await expect(page.getByLabel('Show worktree-start as button')).toBeHidden();
-  await page.getByText(/shown as buttons/).click();
-  await expect(page.getByLabel('Show worktree-start as button')).toBeChecked();
-  await page.getByLabel('Show refine-ticket as button').check();
+  await expect(page.getByLabel('Show worktree-start as Quick action')).toBeHidden();
+  await page.getByText(/shown as Quick actions/).click();
+  await expect(page.getByLabel('Show worktree-start as Quick action')).toBeChecked();
+  await page.getByLabel('Show refine-ticket as Quick action').check();
   await page.getByLabel('Permission mode for refine-ticket').selectOption('locked');
   await expect(page.getByRole('button', { name: 'Save' })).toHaveCount(0);
   await expect
@@ -1091,7 +1091,7 @@ test('worktrees of closed sessions fold under their own row in the project', asy
   await expect(page.getByRole('button', { name: /review-3600/ })).toBeVisible();
   await page.getByRole('button', { name: /review-3600/ }).hover();
   await page.getByRole('button', { name: 'Menu for review-3600' }).click();
-  await expect(page.getByRole('menuitem', { name: 'Delete worktree' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Close worktree' })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -2511,4 +2511,27 @@ test('a version mismatch says which side is older, politely', async ({ page }) =
   await page.goto('/#/');
   const banner = page.getByRole('status').filter({ hasText: 'runs an older shub' });
   await expect(banner).toBeVisible();
+});
+
+test('settings say "Saved" after a save and a failed save speaks plainly', async ({ page }) => {
+  const { errors } = await mockApi(page, { 'PATCH /api/settings': config });
+  await page.goto('/#/settings/sessions');
+  const status = page.getByTestId('save-status');
+  await expect(status).toHaveText('Changes save automatically');
+  await page.getByRole('button', { name: /Accept edits/ }).click();
+  await expect(status).toHaveText('Saved');
+  await mockApi(page, { 'PATCH /api/settings': { status: 502, json: {} } });
+  await page.getByRole('button', { name: /Plan/ }).click();
+  await expect(page.getByText("Can't reach shub. Is it running?")).toBeVisible();
+  expect(errors.filter((e) => !/502/.test(e))).toEqual([]);
+});
+
+test('a project change that cannot be saved says which field needs a value', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/#/settings/project/ai-portal');
+  await expect(page.getByLabel('Name')).toHaveValue('ai-portal');
+  await page.getByLabel('Name').fill('');
+  await expect(page.getByTestId('save-status')).toHaveText('Not saved: Name needs a value');
+  await page.getByLabel('Name').fill('ai-portal-2');
+  await expect(page.getByTestId('save-status')).not.toContainText('Not saved');
 });

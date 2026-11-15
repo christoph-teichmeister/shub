@@ -86,7 +86,7 @@
       await waitForApproval(origin, abort.signal);
       if (!ui.phone)
         await joinHosts(origin).catch((e: Error) =>
-          Promise.reject(new Error(`Paired, but the hosts did not join: ${e.message}`)),
+          Promise.reject(new Error(`Paired, but the machines did not join: ${e.message}`)),
         );
       close();
       switchTo(origin);

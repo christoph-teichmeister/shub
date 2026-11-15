@@ -1,6 +1,7 @@
 // Typed HTTP client over the ROUTES table in shared/api.ts.
 import { ROUTES } from '../../../../shared/api.ts';
 import { deviceToken, here, selectedOrigin } from './device.ts';
+import { noteSaved } from './saved.svelte.ts';
 
 export type RouteName = keyof typeof ROUTES;
 
@@ -38,6 +39,9 @@ const SLOW = new Set<RouteName>([
   'serviceAction',
   'serviceLogs',
 ]);
+
+/** Routes that store a setting: a success shows "Saved" in the settings panes. */
+const SAVES = new Set<RouteName>(['settings', 'updateChannel', 'updateMode', 'pluginUpdate']);
 
 /** Method and path for a route, with `:params` filled in (URL-encoded). */
 export function resolve(name: RouteName, params: Record<string, string> = {}): { method: string; path: string } {
@@ -84,6 +88,7 @@ export async function api<T = unknown>(name: RouteName, options: CallOptions = {
     const message = error ? String(error) : res.statusText;
     throw new ApiError(res.status, message);
   }
+  if (SAVES.has(name)) noteSaved();
   return data as T;
 }
 
