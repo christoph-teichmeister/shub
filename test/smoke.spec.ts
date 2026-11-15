@@ -76,7 +76,8 @@ const API: Record<string, unknown> = {
   '/api/auth/me': { caller: { kind: 'user', id: 'user' }, device: null },
   '/api/devices': [],
   '/api/group/conflicts': [],
-  '/api/group/transcripts': { running: true, done: 1_048_576, total: 5_242_880, size: 3_145_728 },
+  '/api/group/transcripts': { running: false, done: 0, total: 0, size: 3_145_728 },
+  '/api/group/folder': { folder: '/home/me/Sync/shub', items: 42, scannedAt: '2026-11-15T08:00:00Z', conflicts: 0 },
   '/api/group/peers': [
     { id: 'h2', name: 'Laptop', url: 'https://laptop.tail.ts.net', state: 'in-sync' },
     { id: 'h3', name: 'Mini', state: 'offline', since: '2026-10-20T10:00:00Z' },
@@ -617,32 +618,50 @@ test('update dot on the user chip; read-only updates from a git checkout', async
   expect(errors).toEqual([]);
 });
 
-test('settings > Sync lists the other hosts of the group with their state', async ({ page }) => {
+test('settings > Sync shows the sync folder and how it is doing', async ({ page }) => {
   const { errors } = await mockApi(page);
   await page.goto('/#/settings/sync');
-  const hosts = page.getByRole('region', { name: 'Other hosts' });
-  await expect(hosts.getByText('Laptop', { exact: true })).toBeVisible();
-  await expect(hosts.getByText('In sync')).toBeVisible();
-  await expect(hosts.getByText('https://laptop.tail.ts.net')).toBeVisible();
-  await expect(hosts.getByText('Mini', { exact: true })).toBeVisible();
-  await expect(hosts.getByText('no address published yet')).toBeVisible();
-  await expect(hosts.getByText(/^Offline since/)).toBeVisible();
-  await expect(page.getByText('Copying: 1 MB of 5 MB. 3 MB of transcripts on this machine.')).toBeVisible();
+  const folder = page.getByRole('region', { name: 'Sync folder' });
+  await expect(folder.getByText('Connected')).toBeVisible();
+  await expect(folder.getByText(/42 items/)).toBeVisible();
+  await expect(page.getByText('3 MB of transcripts on this machine.')).toBeVisible();
+  await folder.getByText('How it works and how to set it up').click();
+  await expect(folder.getByText(/a sync tool moves the folder/)).toBeVisible();
   expect(errors).toEqual([]);
 });
 
-test('settings asks for the other hosts every 10 s only while Sync is open', async ({ page }) => {
+test('settings > Sync without a folder says nothing is shared and greys the switches', async ({ page }) => {
+  const { errors } = await mockApi(page, { '/api/group/folder': { items: 0, conflicts: 0 } });
+  await page.goto('/#/settings/sync');
+  await expect(page.getByText('No folder set: nothing is shared with your other machines.')).toBeVisible();
+  await expect(page.getByLabel('Themes')).toBeDisabled();
+  expect(errors).toEqual([]);
+});
+
+test('settings saves the sync folder', async ({ page }) => {
+  const { errors, calls } = await mockApi(page, {
+    '/api/group/folder': { items: 0, conflicts: 0 },
+    'POST /api/settings': { json: {} },
+  });
+  await page.goto('/#/settings/sync');
+  await page.getByLabel('Folder on this machine').fill('~/Sync/shub');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect.poll(() => calls.find((c) => c.path === '/api/settings')?.body).toEqual({ syncFolder: '~/Sync/shub' });
+  expect(errors).toEqual([]);
+});
+
+test('settings asks for the sync folder status every 10 s only while Sync is open', async ({ page }) => {
   await page.clock.install();
   const { errors, calls } = await mockApi(page);
-  const peers = () => calls.filter((c) => c.path === '/api/group/peers').length;
+  const polls = () => calls.filter((c) => c.path === '/api/group/folder').length;
   await page.goto('/#/settings/sessions');
   await expect(page.getByRole('heading', { name: 'Sessions', exact: true })).toBeVisible();
   await page.clock.runFor(25_000);
-  expect(peers()).toBe(0);
+  expect(polls()).toBe(0);
   await page.goto('/#/settings/sync');
-  await expect.poll(peers).toBe(1);
+  await expect.poll(polls).toBe(1);
   await page.clock.runFor(10_000);
-  await expect.poll(peers).toBe(2);
+  await expect.poll(polls).toBe(2);
   expect(errors).toEqual([]);
 });
 

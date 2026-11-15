@@ -11,9 +11,12 @@ import {
   verify,
 } from 'node:crypto';
 import { hostname } from 'node:os';
-import { challengeMessage, type HostInfo, type HostPeer, type SyncSettings } from '../../shared/api.ts';
+import { challengeMessage, type HostInfo, type HostPeer } from '../../shared/api.ts';
 import { HttpError } from '../api/router.ts';
-import { categoryOf, forSync, syncOn, type GroupItem, type GroupStore } from './index.ts';
+import { kindOf, type GroupItem, type GroupStore } from './index.ts';
+
+/** The tailnet link carries only the devices (who may sign in); everything else goes through the sync folder. */
+const isDevice = (item: GroupItem): boolean => kindOf(item.key) === 'device';
 
 export const ROUND_MS = 5 * 60_000;
 const CHALLENGE_TTL_MS = 60_000;
@@ -30,21 +33,15 @@ interface HostBody {
 }
 
 export interface SyncDeps {
-  /** What this host syncs (local.json); read per call, the user can change it any time. */
-  sync(): SyncSettings | undefined;
   /** This host's own tailnet URL, if it has one. */
   url(): string | undefined;
   /** Items from another host were merged: reload what is built from them. */
   onMerged(): void;
-  /** The transcript calls of other hosts (manifest, chunk); only reached by a signed-in group member. */
-  serve?(action: 'manifest' | 'chunk', body: Record<string, unknown>): Promise<unknown>;
-  /** After every round of pulling and pushing: the background work that needs the hosts (transcript copy). */
-  onRound?(): void;
   fetch?: typeof fetch;
   name?: string;
 }
 
-type Action = 'challenge' | 'session' | 'pull' | 'push' | 'manifest' | 'chunk';
+type Action = 'challenge' | 'session' | 'pull' | 'push';
 
 export class HostSync {
   #group: GroupStore;
@@ -206,21 +203,18 @@ export class HostSync {
     if (!entry || entry.expires < now) throw new HttpError(401, 'sign in first');
     // Checked on every call: a host revoked while it holds a token is out at once.
     if (!this.#member(entry.hostId)) throw new HttpError(403, 'not a host of this group');
-    if (action === 'manifest' || action === 'chunk') return this.#deps.serve!(action, body);
     return action === 'pull' ? { items: this.#outgoing() } : this.#accept(body.items);
   }
 
   /** Every item this host is willing to send: switched-off categories stay home. */
   #outgoing(): GroupItem[] {
-    const sync = this.#deps.sync();
-    return this.#group.list().flatMap((i) => forSync(i, sync) ?? []);
+    return this.#group.list().filter(isDevice);
   }
 
   #accept(items: unknown): { changed: number; conflicts: number } {
     if (!Array.isArray(items)) throw new HttpError(400, 'items must be a list');
     let changed = 0;
     let conflicts = 0;
-    const sync = this.#deps.sync();
     for (const raw of items as GroupItem[]) {
       const valid =
         typeof raw?.key === 'string' &&
@@ -229,13 +223,8 @@ export class HostSync {
         raw.version &&
         Object.values(raw.version).every((n) => Number.isInteger(n));
       if (!valid) throw new HttpError(400, 'bad item');
-      let item = forSync(raw, sync);
-      if (!item) continue;
-      // The sender's plugin has no env (switched off here): the env we have stays.
-      const ours = this.#group.get(item.key)?.body as { env?: unknown } | null | undefined;
-      if (categoryOf(item.key) === 'plugins' && !syncOn(sync, 'pluginEnv') && ours?.env && item.body)
-        item = { ...item, body: { ...(item.body as object), env: ours.env } };
-      const order = this.#group.merge(item);
+      if (!isDevice(raw)) continue;
+      const order = this.#group.merge(raw);
       if (order === 'newer') changed++;
       if (order === 'conflict') conflicts++;
     }
@@ -270,7 +259,7 @@ export class HostSync {
   }
 
   /** A signed-in call to another host; signs in first, and again once when the token ran out. */
-  async call(peer: HostPeer, action: 'pull' | 'push' | 'manifest' | 'chunk', body: unknown): Promise<any> {
+  async call(peer: HostPeer, action: 'pull' | 'push', body: unknown): Promise<any> {
     for (let retry = 0; ; retry++) {
       let token = this.#out.get(peer.id);
       if (!token) {
@@ -306,7 +295,6 @@ export class HostSync {
     this.#status.set(peer.id, { state: 'catching-up', since: this.#status.get(peer.id)?.since });
     try {
       const pulled = this.#accept((await this.call(peer, 'pull', {})).items);
-      // ponytail: sends every item, not just the ones the peer lacks; fine for settings, narrow it for transcripts
       const pushed = await this.call(peer, 'push', { items: this.#outgoing() });
       this.#status.set(peer.id, { state: pulled.conflicts || pushed.conflicts ? 'conflict' : 'in-sync' });
     } catch {
@@ -323,15 +311,13 @@ export class HostSync {
         .filter((p) => p.url)
         .map((p) => this.#exchange(p)),
     );
-    this.#deps.onRound?.();
   }
 
   /** Push the items changed since the last flush to every reachable host; one that was offline gets a full catch-up. */
   async flush(): Promise<void> {
-    const sync = this.#deps.sync();
     const items = [...this.#dirty].flatMap((k) => {
       const item = this.#group.get(k);
-      return (item && forSync(item, sync)) || [];
+      return item && isDevice(item) ? item : [];
     });
     this.#dirty.clear();
     if (!items.length) return;

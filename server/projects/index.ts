@@ -18,7 +18,7 @@ import {
   type ThemeDef,
   type Visibility,
 } from '../../shared/api.ts';
-import { remoteIcon, setThemeTerminal } from '../config/index.ts';
+import { expandHome, remoteIcon, setThemeTerminal } from '../config/index.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import { HttpError, requireRight, requireUser, type Request, type Router } from '../api/router.ts';
@@ -396,6 +396,7 @@ function settingsRoutes(services: Services, router: Router): void {
             | 'defaultPermissionMode'
             | 'activeGroup'
             | 'sync'
+            | 'syncFolder'
             | 'trustSessions'
           > & { terminal: Partial<TerminalSettings> }
         >
@@ -410,6 +411,12 @@ function settingsRoutes(services: Services, router: Router): void {
     }
     if (body.trustSessions !== undefined && typeof body.trustSessions !== 'boolean')
       bad('trustSessions must be true or false');
+    if (body.syncFolder !== undefined) {
+      if (typeof body.syncFolder !== 'string') bad('syncFolder must be a string');
+      const path = body.syncFolder.trim() && expandHome(body.syncFolder.trim(), homedir());
+      if (path && (!isAbsolute(path) || !statSync(path, { throwIfNoEntry: false })?.isDirectory()))
+        bad('syncFolder must be an existing folder (absolute path or ~/...)');
+    }
     if (body.activeGroup !== undefined && typeof body.activeGroup !== 'boolean')
       bad('activeGroup must be true or false');
     if (body.terminal !== undefined) {
@@ -438,6 +445,7 @@ function settingsRoutes(services: Services, router: Router): void {
       if (body.activeGroup !== undefined) c.activeGroup = body.activeGroup;
       if (body.trustSessions !== undefined) c.trustSessions = body.trustSessions;
       if (body.sync !== undefined) c.sync = { ...c.sync, ...body.sync };
+      if (body.syncFolder !== undefined) c.syncFolder = body.syncFolder.trim() || undefined;
       // Terminal settings belong to the active theme; null resets a field to its default.
       if (body.terminal !== undefined) setThemeTerminal(c, body.terminal);
     }, req.caller.id);

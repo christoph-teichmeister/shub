@@ -87,17 +87,31 @@ function normalize(raw: Partial<Config>): Config {
   if (!['auto', 'ask', 'off'].includes(config.updateMode!)) delete config.updateMode;
   if (config.trustSessions !== true) delete config.trustSessions;
   if (!/^https:\/\/\S+$/.test(config.publicUrl ?? '')) delete config.publicUrl;
+  if (typeof config.syncFolder !== 'string' || !config.syncFolder.trim()) delete config.syncFolder;
   delete (config as { terminal?: unknown }).terminal;
   delete config.problem;
   return config;
 }
 
 /** Keys that always go to local.json; any other key the user puts there stays local too. */
-export const LOCAL_KEYS: (keyof Config)[] = ['updateChannel', 'updateMode', 'trustSessions', 'publicUrl', 'sync'];
+export const LOCAL_KEYS: (keyof Config)[] = [
+  'updateChannel',
+  'updateMode',
+  'trustSessions',
+  'publicUrl',
+  'sync',
+  'syncFolder',
+];
 
 /** The address the phone reaches shub at: SHUB_PUBLIC_URL, else the one the phone setup stored. No trailing slash. */
 export function publicUrl(config: Config): string | undefined {
   return (process.env.SHUB_PUBLIC_URL || config.publicUrl)?.replace(/\/$/, '');
+}
+
+/** The sync folder of this host with `~` expanded: SHUB_SYNC_FOLDER, else the one in local.json. */
+export function syncFolder(config: Config): string | undefined {
+  const folder = process.env.SHUB_SYNC_FOLDER || config.syncFolder;
+  return folder ? expandHome(folder.trim(), homedir()) : undefined;
 }
 
 export function contractHome(path: string, home: string): string {

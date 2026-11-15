@@ -111,6 +111,8 @@ export interface Sessions {
   setPermissionMode(id: string, mode: PermissionMode): void;
   /** Stop the process, keep the session; `compact` false skips the /compact that would still write the transcript. */
   pause(id: string, actor: string, compact?: boolean): Session;
+  /** End the session for good (marked exited). */
+  close(id: string, actor: string): void;
   rename(id: string, name: string, actor: string): Session;
   reorder(positions: Record<string, number | null>, tabs?: boolean): Session[];
   /** Name a session after its first prompt: its first words now, a model-written title a moment later. */

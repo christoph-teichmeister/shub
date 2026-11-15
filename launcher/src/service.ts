@@ -40,7 +40,8 @@ export function systemdUnit(o: ServiceOptions): string {
     `# ${MARKER}; \`shub service uninstall\` removes it.`,
     '[Unit]',
     'Description=shub, your session hub',
-    'After=network.target',
+    // A sync tool that runs as a user service stops after shub, so it can still carry off the shutdown handover.
+    'After=network.target syncthing.service',
     '',
     '[Service]',
     'Type=simple',

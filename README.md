@@ -72,8 +72,11 @@ pairing QR code. `SHUB_PUBLIC_URL` still works and wins over `publicUrl`. A syst
 
 Projects, groups, buttons, themes and settings live as versioned items in the group store (the `shub.db` file in
 `~/.local/state/shub/`), no secrets. An existing `~/.config/shub/config.json` is imported once on first start and then
-ignored. Hosts of the same device group (each publishes its tailnet URL there) push changes to each other at once and
-catch up on start and every five minutes; Settings > Sync lists them with their state.
+ignored. To share them between your machines, set a sync folder (Settings > Sync, or `syncFolder` in `local.json`) and
+let Syncthing, Google Drive, Dropbox or similar sync that folder: shub writes one file per item and the transcripts of
+your recent conversations there and reads what the other machines left, so no machine has to be on when another one
+is. A machine that is shut down hands its open sessions over, and another machine resumes them on its own. Without a
+folder nothing is shared.
 
 - Project paths under your home are stored as `~/...`. A project whose folder is missing on a machine shows dimmed
   there and is never removed.
