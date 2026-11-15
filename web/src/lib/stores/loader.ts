@@ -59,7 +59,7 @@ export function idleState(): IdleState {
         : '';
   return {
     unsentText: !el?.classList.contains('xterm-helper-textarea') && !!field?.trim(),
-    hidden: document.hidden,
+    hidden: document.hidden || !document.hasFocus(), // a focus move: tab hidden or window blurred
     terminalIdleMs: Date.now() - lastTerminalUse,
   };
 }
