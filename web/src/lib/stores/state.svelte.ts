@@ -158,9 +158,16 @@ export async function closeSession(id: string): Promise<void> {
   );
   // A Claude conversation survives the close: the toast brings it back (the idle ones close without asking).
   if (failed || s?.kind !== 'claude' || !s.claudeSessionId || !s.projectId) return;
-  const { projectId, name, cwd, claudeSessionId: resumeClaudeSessionId } = s;
+  const { projectId, name, cwd, parentId, claudeSessionId: resumeClaudeSessionId } = s;
   const resume = async () => {
-    const back = await startSession({ projectId, kind: 'claude', name, cwd, resumeClaudeSessionId });
+    const back = await startSession({
+      projectId,
+      kind: 'claude',
+      name,
+      cwd,
+      parentId: parentId ?? undefined,
+      resumeClaudeSessionId,
+    });
     if (back) location.hash = sessionHref(back);
   };
   toast(`Closed ${name}. You can resume the conversation.`, 'neutral', 10000, undefined, {

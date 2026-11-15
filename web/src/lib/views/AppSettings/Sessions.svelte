@@ -30,26 +30,30 @@
   }
 
   /** The change waiting for the user's confirm: a prompt-skipping mode or the trust switch. */
-  let risky = $state<{ title: string; body: string; run: () => void } | null>(null);
+  let risky = $state<{ title: string; body: string; confirm: string; run: () => void } | null>(null);
+  /** Separate from `risky` so the dialog keeps its text while it closes. */
+  let riskyOpen = $state(false);
+  const ask = (r: NonNullable<typeof risky>) => ((risky = r), (riskyOpen = true));
 
   function chooseMode(m: (typeof MODES)[number]) {
+    if (m.value === (app.config?.defaultPermissionMode ?? 'default')) return;
     if (!m.risky) return void setDefaultMode(m.value);
-    risky = {
+    ask({
+      confirm: 'Make default',
       title: `Make ${m.label} the default?`,
       body: 'Every new session can edit files and run commands without asking. Use only in sandboxes.',
       run: () => void setDefaultMode(m.value),
-    };
+    });
   }
-
-  let trustKey = $state(0);
 
   function chooseTrust(on: boolean) {
     if (!on) return void setTrustSessions(false);
-    risky = {
+    ask({
+      confirm: 'Turn on',
       title: 'Let sessions act without your approval?',
       body: 'Project sessions can start sessions and change projects, buttons and links without asking you. The sessions they start skip every prompt.',
       run: () => void setTrustSessions(true),
-    };
+    });
   }
 
   async function setDefaultMode(defaultPermissionMode: string) {
@@ -101,29 +105,28 @@
     title="Sessions may act without asking"
     description="A project session can start sessions and change projects, Quick actions and links without an approval. Sessions they start run with bypass permissions on. Still one level deep and limited to 5 starts an hour. Stays on this machine."
   >
-    <!-- Re-created when a turn-on is asked about, so the box shows the saved value until the confirm. -->
-    {#key trustKey}
-      <Checkbox
-        label="Skip the approval"
-        checked={!!app.config?.trustSessions}
-        onchange={(e) => {
-          if (e.currentTarget.checked) trustKey++;
-          chooseTrust(e.currentTarget.checked);
-        }}
-      />
-    {/key}
+    <Checkbox
+      label="Skip the approval"
+      checked={!!app.config?.trustSessions}
+      onchange={(e) => {
+        const on = e.currentTarget.checked;
+        // The box shows the saved value until the confirm; same element, so focus stays.
+        if (on) e.currentTarget.checked = false;
+        chooseTrust(on);
+      }}
+    />
   </Section>
 </div>
 
-<Dialog open={!!risky} title={risky?.title ?? ''} description={risky?.body} onclose={() => (risky = null)}>
+<Dialog open={riskyOpen} title={risky?.title ?? ''} description={risky?.body} onclose={() => (riskyOpen = false)}>
   {#snippet actions()}
-    <Button variant="ghost" onclick={() => (risky = null)}>Cancel</Button>
+    <Button variant="ghost" onclick={() => (riskyOpen = false)}>Cancel</Button>
     <Button
       variant="danger"
       onclick={() => {
         risky?.run();
-        risky = null;
-      }}>Turn on</Button
+        riskyOpen = false;
+      }}>{risky?.confirm}</Button
     >
   {/snippet}
 </Dialog>

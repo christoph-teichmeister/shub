@@ -2539,6 +2539,11 @@ test('a prompt-skipping default and the trust switch ask first', async ({ page }
   await page.goto('/#/settings/sessions');
   const writes = () => calls.filter((c) => c.method === 'PATCH' && c.path === '/api/settings').map((c) => c.body);
 
+  // Tapping the mode that is already the default does nothing.
+  await page.getByRole('button', { name: /^Ask first/ }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  expect(writes()).toEqual([]);
+
   await page.getByRole('button', { name: /^Bypass/ }).click();
   const ask = page.getByRole('dialog', { name: 'Make Bypass the default?' });
   await expect(ask).toContainText(
@@ -2548,7 +2553,7 @@ test('a prompt-skipping default and the trust switch ask first', async ({ page }
   expect(writes()).toEqual([]);
 
   await page.getByRole('button', { name: /^Bypass/ }).click();
-  await ask.getByRole('button', { name: 'Turn on' }).click();
+  await ask.getByRole('button', { name: 'Make default' }).click();
   await expect.poll(writes).toEqual([{ defaultPermissionMode: 'bypassPermissions' }]);
 
   // A safe mode needs no question.
