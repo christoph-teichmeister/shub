@@ -452,7 +452,7 @@ test('the approval wait stops when the sign-in page closes', async ({ page }) =>
   await page.goto('/pair/abc123');
   await page.getByLabel('Device name').fill('Pixel');
   await page.getByRole('button', { name: 'Pair this device' }).click();
-  await expect(page.getByText(/Now approve Pixel/)).toBeVisible();
+  await expect(page.getByText(/click Approve next to Pixel/)).toBeVisible();
   // Back later: the sign-in page waits again, then the user leaves it.
   await page.goto('/#/login');
   await expect(page.getByText(/click Approve next to/)).toBeVisible();
