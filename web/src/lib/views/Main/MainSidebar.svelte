@@ -552,6 +552,9 @@
             >Update available</span
           >{/if}<span class="visually-hidden">Settings</span></a
       >
+      <button type="button" class="rail-item" title="What the status marks mean" onclick={() => (ui.legend = true)}
+        >?<span class="visually-hidden">Status legend</span></button
+      >
       <button type="button" class="rail-item" title="Shortcuts (Alt ?)" onclick={() => (ui.shortcuts = true)}
         >?<span class="visually-hidden">Shortcuts</span></button
       >

@@ -2,6 +2,8 @@
 
 The small status mark in front of a session name. Decorative (aria-hidden): always put the status text next to it.
 
+Hovering it shows what the status means (`STATUS_HELP` in `status.ts`).
+
 | Prop     | Type            | Notes |
 | -------- | --------------- | ----- |
 | `status` | `SessionStatus` |       |

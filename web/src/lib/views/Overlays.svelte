@@ -10,6 +10,8 @@
   import { go } from '../stores/router.svelte.ts';
   import { app, loadApprovals, loadProjects, sessionHref, startSession, ui } from '../stores/state.svelte.ts';
   import { toast, toastError } from '../stores/toasts.svelte.ts';
+  import StatusDot from '../components/StatusDot/StatusDot.svelte';
+  import { LEGEND_STATES, STATUS_HELP, STATUS_LABEL } from '../status.ts';
   import { SHORTCUT_GROUPS } from './shortcuts.ts';
 
   // ---------- search ----------
@@ -322,6 +324,20 @@
   <p class="keys-note">On macOS, Alt is the Option key.</p>
 </Dialog>
 
+<Dialog
+  open={ui.legend}
+  title="Status legend"
+  description="The mark in front of a session says whose turn it is."
+  onclose={() => (ui.legend = false)}
+>
+  <dl class="shortcuts legend">
+    {#each LEGEND_STATES as st (st)}
+      <dt><StatusDot status={st} /> {STATUS_LABEL[st]}</dt>
+      <dd>{STATUS_HELP[st]}</dd>
+    {/each}
+  </dl>
+</Dialog>
+
 <style>
   .search {
     display: flex;
@@ -515,6 +531,16 @@
   .keys-note {
     margin: var(--space-4) 0 0;
     color: var(--muted);
+  }
+
+  .legend {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .legend dt {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
   }
 
   .shortcuts dd {

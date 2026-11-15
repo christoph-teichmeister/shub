@@ -198,6 +198,16 @@ test('app shell, wordmark and projects render', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('status legend lists the five states', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  await page.goto('/#/');
+  await page.getByRole('button', { name: 'Status legend' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Status legend' });
+  for (const state of ['needs you', 'your turn', 'working', 'waiting', 'paused'])
+    await expect(dialog.getByText(state, { exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('sidebar groups collapse and stay collapsed after reload', async ({ page }) => {
   const { errors } = await mockApi(page);
   await page.goto('/#/');
