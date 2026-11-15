@@ -2534,6 +2534,8 @@ test('a project change that cannot be saved says which field needs a value', asy
   await expect(page.getByTestId('save-status')).toHaveText('Not saved: Name needs a value');
   await page.getByLabel('Name').fill('ai-portal-2');
   await expect(page.getByTestId('save-status')).not.toContainText('Not saved');
+});
+
 test('a prompt-skipping default and the trust switch ask first', async ({ page }) => {
   const { errors, calls } = await mockApi(page, { 'PATCH /api/settings': config });
   await page.goto('/#/settings/sessions');

@@ -27,7 +27,7 @@
   bind:this={dialog}
   class="dialog {tone}"
   aria-labelledby="{id}-title"
-  onclose={() => open && onclose()}
+  onclose={() => open && !dialog?.open && onclose()}
   onclick={(e) => e.target === dialog && onclose()}
 >
   {#if open}
