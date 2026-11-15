@@ -1,21 +1,18 @@
-// The session list and the Claude transcripts of the device group. The list is `session:<claude id>` items; the
-// transcripts (`<claude dir>/projects/<folder>/<id>.jsonl`) are copied in the background from every other host.
-// Only the folder of a synced project travels: the copy lands in the folder Claude keeps for the project's path on
-// THIS host. The file is not rewritten: `claude --resume` finds it by that folder name, and the old path in its
-// entries is harmless (checked with claude 2.1.309: new entries just carry the new cwd).
+// The session list and the Claude transcripts of the device group. The list is `session:<claude id>` items (synced
+// like every item, see folder.ts); the transcripts (`<claude dir>/projects/<folder>/<id>.jsonl`) go through the same
+// sync folder: this host writes its own recent conversations to `transcripts/<project>/<id>.jsonl` there and copies
+// the other hosts' into the folder Claude keeps for the project's path on THIS host. A transcript only grows, so
+// both directions only append whole lines. The file is not rewritten: `claude --resume` finds it by that folder
+// name, and the old path in its entries is harmless (checked with claude 2.1.309: new entries just carry the new cwd).
 import { statSync, watch, type FSWatcher } from 'node:fs';
-import { appendFile, copyFile, mkdir, open, readdir, rename, rm, stat } from 'node:fs/promises';
+import { appendFile, mkdir, open, readdir, stat } from 'node:fs/promises';
 import { join, relative } from 'node:path';
-import { promisify } from 'node:util';
-import { zstdCompress, zstdDecompress } from 'node:zlib';
-import type { HostPeer, Session, SyncSettings, TranscriptEntry, TranscriptProgress } from '../../shared/api.ts';
-import { HttpError } from '../api/router.ts';
+import type { Session, SyncSettings, TranscriptProgress } from '../../shared/api.ts';
 import { claudeDir, encodeCwd, UUID } from '../sessions/old.ts';
 import { syncOn, type GroupStore } from './index.ts';
 
-const compress = promisify(zstdCompress);
-const decompress = promisify(zstdDecompress);
-const CHUNK = 4 * 1024 * 1024;
+/** Own conversations idle for longer than this stay out of the folder: it would grow by every transcript ever. */
+const EXPORT_DAYS = 7;
 const WATCH_DELAY_MS = 1000;
 
 /** The body of a `session:<claude id>` item. `rel` is the session's folder below its project, "" for the project itself. */
@@ -90,13 +87,32 @@ export function handovers(
   });
 }
 
-/** What the transcript sync needs from the host link; HostSync is one. */
-interface Link {
-  peers(): HostPeer[];
-  call(peer: HostPeer, action: 'manifest' | 'chunk', body: unknown): Promise<any>;
+/**
+ * Append the whole lines of `src` that `dst` lacks (a transcript only grows). A half-written last line waits for the
+ * next call. Returns the bytes added.
+ */
+export async function pump(src: string, dst: string): Promise<number> {
+  const want = (await stat(src).catch(() => null))?.size ?? 0;
+  const have = (await stat(dst).catch(() => null))?.size ?? 0;
+  if (have >= want) return 0;
+  const file = await open(src, 'r').catch(() => undefined);
+  if (!file) return 0;
+  try {
+    let buf = Buffer.alloc(want - have);
+    await file.read(buf, 0, buf.length, have);
+    buf = buf.subarray(0, buf.lastIndexOf(10) + 1);
+    if (!buf.length) return 0;
+    await mkdir(join(dst, '..'), { recursive: true });
+    await appendFile(dst, buf);
+    return buf.length;
+  } finally {
+    await file.close();
+  }
 }
 
 export interface TranscriptDeps {
+  /** The sync folder of this host, if one is set. */
+  folder(): string | undefined;
   sync(): SyncSettings | undefined;
   /** The projects with their paths on this host. */
   projects(): { id: string; path: string }[];
@@ -107,22 +123,24 @@ export interface TranscriptDeps {
 
 export class Transcripts {
   #group: GroupStore;
-  #link: Link;
   #deps: TranscriptDeps;
-  #progress = { running: false, done: 0, total: 0 };
-  #again = false;
   #watchers = new Map<string, FSWatcher>();
   #debounce?: ReturnType<typeof setTimeout>;
-  #lastServed = 0;
+  #busy?: Promise<void>;
 
-  constructor(group: GroupStore, link: Link, deps: TranscriptDeps) {
+  constructor(group: GroupStore, deps: TranscriptDeps) {
     this.#group = group;
-    this.#link = link;
     this.#deps = deps;
   }
 
   #dir(path: string): string {
     return join(this.#deps.root ?? claudeDir(), 'projects', encodeCwd(path));
+  }
+
+  /** Where a conversation sits in the sync folder. */
+  #shared(project: string, id: string): string | undefined {
+    const folder = this.#deps.folder();
+    return folder && join(folder, 'transcripts', encodeURIComponent(project), `${id}.jsonl`);
   }
 
   // ---------- the session list ----------
@@ -162,10 +180,11 @@ export class Transcripts {
   }
 
   /**
-   * The machine is shutting down: the sessions still running are not going to run any more. Publish their final size,
-   * mark them released so another host resumes them, and let it fetch the transcript before this host disappears.
+   * The machine is shutting down: the sessions still running are not going to run any more. Publish their final
+   * size and mark them released so another host resumes them, then write the transcripts to the sync folder.
+   * Returns whether anything was released (the caller then gives the sync tool a moment to carry it off).
    */
-  async release(push: () => Promise<void>, maxWaitMs = 30_000): Promise<void> {
+  async release(): Promise<boolean> {
     this.publishSessions();
     let any = false;
     for (const i of this.#group.list()) {
@@ -174,18 +193,13 @@ export class Transcripts {
       this.#group.put(i.key, { ...b, running: false, released: true });
       any = true;
     }
-    if (!any) return;
-    this.#lastServed = Date.now();
-    await push();
-    // The peers pull the new bytes from us now: wait until they stop asking.
-    const until = Date.now() + maxWaitMs;
-    while (Date.now() < until && Date.now() - this.#lastServed < 2000) await new Promise((r) => setTimeout(r, 250));
+    await this.sync();
+    return any;
   }
 
   /**
-   * Near-live sync: a transcript only grows, so when one of ours does, the new size goes into the session item and
-   * the normal push carries it to the peers, which then fetch just the new byte range (see run). Idempotent: call
-   * it again after projects changed. The 5-minute round stays the safety net.
+   * Near-live: a transcript only grows, so when one of ours does, the new size goes into the session item and the new
+   * lines into the sync folder at once. Idempotent: call it again after projects changed.
    */
   watch(): void {
     for (const p of this.#deps.projects()) {
@@ -199,6 +213,7 @@ export class Transcripts {
           this.#debounce = setTimeout(() => {
             this.#debounce = undefined;
             this.publishSessions();
+            void this.sync();
           }, WATCH_DELAY_MS);
           this.#debounce.unref();
         });
@@ -217,107 +232,34 @@ export class Transcripts {
     this.#watchers.clear();
   }
 
-  // ---------- serving the other hosts ----------
+  // ---------- through the sync folder ----------
 
-  async serve(action: 'manifest' | 'chunk', body: Record<string, unknown>): Promise<unknown> {
-    // Off here means nothing leaves this host.
-    if (!syncOn(this.#deps.sync(), 'transcripts')) throw new HttpError(403, 'transcripts are not synced here');
-    this.#lastServed = Date.now();
-    return action === 'manifest' ? { entries: await this.#manifest() } : this.#chunk(body);
+  /** Both directions; one run at a time, a call during a run goes once more after it. */
+  sync(): Promise<void> {
+    if (this.#busy) return this.#busy.then(() => this.#run());
+    this.#busy = this.#run().finally(() => (this.#busy = undefined));
+    return this.#busy;
   }
 
-  async #manifest(): Promise<TranscriptEntry[]> {
-    const entries: TranscriptEntry[] = [];
-    for (const p of this.#deps.projects()) {
-      const dir = this.#dir(p.path);
-      for (const name of await readdir(dir).catch(() => [] as string[])) {
-        const id = name.slice(0, -'.jsonl'.length);
-        if (!name.endsWith('.jsonl') || !UUID.test(id)) continue;
-        entries.push({ project: p.id, id, size: (await stat(join(dir, name))).size });
-      }
-    }
-    return entries;
-  }
-
-  /** Bytes from `offset`, zstd-compressed. At the end of the file only whole lines go, a half-written one waits. */
-  async #chunk(body: Record<string, unknown>): Promise<{ data: string; end: number }> {
-    const project = this.#deps.projects().find((p) => p.id === body.project);
-    const { id, offset } = body;
-    if (!project || typeof id !== 'string' || !UUID.test(id) || !Number.isInteger(offset) || (offset as number) < 0)
-      throw new HttpError(400, 'bad chunk request');
-    const from = offset as number;
-    const file = await open(join(this.#dir(project.path), `${id}.jsonl`), 'r').catch(() => undefined);
-    if (!file) throw new HttpError(404, 'no such transcript');
-    try {
-      const { size } = await file.stat();
-      let buf = Buffer.alloc(Math.max(0, Math.min(CHUNK, size - from)));
-      await file.read(buf, 0, buf.length, from);
-      if (from + buf.length === size && buf.length) buf = buf.subarray(0, buf.lastIndexOf(10) + 1);
-      return { data: (await compress(buf)).toString('base64'), end: from + buf.length };
-    } finally {
-      await file.close();
-    }
-  }
-
-  // ---------- copying from the other hosts ----------
-
-  /** Copy what is new or grown from every reachable host. One run at a time; an interrupted one resumes next time. */
-  async run(): Promise<void> {
+  async #run(): Promise<void> {
     if (!syncOn(this.#deps.sync(), 'transcripts')) return;
-    if (this.#progress.running) return void (this.#again = true); // a nudge during a run: go once more after it
-    this.#progress = { running: true, done: 0, total: 0 };
-    try {
-      for (const peer of this.#link.peers().filter((p) => p.url)) {
-        try {
-          const { entries } = (await this.#link.call(peer, 'manifest', {})) as { entries: TranscriptEntry[] };
-          for (const e of entries) await this.#copy(peer, e);
-        } catch {
-          // offline, or it has transcripts switched off: next round
-        }
+    const projects = this.#deps.projects();
+    const since = new Date(Date.now() - EXPORT_DAYS * 86_400_000).toISOString();
+    for (const i of this.#group.list()) {
+      const b = i.body as SessionItem | null;
+      if (i.deleted || !b || !i.key.startsWith('session:') || b.rel !== '' || !UUID.test(b.claudeSessionId)) continue;
+      const project = projects.find((p) => p.id === b.projectId);
+      const shared = this.#shared(b.projectId, b.claudeSessionId);
+      if (!project || !shared) continue;
+      const local = join(this.#dir(project.path), `${b.claudeSessionId}.jsonl`);
+      try {
+        if (b.hostId === this.#group.hostId) {
+          if (b.lastAt >= since || b.running) await pump(local, shared);
+        } else await pump(shared, local);
+      } catch {
+        // folder gone or full: the next run tries again
       }
-    } finally {
-      this.#progress.running = false;
     }
-    if (this.#again) {
-      this.#again = false;
-      await this.run();
-    }
-  }
-
-  async #copy(peer: HostPeer, e: TranscriptEntry): Promise<void> {
-    const project = this.#deps.projects().find((p) => p.id === e.project);
-    if (!project || !UUID.test(e.id) || !(await stat(project.path).catch(() => null))?.isDirectory()) return;
-    const dir = this.#dir(project.path);
-    const file = join(dir, `${e.id}.jsonl`);
-    const part = `${file}.part`;
-    const have = (await stat(file).catch(() => null))?.size ?? 0;
-    // ponytail: a transcript only grows, so a bigger or equal local file counts as complete; a file changed
-    // in place on both hosts is not detected. Hash the head too if that ever happens.
-    if (have >= e.size) return;
-    await mkdir(dir, { recursive: true });
-    // Work on a side file: the plain .jsonl is only ever a whole transcript, and an interruption leaves the
-    // .part to continue from. A grown file starts from its current copy.
-    if (!(await stat(part).catch(() => null))) {
-      if (have) await copyFile(file, part);
-      else await appendFile(part, '');
-    }
-    let offset = (await stat(part)).size;
-    if (offset > e.size) return void (await rm(part));
-    this.#progress.total += e.size - offset;
-    while (offset < e.size) {
-      const res = (await this.#link.call(peer, 'chunk', { project: e.project, id: e.id, offset })) as {
-        data: string;
-        end: number;
-      };
-      if (!(res.end > offset)) break; // the rest is a line still being written
-      const buf = await decompress(Buffer.from(res.data, 'base64'));
-      if (buf.length !== res.end - offset) throw new Error('chunk length mismatch');
-      await appendFile(part, buf);
-      offset = res.end;
-      this.#progress.done += buf.length;
-    }
-    if (offset > have) await rename(part, file);
-    else await rm(part);
   }
 
   /** Bytes of this host's copy of a conversation of `projectPath`. */
@@ -332,7 +274,7 @@ export class Transcripts {
       for (const name of await readdir(dir).catch(() => [] as string[]))
         if (name.endsWith('.jsonl')) size += (await stat(join(dir, name)).catch(() => null))?.size ?? 0;
     }
-    return { ...this.#progress, size };
+    return { running: false, done: 0, total: 0, size };
   }
 }
 

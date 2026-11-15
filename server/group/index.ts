@@ -15,11 +15,12 @@ import {
 } from '../../shared/api.ts';
 import type { IncomingMessage } from 'node:http';
 import { HttpError, requireUser, type Caller } from '../api/router.ts';
-import { publicUrl } from '../config/index.ts';
+import { publicUrl, syncFolder } from '../config/index.ts';
 import type { Context } from '../context.ts';
 import type { ShubModule } from '../module.ts';
 import type { Services } from '../services.ts';
 import { HostSync } from './sync.ts';
+import { FolderSync } from './folder.ts';
 import { Transcripts, handovers, takenOver } from './transcripts.ts';
 
 /** Host id -> how many changes that host made to the item. */
@@ -364,6 +365,9 @@ export function conflictViews(group: GroupStore): GroupConflict[] {
   }));
 }
 
+/** How long a shutdown waits for the sync tool after writing the folder. ponytail: fixed; ask the tool when one is known. */
+const HANDOVER_WAIT_MS = 10_000;
+
 /** systemd is taking the machine down (poweroff or reboot), not only this service. */
 export function machineStopping(): boolean {
   try {
@@ -375,25 +379,32 @@ export function machineStopping(): boolean {
 
 export function create(ctx: Context, services: Services): { module: ShubModule; service: GroupStore } {
   const group = new GroupStore(services.state.db, services.state.migrate);
+  // Hosts only trust each other's devices over the tailnet (sync.ts); everything else travels through the folder.
   const sync = new HostSync(group, {
-    sync: () => services.config.get().sync,
     url: () => publicUrl(services.config.get()),
     onMerged: () => {
-      services.config.reload();
       services.auth.applyGroup();
+      ctx.bus.emit({ type: 'conflicts.changed' });
+    },
+  });
+  const folder = new FolderSync(group, {
+    folder: () => syncFolder(services.config.get()),
+    sync: () => services.config.get().sync,
+    onMerged: () => {
+      services.config.reload();
       ctx.bus.emit({ type: 'conflicts.changed' });
       // Another host took a conversation over: stop our process, or two Claudes write one transcript.
       for (const s of takenOver(group, services.sessions.list()))
         services.sessions.pause(s.id, 'group:take-over', false);
-      void transcripts.run().then(adopt); // a session item may say a transcript grew: fetch the new bytes now
     },
-    serve: (action, body) => transcripts.serve(action, body),
-    onRound: () => {
+    onScan: async () => {
       transcripts.publishSessions();
-      void transcripts.run().then(adopt);
+      await transcripts.sync();
+      await adopt();
     },
   });
-  const transcripts: Transcripts = new Transcripts(group, sync, {
+  const transcripts: Transcripts = new Transcripts(group, {
+    folder: () => syncFolder(services.config.get()),
     sync: () => services.config.get().sync,
     projects: () => services.config.get().projects,
     sessions: () => services.sessions.list(),
@@ -428,8 +439,6 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
     ['session', ROUTES.groupSession],
     ['pull', ROUTES.groupPull],
     ['push', ROUTES.groupPush],
-    ['manifest', ROUTES.groupManifest],
-    ['chunk', ROUTES.groupChunk],
   ] as const;
   return {
     module: {
@@ -482,13 +491,25 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
           requireUser(req.caller);
           return transcripts.progress();
         });
+        router.add(ROUTES.groupFolder, (req) => {
+          requireUser(req.caller);
+          return folder.status();
+        });
       },
       start() {
         // A URL set later (phone setup) is published as soon as the config changes.
         ctx.bus.on((e) => e.type === 'config.changed' && sync.announce());
         sync.start();
         transcripts.watch();
-        // The list also follows renames and new activity between rounds.
+        folder.start();
+        // Another folder: read it at once, not at the next minute.
+        let current = syncFolder(services.config.get());
+        ctx.bus.on((e) => {
+          if (e.type !== 'config.changed' || syncFolder(services.config.get()) === current) return;
+          current = syncFolder(services.config.get());
+          folder.scan();
+        });
+        // The list also follows renames and new activity between scans.
         const timer = setInterval(() => {
           transcripts.publishSessions();
           transcripts.watch();
@@ -498,7 +519,12 @@ export function create(ctx: Context, services: Services): { module: ShubModule; 
       },
       stop: async () => {
         // Machine shutdown, not just a shub restart (tmux keeps the sessions then): hand the open ones over first.
-        if (machineStopping()) await transcripts.release(() => sync.flush()).catch(() => {});
+        if (machineStopping() && (await transcripts.release().catch(() => false))) {
+          folder.flush();
+          // The sync tool has to carry the files off before the machine goes: give it a moment.
+          await new Promise((r) => setTimeout(r, HANDOVER_WAIT_MS));
+        }
+        folder.stop();
         sync.stop();
         transcripts.unwatch();
         timers.forEach(clearInterval);

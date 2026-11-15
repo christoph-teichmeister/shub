@@ -117,8 +117,12 @@ export interface Config {
   trustSessions?: boolean;
   /** https address the phone reaches shub at (the `tailscale serve` name); local.json. SHUB_PUBLIC_URL wins. */
   publicUrl?: string;
-  /** What this host syncs with the device group; local.json. A missing category is on, except pluginEnv. */
+  /** What this host syncs through the sync folder; local.json. A missing category is on, except pluginEnv. */
   sync?: SyncSettings;
+  /** The folder this host reads and writes its shared items and transcripts in; whatever syncs that folder between
+   *  your machines (Syncthing, Google Drive, Dropbox, git) carries them. Absent: nothing is shared. local.json.
+   *  SHUB_SYNC_FOLDER wins. */
+  syncFolder?: string;
   /** Never stored: why config.json or local.json could not be read. shub then runs on the last good config and
    *  refuses changes until the file is fixed (it reloads on save). */
   problem?: string;
@@ -172,11 +176,15 @@ export interface GroupConflict {
   theirs: ConflictSide;
 }
 
-/** One transcript a host offers: the file `<id>.jsonl` in the folder Claude keeps for a synced project. */
-export interface TranscriptEntry {
-  project: string;
-  id: string;
-  size: number;
+/** Settings > Sync: how the sync folder is doing. */
+export interface FolderStatus {
+  folder?: string;
+  /** The folder cannot be read or written. */
+  error?: string;
+  items: number;
+  /** When the last scan finished. */
+  scannedAt?: string;
+  conflicts: number;
 }
 
 /** Settings > Sync: the background copy of the other hosts' transcripts. */
@@ -720,8 +728,7 @@ export const ROUTES = {
   groupPeers: 'GET /api/group/peers', // -> HostPeer[], user only
   groupConflicts: 'GET /api/group/conflicts', // -> GroupConflict[]; open ones, any level sees them
   groupResolve: 'POST /api/group/resolve', // { key, pick: 'ours' | 'theirs' } -> 204; control level
-  groupManifest: 'POST /api/group/manifest', // Bearer -> { entries: TranscriptEntry[] }; transcripts of the synced projects
-  groupChunk: 'POST /api/group/chunk', // Bearer, { project, id, offset } -> { data (zstd, base64), end }
+  groupFolder: 'GET /api/group/folder', // -> FolderStatus, user only
   groupTranscripts: 'GET /api/group/transcripts', // -> TranscriptProgress, user only
 
   config: 'GET /api/config',

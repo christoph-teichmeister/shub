@@ -36,7 +36,6 @@ function hosts(...names: string[]): Record<string, Host> {
     const group = new GroupStore(db, (_m, statements) => statements.forEach((s) => db.exec(s)));
     const host: Host = { group, settings: {}, merged: 0, online: true } as Host;
     host.sync = new HostSync(group, {
-      sync: () => host.settings,
       url: () => `https://${name}`,
       onMerged: () => host.merged++,
       fetch: net,
@@ -88,71 +87,6 @@ test('a burst of changes is pushed by one flush, then the next change schedules 
   a.sync.stop();
 });
 
-test('a push reaches every reachable host at once', async () => {
-  const { a, b } = await pair();
-  await a.sync.round();
-  a.group.put('project:p', { id: 'p', name: 'p', path: '~/p', order: 0 });
-  await a.sync.flush();
-  assert.deepEqual(b.group.get('project:p')?.body, { id: 'p', name: 'p', path: '~/p', order: 0 });
-  assert.ok(b.merged > 0); // the config was reloaded
-});
-
-test('a host that was offline catches up with everything it missed', async () => {
-  const { a, b } = await pair();
-  await a.sync.round();
-  b.online = false;
-  a.group.put('theme:t', { id: 't' });
-  a.group.put('setting:terminal', { fontSize: 15 });
-  await a.sync.flush();
-  assert.equal(a.sync.peers()[0].state, 'offline');
-  assert.ok(a.sync.peers()[0].since);
-  assert.equal(b.group.get('theme:t'), undefined);
-  b.online = true;
-  await b.sync.round(); // b starts and pulls
-  assert.deepEqual(b.group.get('theme:t')?.body, { id: 't' });
-  assert.deepEqual(b.group.get('setting:terminal')?.body, { fontSize: 15 });
-  await a.sync.round(); // a's timer brings its state back
-  assert.equal(a.sync.peers()[0].state, 'in-sync');
-  assert.equal(a.sync.peers()[0].since, undefined);
-});
-
-test('two hosts that were apart converge; a real conflict stays open on both sides', async () => {
-  const { a, b } = await pair();
-  await a.sync.round();
-  b.online = false;
-  a.group.put('project:x', { id: 'x', v: 'a' });
-  a.group.put('theme:t', { id: 't', v: 'a' });
-  b.group.put('project:y', { id: 'y', v: 'b' });
-  b.group.put('theme:t', { id: 't', v: 'b' }); // the same item, changed on both
-  await a.sync.flush();
-  b.online = true;
-  await a.sync.round();
-  for (const key of ['project:x', 'project:y']) assert.deepEqual(a.group.get(key), b.group.get(key));
-  assert.deepEqual(a.group.get('theme:t')?.body, { id: 't', v: 'a' }); // neither was overwritten
-  assert.deepEqual(b.group.get('theme:t')?.body, { id: 't', v: 'b' });
-  assert.equal(a.group.conflicts().length, 1);
-  assert.equal(b.group.conflicts().length, 1);
-  assert.equal(a.sync.peers()[0].state, 'conflict');
-});
-
-test('an unreachable host is marked offline and does not stop the others', async () => {
-  const { a, b, c } = hosts('a', 'b', 'c');
-  for (const [x, y] of [
-    [a, b],
-    [a, c],
-    [b, c],
-  ] as const) {
-    x.group.merge(y.group.get(`device:${y.group.hostId}`)!);
-    y.group.merge(x.group.get(`device:${x.group.hostId}`)!);
-  }
-  b.online = false;
-  a.group.put('theme:t', { id: 't' });
-  await a.sync.flush();
-  const states = Object.fromEntries(a.sync.peers().map((p) => [p.name, p.state]));
-  assert.deepEqual(states, { b: 'offline', c: 'in-sync' });
-  assert.ok(c.group.get('theme:t'));
-});
-
 test('a revoked host is refused: no sign-in, and a token it holds stops working', async () => {
   const { a, b } = await pair();
   await b.sync.round();
@@ -184,79 +118,6 @@ test('a signature from another key does not sign a host in', async () => {
   const forged = Buffer.alloc(64, 1).toString('base64url');
   assert.throws(() => a.sync.handle('session', { hostId: b.group.hostId, nonce, signature: forged }), /bad signature/);
   assert.throws(() => a.sync.handle('pull', {}, 'nope'), /sign in/);
-});
-
-test('categories that are switched off neither travel nor are accepted', async () => {
-  const { a, b } = await pair();
-  a.settings = { themes: false };
-  a.group.put('theme:t', { id: 't' });
-  a.group.put('project:p', { id: 'p' });
-  await a.sync.round();
-  assert.equal(b.group.get('theme:t'), undefined);
-  assert.ok(b.group.get('project:p'));
-  b.group.put('theme:u', { id: 'u' });
-  await b.sync.round();
-  assert.equal(a.group.get('theme:u'), undefined); // a refuses what it has switched off
-});
-
-test('plugin env does not travel unless switched on', async () => {
-  const { a, b } = await pair();
-  a.group.put('plugin:x', { name: 'x', env: { K: 'secret' } });
-  await a.sync.round();
-  assert.deepEqual(b.group.get('plugin:x')?.body, { name: 'x' });
-});
-
-/** Two hosts that changed the same theme while apart, now meeting: a conflict open on both. */
-async function conflicted() {
-  const { a, b } = await pair();
-  await a.sync.round();
-  b.online = false;
-  a.group.put('theme:t', { id: 't', v: 'a' });
-  b.group.put('theme:t', { id: 't', v: 'b' });
-  await a.sync.flush();
-  b.online = true;
-  await a.sync.round();
-  return { a, b };
-}
-
-test('a conflict shows both versions with the hosts that made them', async () => {
-  const { a } = await conflicted();
-  const [c] = conflictViews(a.group);
-  assert.deepEqual([c.key, c.ours.hosts, c.theirs.hosts], ['theme:t', ['a'], ['b']]);
-  assert.deepEqual(
-    [c.ours.body, c.theirs.body],
-    [
-      { id: 't', v: 'a' },
-      { id: 't', v: 'b' },
-    ],
-  );
-});
-
-test('a pick on one host closes the conflict on the others', async () => {
-  const { a, b } = await conflicted();
-  const theirsBefore = a.group.get('theme:t')!.version;
-  assert.equal(b.group.resolve('theme:t', 'ours'), true); // b keeps its own version
-  await b.sync.flush();
-  for (const h of [a, b]) {
-    assert.deepEqual(h.group.get('theme:t')?.body, { id: 't', v: 'b' });
-    assert.equal(h.group.conflicts().length, 0);
-  }
-  assert.equal(compareVersions(b.group.get('theme:t')!.version, theirsBefore), 'newer'); // supersedes both
-  assert.deepEqual(a.group.get('theme:t'), b.group.get('theme:t'));
-  assert.equal(b.group.resolve('theme:t', 'ours'), false);
-});
-
-test('a pick reaches a host that was offline when it was made', async () => {
-  const { a, b } = await conflicted();
-  b.online = false;
-  a.group.resolve('theme:t', 'theirs'); // a takes b's version
-  await a.sync.flush();
-  assert.equal(b.group.conflicts().length, 1); // b has not heard yet
-  b.online = true;
-  await a.sync.round();
-  assert.deepEqual(b.group.get('theme:t')?.body, { id: 't', v: 'b' });
-  assert.equal(b.group.conflicts().length, 0);
-  assert.equal(a.group.conflicts().length, 0);
 });
 
 test('a revoke is never a conflict', async () => {
@@ -299,14 +160,9 @@ test('a revoke is never a conflict over a round either', async () => {
   assert.equal(a.group.get(`device:${id}`)!.deleted, true);
 });
 
-test("join: two strangers carry each other's info, end up in one group, identical items match and differing ones conflict", async () => {
+test("join: two strangers carry each other's info and end up in one group; only devices cross the link", async () => {
   const { a, b } = hosts('a', 'b');
-  for (const h of [a, b]) {
-    h.group.put('theme:same', { id: 'same' });
-  }
-  a.group.put('theme:t', { id: 't', v: 'a' });
-  b.group.put('theme:t', { id: 't', v: 'b' });
-  b.group.put('project:only-b', { id: 'only-b' });
+  a.group.put('theme:t', { id: 't' }); // items go through the sync folder, not this link
   assert.equal(a.sync.peers().length, 0);
   a.sync.join(b.sync.info());
   b.sync.join(a.sync.info());
@@ -314,19 +170,7 @@ test("join: two strangers carry each other's info, end up in one group, identica
   await b.sync.round();
   assert.equal(a.sync.peers()[0].url, 'https://b');
   assert.equal(b.sync.peers()[0].url, 'https://a');
-  assert.ok(a.group.get('project:only-b'));
-  assert.equal(
-    a.group
-      .conflicts()
-      .map((c) => c.ours.key)
-      .join(),
-    'theme:t',
-  );
-  assert.equal(b.group.conflicts().length, 1);
-  assert.equal(
-    a.group.conflicts().some((c) => c.ours.key === 'theme:same'),
-    false,
-  );
+  assert.equal(b.group.get('theme:t'), undefined);
 });
 
 test('join refuses bad host info, itself, and a known host with another key', async () => {
@@ -384,21 +228,4 @@ test('a later device item with another key for a known id is refused, a revoke i
   assert.equal(a.group.get('device:d1')!.deleted, true);
   assert.equal(a.group.merge({ ...swapped, body: body('one'), version: { ...seen, other: 99 } }), 'older');
   assert.equal(a.group.get('device:d1')!.deleted, true);
-});
-
-test('a local write keeps an open conflict open', async () => {
-  const { a, b } = await conflicted();
-  assert.equal(a.group.conflicts().length, 1);
-  a.group.put('theme:t', { id: 't', name: 'again' });
-  assert.equal(a.group.conflicts().length, 1);
-  void b;
-});
-
-test('merging a plugin item without env keeps our own env', async () => {
-  const { a, b } = await pair();
-  a.group.put('plugin:x', { name: 'x', env: { K: 'mine' } });
-  await a.sync.round(); // b gets it without env
-  b.group.put('plugin:x', { name: 'x', v: 2 });
-  await b.sync.round();
-  assert.deepEqual(a.group.get('plugin:x')?.body, { name: 'x', v: 2, env: { K: 'mine' } });
 });

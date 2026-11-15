@@ -1,11 +1,13 @@
 <script lang="ts">
   // Settings area Sync: the group's other hosts, conflicts, and what this machine shares.
   import { onMount } from 'svelte';
-  import type { Config, HostPeer, SyncCategory, TranscriptProgress } from '../../../../../shared/api.ts';
+  import type { Config, FolderStatus, SyncCategory, TranscriptProgress } from '../../../../../shared/api.ts';
   import Checkbox from '../../components/Checkbox/Checkbox.svelte';
   import Conflicts from '../../components/Conflicts/Conflicts.svelte';
   import Section from '../../components/Section/Section.svelte';
+  import Button from '../../components/Button/Button.svelte';
   import StatusBadge from '../../components/StatusBadge/StatusBadge.svelte';
+  import TextField from '../../components/TextField/TextField.svelte';
   import { when } from '../../format.ts';
   import { api } from '../../stores/api.ts';
   import { app, loadConfig } from '../../stores/state.svelte.ts';
@@ -27,47 +29,67 @@
     else void loadConfig();
   }
 
-  let hostPeers = $state<HostPeer[]>([]);
+  let status = $state<FolderStatus | null>(null);
   let transcripts = $state<TranscriptProgress | null>(null);
+  let folder = $state(app.config?.syncFolder ?? '');
+  let saving = $state(false);
   const mb = (bytes: number) => `${Math.round(bytes / 1_048_576).toLocaleString()} MB`;
-  const loadPeers = () => {
+  const load = () => {
     void api<TranscriptProgress>('groupTranscripts').then(
       (t) => (transcripts = t),
       () => (transcripts = null),
     );
-    return api<HostPeer[]>('groupPeers').then(
-      (list) => (hostPeers = list),
-      () => (hostPeers = []),
+    return api<FolderStatus>('groupFolder').then(
+      (f) => (status = f),
+      () => (status = null),
     );
   };
-  const PEER_STATES = { 'in-sync': 'In sync', 'catching-up': 'Catching up', conflict: 'Conflict waiting' } as const;
-  const peerState = (p: HostPeer) =>
-    p.state === 'offline' ? (p.since ? `Offline since ${when(p.since)}` : 'Offline') : PEER_STATES[p.state];
+  async function saveFolder() {
+    saving = true;
+    const config = await api<Config>('settings', { body: { syncFolder: folder.trim() } })
+      .catch(toastError)
+      .finally(() => (saving = false));
+    if (config) app.config = config;
+    void load();
+  }
 
   onMount(() => {
-    void loadPeers();
-    const peers = setInterval(loadPeers, 10_000);
-    return () => clearInterval(peers);
+    void load();
+    const timer = setInterval(load, 10_000);
+    return () => clearInterval(timer);
   });
 </script>
 
 <div class="card">
-  <Section title="Other hosts" description="Hosts of your device group, found through the group, no addresses to type.">
-    {#if !hostPeers.length}<p class="muted small">No other host yet.</p>{/if}
-    <ul class="list">
-      {#each hostPeers as p (p.id)}
-        <li class="item">
-          <span class="grow stack">
-            <span class="strong">{p.name}</span>
-            <span class="muted small">{p.url ?? 'no address published yet'}</span>
-          </span>
-          <StatusBadge
-            text={peerState(p)}
-            tone={p.state === 'in-sync' ? 'done' : p.state === 'conflict' ? 'needs-you' : 'neutral'}
-          />
-        </li>
-      {/each}
-    </ul>
+  <Section
+    title="Sync folder"
+    description="shub keeps your settings, projects, session list and open conversations in this folder. Whatever syncs the folder between your machines carries them: Syncthing, Google Drive, Dropbox, a NAS. Leave it empty to share nothing."
+  >
+    <div class="row">
+      <div class="grow">
+        <TextField
+          label="Folder on this machine"
+          hint="An existing folder, e.g. ~/Sync/shub. Set it on every machine, to that machine's own copy of the synced folder."
+          mono
+          bind:value={folder}
+          autocomplete="off"
+          placeholder="~/Sync/shub"
+        />
+      </div>
+      <Button onclick={saveFolder} disabled={saving || folder.trim() === (app.config?.syncFolder ?? '')}>Save</Button>
+    </div>
+    {#if status?.folder}
+      <p class="muted small">
+        {#if status.error}
+          <StatusBadge text="Problem" tone="needs-you" /> {status.error}
+        {:else}
+          <StatusBadge text="Connected" tone="done" />
+          {status.items} items{status.scannedAt ? `, last read ${when(status.scannedAt)}` : ''}.
+        {/if}
+      </p>
+    {:else}
+      <p class="muted small">No folder set: nothing is shared with your other machines.</p>
+    {/if}
   </Section>
 </div>
 <div class="card">
@@ -106,20 +128,15 @@
     background: var(--panel);
   }
 
+  .row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-2-5);
+  }
+
   .grow {
     flex: 1 1 auto;
     min-width: 0;
-  }
-
-  .stack {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-0-5);
-  }
-
-  .strong {
-    font-weight: var(--weight-medium);
-    color: var(--fg);
   }
 
   .muted {
@@ -129,25 +146,5 @@
 
   .small {
     font-size: var(--text-sm);
-  }
-
-  .list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .item {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2-5);
-    padding: var(--space-3);
-    border: var(--hairline) solid var(--line);
-    border-radius: var(--radius-lg);
-    background: var(--bg);
   }
 </style>
