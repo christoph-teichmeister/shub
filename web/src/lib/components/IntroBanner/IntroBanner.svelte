@@ -11,7 +11,7 @@
 </script>
 
 {#if !gone}
-  <div class="intro" role="note">
+  <div class="intro" role="note" aria-label="About this view">
     <span>{@render children()}</span>
     <IconButton
       label="Dismiss"
@@ -33,10 +33,10 @@
     justify-content: space-between;
     gap: var(--space-3);
     padding: var(--space-1-5) var(--space-3);
-    border: var(--hairline) solid var(--line);
+    border: var(--hairline) solid var(--intro-line, var(--line));
     border-radius: var(--radius-md);
-    background: var(--panel);
-    color: var(--fg-2);
+    background: var(--intro-bg, var(--panel));
+    color: var(--intro-fg, var(--fg-2));
     font-size: var(--text-sm);
   }
 </style>

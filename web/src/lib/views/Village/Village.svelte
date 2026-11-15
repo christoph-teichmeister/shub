@@ -1219,6 +1219,11 @@
     padding: var(--space-4);
     background: var(--village-bg);
     color: var(--village-parchment);
+
+    --intro-bg: transparent;
+    --intro-fg: var(--village-parchment);
+    --intro-line: var(--village-parchment-line);
+
     font-family: var(--font-pixel);
   }
 

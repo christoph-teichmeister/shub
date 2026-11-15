@@ -304,7 +304,7 @@
   <a
     class="rail-item"
     href={href('overview')}
-    title="Overview: all running sessions as live terminals, up to 6 (Alt O)"
+    title="Overview: all running sessions as live terminals, normally up to 6 (Alt O)"
   >
     <Icon name="grid" />
     <span class="visually-hidden">Session overview</span>

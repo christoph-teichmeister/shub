@@ -275,7 +275,9 @@
       options={[{ value: '', label: 'All projects' }, ...app.projects.map((p) => ({ value: p.id, label: p.name }))]}
     />
   </header>
-  <IntroBanner id="overview">All running sessions as live terminals, up to {MAX_LIVE}.</IntroBanner>
+  <IntroBanner id="overview"
+    >All running sessions as live terminals, normally up to {MAX_LIVE}; sessions that need you always get one.</IntroBanner
+  >
   <div class="live" bind:clientWidth={w} bind:clientHeight={h}>
     {#if live.length}
       <SplitView
@@ -361,7 +363,8 @@
     </button>
     {#if capped.over.length}
       <p class="cap">
-        Max {MAX_LIVE} live terminals so cells stay readable. Parked sessions keep running; Show brings one back.
+        Normally up to {MAX_LIVE} live terminals so cells stay readable; sessions that need you always get one. Parked sessions
+        keep running; Show brings one back.
       </p>
     {/if}
   {/if}

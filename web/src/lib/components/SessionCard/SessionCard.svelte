@@ -41,9 +41,7 @@
   const line = $derived(
     session.pendingPermission
       ? `${session.pendingPermission.tool}: ${session.pendingPermission.summary}`
-      : session.waitingFor
-        ? `Waiting for ${session.waitingFor}`
-        : (note ?? agent ?? ''),
+      : (note ?? (session.waitingFor ? `Waiting for ${session.waitingFor}` : (agent ?? ''))),
   );
 </script>
 

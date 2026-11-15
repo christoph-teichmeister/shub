@@ -55,7 +55,7 @@
   const KEEP = ['active', 'locked', 'dirty', 'not-pushed'];
   const STATE_HINT: Record<string, string> = {
     active: 'A session runs here.',
-    locked: 'Git locked it; unlock it first.',
+    locked: 'Git locked it; run git worktree unlock to free it.',
     dirty: 'Has changes that are not committed.',
     'not-pushed': 'Has commits that exist only here.',
     merged: 'Its work is in the main branch; safe to close.',

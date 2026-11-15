@@ -2601,7 +2601,7 @@ test('closing an idle Claude session is at once, with an undo toast that resumes
 test('the overview and village explain themselves once, and the dismissal sticks', async ({ page }) => {
   const { errors } = await mockApi(page);
   await page.goto('/#/overview');
-  const intro = page.getByRole('note').filter({ hasText: 'All running sessions as live terminals, up to 6' });
+  const intro = page.getByRole('note').filter({ hasText: 'All running sessions as live terminals, normally up to 6' });
   await expect(intro).toBeVisible();
   await intro.getByRole('button', { name: 'Dismiss' }).click();
   await page.reload();

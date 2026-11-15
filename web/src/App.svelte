@@ -27,10 +27,21 @@
   const route = $derived(router.route);
   const signIn = $derived(route.name === 'pair' || route.name === 'login' || app.authRequired);
 
-  // The village and the overview need room: on a narrow window they fall back to the phone view, say why once.
+  // The village and the overview need room: on a narrow window they fall back to the phone view, say why once per view
+  // (not while the first-run or sign-in screens win over the fallback).
+  const explained = new Set<string>();
   $effect(() => {
-    if (ui.phone && (route.name === 'village' || route.name === 'overview'))
+    if (
+      ui.phone &&
+      (route.name === 'village' || route.name === 'overview') &&
+      !signIn &&
+      app.ready &&
+      app.projects.length > 0 &&
+      !explained.has(route.name)
+    ) {
+      explained.add(route.name);
       untrack(() => toast(`The ${route.name} needs a wider window, so this is the phone view.`));
+    }
   });
 
   onMount(() => {
