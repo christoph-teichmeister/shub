@@ -2342,3 +2342,26 @@ test('clicking a Markdown draft path in the terminal opens it in the notes panel
   await expect(page.getByRole('textbox', { name: 'Markdown draft' })).toHaveValue('# Ticket 1968\n');
   expect(errors).toEqual([]);
 });
+
+test('the overview and shortcuts have buttons for what the keys do', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  await page.goto('/#/overview');
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
+  await page.getByRole('button', { name: 'New session' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Next needing you' }).click();
+  await page.getByRole('button', { name: 'Shortcuts (Alt ?)' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Shortcuts' });
+  await expect(dialog.getByRole('heading', { name: 'Village' })).toBeVisible();
+  await expect(dialog.getByText('On macOS, Alt is the Option key.')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('the village desk is a button', async ({ page }) => {
+  const { errors } = await mockApi(page);
+  await page.goto('/#/village');
+  await expect(page.getByRole('region', { name: 'Crab village map' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /desk/i })).toBeVisible();
+  expect(errors).toEqual([]);
+});

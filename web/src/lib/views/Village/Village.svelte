@@ -345,6 +345,11 @@
     me.moving = false;
     [me.x, me.y] = [world.you.x, world.you.y];
   }
+  /** A click on the desk: sit down, or once seated open the first crab in line. */
+  function deskClick() {
+    if (!seated) sit();
+    else if (queue[0]) void pin(queue[0]);
+  }
   function interact() {
     if (target?.kind === 'crab') void pin(target.id);
     else if (target?.kind === 'desk') sit();
@@ -1040,12 +1045,20 @@
         <span class="plate" style:left="{world.hall.x}px" style:top="{world.hall.y}px" style:z-index={world.hall.y}
           >Town hall · global Claude</span
         >
-        <div class="obj you" style:left="{world.you.x}px" style:top="{world.you.y}px" style:z-index={world.you.y}>
+        <button
+          type="button"
+          class="obj you"
+          style:left="{world.you.x}px"
+          style:top="{world.you.y}px"
+          style:z-index={world.you.y}
+          title={seated ? 'Open the first crab in line' : 'Sit at your desk'}
+          onclick={() => (deskClick(), viewport?.focus({ preventScroll: true }))}
+        >
           <img
             src="/village/you-{!seated ? 'desk' : still ? 0 : Math.floor(t / 3) % 2}.svg"
             alt={seated ? 'You, at your desk' : 'Your desk'}
           />
-        </div>
+        </button>
         {#if !seated}
           <img
             class="obj me"
@@ -1058,12 +1071,14 @@
           />
         {/if}
         {#if target}
-          <span
+          <button
+            type="button"
             class="prompt"
-            aria-hidden="true"
             style:left="{me.x}px"
             style:top="{me.y - 78}px"
-            style:z-index={Math.round(me.y) + 2}><kbd>E</kbd> {target.kind === 'crab' ? 'talk' : 'sit'}</span
+            style:z-index={Math.round(me.y) + 2}
+            onclick={() => (interact(), viewport?.focus({ preventScroll: true }))}
+            ><kbd>E</kbd> {target.kind === 'crab' ? 'talk' : 'sit'}</button
           >
         {/if}
         <span
@@ -1154,12 +1169,13 @@
     <span><b class="your-turn">...</b> your turn</span>
     <span><b class="waiting">zZ</b> waiting · <b class="paused-tag">zZ</b> paused</span>
     <span id="village-keys"
-      >Click a crab to pin its card, drag to pan, wheel to zoom. Map keys: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd
-        >D</kbd
-      >
+      >Click a crab to pin its card and use the card buttons, drag to pan, wheel to zoom. Click your desk to sit and
+      work the line, <kbd>Alt W</kbd> closes the chat, <kbd>Alt V</kbd> goes back. Optional keys: <kbd>W</kbd><kbd
+        >A</kbd
+      ><kbd>S</kbd><kbd>D</kbd>
       walk · <kbd>E</kbd> talk to a crab, sit at your desk · at your desk: <kbd>↑</kbd><kbd>↓</kbd> queue ·
       <kbd>Enter</kbd> open · <kbd>Y</kbd><kbd>N</kbd> allow, deny · <kbd>R</kbd> run · <kbd>Esc</kbd> close ·
-      <kbd>P</kbd> frame meter · <kbd>Alt W</kbd> close the chat · <kbd>Alt V</kbd> back</span
+      <kbd>P</kbd> frame meter</span
     >
   </footer>
   {#if building}
@@ -1563,6 +1579,10 @@
   }
 
   .you {
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1585,7 +1605,7 @@
     color: var(--village-parchment);
     font: var(--weight-semibold) var(--text-md) / 1 var(--font-pixel);
     white-space: nowrap;
-    pointer-events: none;
+    cursor: pointer;
   }
 
   .meter {

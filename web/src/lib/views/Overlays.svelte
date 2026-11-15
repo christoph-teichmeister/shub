@@ -10,7 +10,7 @@
   import { go } from '../stores/router.svelte.ts';
   import { app, loadApprovals, loadProjects, sessionHref, startSession, ui } from '../stores/state.svelte.ts';
   import { toast, toastError } from '../stores/toasts.svelte.ts';
-  import { SHORTCUTS } from './shortcuts.ts';
+  import { SHORTCUT_GROUPS } from './shortcuts.ts';
 
   // ---------- search ----------
   let query = $state('');
@@ -308,14 +308,18 @@
   description="Almost all on Alt (the village keys work on its map), so they never clash with Claude Code or the shell (Ctrl K, Ctrl J, Ctrl C stay theirs)."
   onclose={() => (ui.shortcuts = false)}
 >
-  <dl class="shortcuts">
-    {#each SHORTCUTS as [what, keys] (what)}
-      <dt>{what}</dt>
-      <dd>
-        {#each keys as k (k)}<Kbd keys={k} />{/each}
-      </dd>
-    {/each}
-  </dl>
+  {#each SHORTCUT_GROUPS as group (group.title)}
+    <h3 class="keys-group">{group.title}</h3>
+    <dl class="shortcuts">
+      {#each group.items as [what, keys] (what)}
+        <dt>{what}</dt>
+        <dd>
+          {#each keys as k (k)}<Kbd keys={k} />{/each}
+        </dd>
+      {/each}
+    </dl>
+  {/each}
+  <p class="keys-note">On macOS, Alt is the Option key.</p>
 </Dialog>
 
 <style>
@@ -496,6 +500,21 @@
     gap: var(--space-3) var(--space-6);
     align-items: center;
     margin: 0;
+  }
+
+  .keys-group {
+    margin: var(--space-4) 0 var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--muted);
+  }
+
+  .keys-group:first-child {
+    margin-top: 0;
+  }
+
+  .keys-note {
+    margin: var(--space-4) 0 0;
+    color: var(--muted);
   }
 
   .shortcuts dd {
