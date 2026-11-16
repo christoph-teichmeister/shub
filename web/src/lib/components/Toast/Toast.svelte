@@ -111,6 +111,7 @@
   .message {
     flex: 1 1 auto;
     min-width: 0;
+    white-space: pre-line;
   }
 
   .details {

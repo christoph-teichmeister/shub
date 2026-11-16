@@ -170,7 +170,7 @@ export async function closeSession(id: string): Promise<void> {
     });
     if (back) location.hash = sessionHref(back);
   };
-  toast(`Closed ${name}. You can resume the conversation.`, 'neutral', 10000, undefined, {
+  toast(`Closed ${name}.\nYou can resume the conversation.`, 'neutral', 10000, undefined, {
     label: 'Resume',
     run: resume,
   });
