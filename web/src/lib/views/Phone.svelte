@@ -766,6 +766,7 @@
   }
 
   .permission {
+    flex: none;
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
@@ -849,6 +850,7 @@
   }
 
   .quick {
+    flex: none;
     display: flex;
     gap: var(--space-1-5);
     padding: var(--space-2) var(--space-3);
@@ -877,6 +879,7 @@
   }
 
   .input {
+    flex: none;
     display: flex;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-3) calc(var(--space-3) + env(safe-area-inset-bottom));
@@ -916,6 +919,7 @@
   }
 
   .chat-tools {
+    flex: none;
     display: flex;
     gap: var(--space-2);
     padding: var(--space-1) var(--space-3);
