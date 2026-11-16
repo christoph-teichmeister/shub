@@ -170,7 +170,7 @@ export async function closeSession(id: string): Promise<void> {
     });
     if (back) location.hash = sessionHref(back);
   };
-  toast(`Closed ${name}. You can resume the conversation.`, 'neutral', 10000, undefined, {
+  toast(`Closed ${name}.\nYou can resume the conversation.`, 'neutral', 10000, undefined, {
     label: 'Resume',
     run: resume,
   });
@@ -302,7 +302,7 @@ export function reloadForUpdate(version: string): void {
   const waiting = pendingVersion;
   pendingVersion = version; // a newer one while waiting replaces it; the pending check reads this
   if (waiting) return;
-  toast(`shub ${version} is downloaded. It applies when you switch away from the app.`, 'neutral', 15_000);
+  toast(`shub ${version} is downloaded.\nIt applies when you switch away from the app.`, 'neutral', 15_000);
   const tryNow = () => {
     if (!canReloadNow(idleState())) return;
     window.removeEventListener('blur', tryNow);
@@ -328,7 +328,7 @@ export async function loadUpdate(): Promise<void> {
   }
   const latest = app.update?.mode === 'ask' ? app.update.latest : undefined;
   if (latest && latest !== announced)
-    toast(`shub ${latest} is available. Install it in Settings > Updates.`, 'needs-you', 15_000);
+    toast(`shub ${latest} is available.\nInstall it in Settings > Updates.`, 'needs-you', 15_000);
   announced = latest ?? announced;
 }
 
