@@ -8,6 +8,8 @@ import { closeSync, openSync, readSync, statSync, watch, type FSWatcher } from '
 import type { ChatDelta, ChatMessage } from '../../shared/api.ts';
 
 const TAIL = 512 * 1024;
+/** How far back a cut line is searched for its start: a prompt with a picture is one line of several MB (base64). */
+const LINE_MAX = 32 * 1024 * 1024;
 const LIMIT = 80;
 const SUMMARY_MAX = 120;
 const RESULT_MAX = 2000;
@@ -87,19 +89,40 @@ export function parseChat(jsonl: string, limit = LIMIT, patches = false): ChatMe
 export function chatSince(file: string, after?: number): ChatDelta {
   const size = statSync(file).size;
   const full = after === undefined || after > size || size - after > TAIL;
-  const start = full ? Math.max(0, size - TAIL) : after;
-  const buf = Buffer.alloc(size - start);
   const fd = openSync(file, 'r');
   try {
+    let start = full ? Math.max(0, size - TAIL) : after;
+    // The tail may start inside a line; a huge one (a prompt with a picture) would be skipped whole, so go back to its start.
+    const aligned = full && start > 0 ? lineStart(fd, start) : -1;
+    if (aligned >= 0) start = aligned;
+    const buf = Buffer.alloc(size - start);
     readSync(fd, buf, 0, buf.length, start);
+    // Without an aligned start (line longer than LINE_MAX): skip to the first newline. An unfinished last line waits.
+    const from = full && start > 0 && aligned < 0 ? buf.indexOf(10) + 1 : 0;
+    const to = buf.lastIndexOf(10) + 1;
+    const text = to > from ? buf.toString('utf8', from, to) : '';
+    return {
+      messages: parseChat(text, full ? LIMIT : Infinity, !full),
+      offset: start + Math.max(from, to),
+      reset: full,
+    };
   } finally {
     closeSync(fd);
   }
-  // A tail starts mid-line: skip to the first newline. An unfinished last line waits for the next call.
-  const from = full && start > 0 ? buf.indexOf(10) + 1 : 0;
-  const to = buf.lastIndexOf(10) + 1;
-  const text = to > from ? buf.toString('utf8', from, to) : '';
-  return { messages: parseChat(text, full ? LIMIT : Infinity, !full), offset: start + Math.max(from, to), reset: full };
+}
+
+/** The offset where the line containing byte `pos` starts, or -1 when it is longer than LINE_MAX. */
+function lineStart(fd: number, pos: number): number {
+  const CHUNK = 256 * 1024;
+  for (let end = pos; end > 0 && pos - end < LINE_MAX;) {
+    const begin = Math.max(0, end - CHUNK);
+    const buf = Buffer.alloc(end - begin);
+    readSync(fd, buf, 0, buf.length, begin);
+    const nl = buf.lastIndexOf(10);
+    if (nl >= 0) return begin + nl + 1;
+    end = begin;
+  }
+  return pos > 0 && pos < LINE_MAX ? 0 : -1;
 }
 
 const following = new Map<string, { idle: NodeJS.Timeout; stop: () => void }>();

@@ -124,3 +124,16 @@ test('chatSince reads only new complete lines, patches earlier tool calls and fa
     ['u3:0'],
   );
 });
+
+test('chatSince keeps a prompt whose line is longer than the tail (a picture is inline base64)', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'chat-')), 't.jsonl');
+  const prompt = user('u1', [
+    { type: 'text', text: '[Image #1] look' },
+    { type: 'image', source: { type: 'base64', data: 'A'.repeat(1_200_000) } },
+  ]);
+  writeFileSync(file, jsonl(prompt, assistant('a1', { type: 'text', text: 'seen' })));
+  assert.deepEqual(
+    chatSince(file).messages.map((m) => m.id),
+    ['u1:0', 'a1:0'],
+  );
+});
