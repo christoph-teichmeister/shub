@@ -14,6 +14,13 @@ const RESULT_MAX = 2000;
 /** Wrapper tags Claude Code puts around commands and injected context; any other prompt starting with "<" is real. */
 const WRAPPER =
   /^<(command-name|command-message|command-args|local-command-stdout|local-command-stderr|system-reminder)\b/;
+/** A typed slash command (`/skill args`) is stored as wrapper tags; it is what the user said, so it shows as typed. */
+function slashCommand(text: string): string {
+  const name = /<command-name>([^<]+)<\/command-name>/.exec(text)?.[1]?.trim();
+  if (!name || !text.startsWith('<command-')) return '';
+  const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1]?.trim();
+  return args ? `${name} ${args}` : name;
+}
 /** The tool input that says best what a call does, first one present wins. */
 const SUMMARY_FIELDS = ['file_path', 'command', 'pattern', 'path', 'url', 'query', 'skill', 'description'];
 
@@ -55,8 +62,10 @@ export function parseChat(jsonl: string, limit = LIMIT, patches = false): ChatMe
     blocks.forEach((b, i) => {
       const id = `${entry.uuid}:${i}`;
       if (b.type === 'text' && typeof b.text === 'string') {
-        const text = b.text.trim();
-        if (text && !(entry.type === 'user' && WRAPPER.test(text))) out.push({ id, role: entry.type, text });
+        const raw = b.text.trim();
+        const user = entry.type === 'user';
+        const text = user ? slashCommand(raw) || raw : raw;
+        if (text && !(user && WRAPPER.test(text))) out.push({ id, role: entry.type, text });
       } else if (b.type === 'tool_use' && entry.type === 'assistant' && !tools.has(b.id ?? id)) {
         const tool = {
           id: b.id ?? id,

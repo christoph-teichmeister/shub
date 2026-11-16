@@ -51,11 +51,15 @@ test('parseChat survives a cut first line, an orphan result and a repeated tool 
   );
 });
 
-test('parseChat keeps prompts and replies, and drops thinking, subagents, meta and command wrappers', () => {
+test('parseChat keeps prompts and replies, shows slash commands as typed, and drops thinking, subagents, meta and wrappers', () => {
   const out = parseChat(
     jsonl(
       user('u1', 'fix the bug'),
-      user('u2', '<command-name>/clear</command-name>'),
+      user(
+        'u2',
+        '<command-message>refine-ticket</command-message>\n<command-name>/refine-ticket</command-name>\n<command-args>123</command-args>',
+      ),
+      user('u4', '<local-command-stdout>ok</local-command-stdout>'),
       user('u3', [{ type: 'text', text: 'injected' }], { isMeta: true }),
       assistant('a1', { type: 'thinking', thinking: 'hmm' }),
       assistant('a2', { type: 'text', text: '  Done.  ' }),
@@ -65,6 +69,7 @@ test('parseChat keeps prompts and replies, and drops thinking, subagents, meta a
   );
   assert.deepEqual(out, [
     { id: 'u1:0', role: 'user', text: 'fix the bug' },
+    { id: 'u2:0', role: 'user', text: '/refine-ticket 123' },
     { id: 'a2:0', role: 'assistant', text: 'Done.' },
   ]);
 });
