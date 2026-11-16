@@ -526,16 +526,24 @@
   {#snippet footer()}
     {#if app.usage.fiveHour || app.usage.sevenDay}
       <div class="usage">
-        {#each [['5h', app.usage.fiveHour], ['7d', app.usage.sevenDay]] as const as [label, l] (label)}
+        {#each [['5h', app.usage.fiveHour, 5 * 3600], ['7d', app.usage.sevenDay, 7 * 86400]] as const as [label, l, win] (label)}
           {#if l}
+            {@const pace = l.resetsAt
+              ? Math.min(100, Math.max(0, 100 - ((l.resetsAt - Date.now() / 1000) / win) * 100))
+              : 0}
             <span
               class="meter"
               class:warn={l.used >= 70}
               class:danger={l.used >= 90}
-              title={`${label} limit: ${Math.round(l.used)}% used${l.resetsAt ? `, resets ${new Date(l.resetsAt * 1000).toLocaleString()}` : ''}`}
+              title={`${label} limit: ${Math.round(l.used)}% used${l.resetsAt ? `, resets ${new Date(l.resetsAt * 1000).toLocaleString()}, even pace to 100% would be ${Math.round(pace)}%` : ''}`}
             >
               <span class="meter-label">{label}</span>
-              <span class="meter-bar"><span style:width={`${Math.min(100, l.used)}%`}></span></span>
+              <span class="meter-bar"
+                ><span class="pace" style:width={`${pace}%`}></span><span
+                  class="used"
+                  style:width={`${Math.min(100, l.used)}%`}
+                ></span></span
+              >
               <span class="meter-pct">{Math.round(l.used)}%</span>
             </span>
           {/if}
@@ -815,19 +823,28 @@
     border-radius: var(--radius-pill);
     background: var(--raised);
     overflow: hidden;
+    position: relative;
   }
 
   .meter-bar > span {
-    display: block;
-    height: 100%;
+    position: absolute;
+    inset: 0 auto 0 0;
+  }
+
+  /* Where usage would stand if the limit were used evenly up to its reset: muted green behind the real bar. */
+  .meter-bar > .pace {
+    background: color-mix(in srgb, var(--status-your-turn) 30%, transparent);
+  }
+
+  .meter-bar > .used {
     background: var(--status-your-turn);
   }
 
-  .meter.warn .meter-bar > span {
+  .meter.warn .meter-bar > .used {
     background: var(--yellow);
   }
 
-  .meter.danger .meter-bar > span {
+  .meter.danger .meter-bar > .used {
     background: var(--pink);
   }
 
