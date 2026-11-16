@@ -225,6 +225,7 @@
   }
 
   .input {
+    flex: none;
     display: flex;
     align-items: flex-end;
     gap: var(--space-2);
