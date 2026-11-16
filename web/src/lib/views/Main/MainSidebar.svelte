@@ -545,6 +545,7 @@
                 ></span></span
               >
               <span class="meter-pct">{Math.round(l.used)}%</span>
+              {#if l.resetsAt}<span class="meter-pace">{Math.round(pace)}%</span>{/if}
             </span>
           {/if}
         {/each}
@@ -834,6 +835,10 @@
   /* Where usage would stand if the limit were used evenly up to its reset: muted green behind the real bar. */
   .meter-bar > .pace {
     background: color-mix(in srgb, var(--status-your-turn) 30%, transparent);
+  }
+
+  .meter-pace {
+    color: color-mix(in srgb, var(--status-your-turn) 70%, var(--muted));
   }
 
   .meter-bar > .used {
