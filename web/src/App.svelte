@@ -26,14 +26,22 @@
 
   const route = $derived(router.route);
   const signIn = $derived(route.name === 'pair' || route.name === 'login' || app.authRequired);
+  const showGame = $derived(
+    route.name === 'game' && !ui.phone && !signIn && !(app.ready && !app.unreachable && app.projects.length === 0),
+  );
+  // Once opened, the game stays mounted (hidden) for good: the iframe is never rebuilt, so it never resets.
+  let gameOpened = $state(false);
+  $effect(() => {
+    if (showGame) gameOpened = true;
+  });
 
-  // The village and the overview need room: on a narrow window they fall back to the phone view, say why once per view
+  // The game and the overview need room: on a narrow window they fall back to the phone view, say why once per view
   // (not while the first-run or sign-in screens win over the fallback).
   const explained = new Set<string>();
   $effect(() => {
     if (
       ui.phone &&
-      (route.name === 'village' || route.name === 'overview') &&
+      (route.name === 'game' || route.name === 'overview') &&
       !signIn &&
       app.ready &&
       app.projects.length > 0 &&
@@ -126,13 +134,8 @@
   {@render settings()}
 {:else if route.name !== 'settings' && app.ready && !app.unreachable && app.projects.length === 0}
   {@render lazy(import('./lib/views/FirstRun.svelte'), { firstRun: true })}
-{:else if route.name === 'village' && !ui.phone}
-  {#await import('./lib/views/Village/Village.svelte') then { default: Village }}<Village />{:catch}
-    <!-- Its chunk did not load (offline, or an update replaced it): say so instead of a blank page. -->
-    <EmptyState title="The village did not load" body="The connection dropped or shub was updated meanwhile.">
-      <Button variant="primary" onclick={() => location.reload()}>Reload</Button>
-    </EmptyState>
-  {/await}
+{:else if showGame}
+  <!-- The game itself is mounted below, outside this chain, so leaving the route does not rebuild it. -->
 {:else if route.name === 'overview' && !ui.phone}
   {@render lazy(import('./lib/views/Overview/Overview.svelte'))}
 {:else if ui.phone}
@@ -141,6 +144,7 @@
   <!-- One Main for both, so switching between settings and a project keeps the sidebar mounted. -->
   <Main children={route.name === 'settings' ? settings : undefined} />
 {/if}
+{#if gameOpened}{#await import('./lib/views/Game.svelte') then { default: Game }}<Game active={showGame} />{/await}{/if}
 {#if !signIn && route.name !== 'styleguide'}<Overlays />{/if}
 <Toast />
 <UpdateCurtain version={app.reloadingTo} />

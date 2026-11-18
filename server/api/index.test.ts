@@ -172,6 +172,7 @@ test('health is public and reports the version', async () => {
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, version: '2026.10.0', apiVersion: 1, machine: hostname() });
   assert.match(res.headers.get('content-security-policy')!, /frame-ancestors 'none'/);
+  assert.match(res.headers.get('content-security-policy')!, /frame-src https:\/\/aidle-digital\.web\.app/);
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
 });
 

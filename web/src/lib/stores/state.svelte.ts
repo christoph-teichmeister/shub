@@ -69,7 +69,7 @@ export const app = $state({
   servicesVersion: {} as Record<string, number>,
   /** Bumped per session on session.messages so the chat view refetches. */
   messagesVersion: {} as Record<string, number>,
-  /** When this client saw a session's turn end (big: one of its worktrees got merged), for the village's confetti. */
+  /** When this client saw a session's turn end (big: one of its worktrees got merged). */
   cheers: {} as Record<string, { at: number; big: boolean }>,
   /** Sessions on their way out: tab and sidebar row fade and say "Closing" until they are dropped. */
   closing: {} as Record<string, boolean>,
@@ -185,7 +185,7 @@ export const sendKeys = (id: string, keys: string[]): Promise<boolean> => (
   )
 );
 
-/** Sends /compact; the sidebar menu and the village offer it from COMPACT_AT, on your turn. */
+/** Sends /compact; the sidebar menu offers it from COMPACT_AT, on your turn. */
 export const compact = (s: Session) => void sendKeys(s.id, ['/compact', 'Enter']);
 
 export const needsYouCount = (sessions: Session[] = app.sessions): number =>
