@@ -2,6 +2,7 @@
   import type {
     ButtonAsk,
     ButtonDef,
+    CloneOptions,
     MainCheckout,
     PermissionMode,
     ProjectIcon as ProjectIconDef,
@@ -56,6 +57,13 @@
   ];
 
   let name = $state('');
+  /** New project only: where it comes from. A git source is cloned into <projects folder>/<cfolder>/<name>. */
+  let source = $state<'folder' | 'github' | 'gitlab'>('folder');
+  let repo = $state('');
+  let cfolder = $state('');
+  let nameEdited = $state(false);
+  let clone = $state<CloneOptions>({ root: '', folders: [], repos: [] });
+  const cloning = $derived(isNew && source !== 'folder');
   let group = $state('');
   let newGroup = $state(false);
   let path = $state('');
@@ -101,6 +109,29 @@
       mainCheckout = existing.mainCheckout ? { ...existing.mainCheckout } : null;
       loadedFor = id;
     }
+  });
+
+  $effect(() => {
+    if (!isNew) return;
+    const src = source;
+    void api<CloneOptions>('cloneOptions', { query: src === 'folder' ? {} : { source: src } }).then(
+      (o) => {
+        if (src !== source) return;
+        clone = o;
+        if (!o.folders.includes(cfolder)) cfolder = o.folders[0] ?? '';
+      },
+      () => {},
+    );
+  });
+  // The name follows the repository until it is typed over.
+  $effect(() => {
+    const last = repo
+      .trim()
+      .replace(/\/+$/, '')
+      .replace(/\.git$/, '')
+      .split(/[/:]/)
+      .pop();
+    if (cloning && last && !nameEdited) name = last;
   });
 
   $effect(() => {
@@ -272,6 +303,13 @@
   async function create(e: SubmitEvent) {
     e.preventDefault();
     saving = true;
+    if (cloning) {
+      const done = await api<{ path: string }>('projectClone', {
+        body: { url: repo.trim(), folder: cfolder, name: name.trim() },
+      }).catch(toastError);
+      if (!done) return void (saving = false);
+      path = pathDraft = done.path;
+    }
     const body = bodyOf();
     const res = await api<{ id?: string; approval?: unknown }>('projectCreate', { body }).catch(toastError);
     saving = false;
@@ -307,8 +345,49 @@
     {#if !isNew && !existing && app.ready}
       <p class="muted">No project with the id {id}.</p>
     {:else}
+      {#if isNew}
+        <Section
+          title="Source"
+          description="Start from a folder on this machine, or clone a repository's default branch."
+        >
+          <div class="row">
+            {#each [['folder', 'Existing folder'], ['github', 'GitHub'], ['gitlab', 'GitLab']] as [id, label] (id)}
+              <ChoiceButton pressed={source === id} onclick={() => (source = id as typeof source)}>{label}</ChoiceButton
+              >
+            {/each}
+          </div>
+          {#if cloning}
+            <TextField
+              label="Repository"
+              bind:value={repo}
+              mono
+              required
+              pattern="(https://|ssh://|git@)\S+"
+              title="A clone address: https://, ssh:// or git@"
+              list="clone-repos"
+              autocomplete="off"
+              hint={clone.repos.length
+                ? 'Pick one of your repositories or paste any clone address'
+                : 'Paste a clone address'}
+            />
+            <datalist id="clone-repos">
+              {#each clone.repos as r (r.url)}<option value={r.url}>{r.name}</option>{/each}
+            </datalist>
+            {#if clone.folders.length}
+              <span class="muted small">Clone into {clone.root}/</span>
+              <div class="row">
+                {#each clone.folders as f (f)}
+                  <ChoiceButton pressed={cfolder === f} onclick={() => (cfolder = f)}>{f}</ChoiceButton>
+                {/each}
+              </div>
+            {:else}
+              <span class="muted small">Set the projects folder in Settings, Sessions first.</span>
+            {/if}
+          {/if}
+        </Section>
+      {/if}
       <div class="grid">
-        <TextField label="Name" bind:value={name} required autocomplete="off" />
+        <TextField label="Name" bind:value={name} required autocomplete="off" oninput={() => (nameEdited = true)} />
         <div class="group-field">
           <SelectField
             label="Group"
@@ -330,19 +409,21 @@
             />
           {/if}
         </div>
-        <div class="span folder">
-          <div class="grow">
-            <TextField
-              label="Folder (sessions start here)"
-              bind:value={pathDraft}
-              onchange={() => (path = pathDraft)}
-              required
-              mono
-              autocomplete="off"
-            />
+        {#if !cloning}
+          <div class="span folder">
+            <div class="grow">
+              <TextField
+                label="Folder (sessions start here)"
+                bind:value={pathDraft}
+                onchange={() => (path = pathDraft)}
+                required
+                mono
+                autocomplete="off"
+              />
+            </div>
+            <Button icon="folder" onclick={() => browse()}>Browse…</Button>
           </div>
-          <Button icon="folder" onclick={() => browse()}>Browse…</Button>
-        </div>
+        {/if}
       </div>
 
       <Section title="Icon">
