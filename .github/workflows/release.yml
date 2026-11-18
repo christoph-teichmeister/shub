@@ -50,6 +50,13 @@ jobs:
           - target: darwin-x64
             os: macos-15-intel
     runs-on: ${{ matrix.os }}
+    # The two macOS builds are OPTIONAL. GitHub's macOS runners are scarce: a job can wait for a runner until it is
+    # given up ("not acquired by Runner"), which used to fail the whole release even though every Linux archive was
+    # fine (2026-11-18, beta.69). With continue-on-error a failed or timed-out macOS build no longer blocks publish:
+    # the release ships without that archive, and the updater on that Mac reports "no build for this platform"
+    # (launcher/src/update.ts) until the next release has one. Linux builds stay required.
+    continue-on-error: ${{ startsWith(matrix.target, 'darwin') }}
+    timeout-minutes: 20
     env:
       VERSION: ${{ needs.version.outputs.version }}
       ARCHIVE: release/shub-${{ needs.version.outputs.version }}-${{ matrix.target }}.tar.gz

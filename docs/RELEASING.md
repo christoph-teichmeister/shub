@@ -13,7 +13,7 @@
    - beta (`develop`): the next stable version plus `-beta.N`, N counting up per merge: `2026.10.2-beta.1`,
      `2026.10.2-beta.2`, ... After `2026.10.2` ships, betas continue with `2026.10.3-beta.1`.
    - A commit that already has its tag (a re-run) gets no new release.
-3. **build**, one job per platform on native runners (`linux-x64`, `linux-arm64`, `darwin-arm64`, `darwin-x64`):
+3. **build**, one job per platform on native runners (`linux-x64`, `linux-arm64`, `darwin-arm64`, `darwin-x64`; the two macOS builds are optional: if GitHub has no free macOS runner or the build fails, the release ships without that archive and the Mac gets the next release):
    `npm ci`, `npm run build`, `release.ts pack` writes `shub-<version>-<platform>.tar.gz` with `server/`, `shared/`,
    `cli/`, `web/dist/`, `package.json` (with the computed version), `release-keys.pem` and the production
    `node_modules` (node-pty built for that platform). The dry run (below) then installs and starts that archive once.
