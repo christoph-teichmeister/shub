@@ -88,6 +88,7 @@ function normalize(raw: Partial<Config>): Config {
   if (config.trustSessions !== true) delete config.trustSessions;
   if (!/^https:\/\/\S+$/.test(config.publicUrl ?? '')) delete config.publicUrl;
   if (typeof config.syncFolder !== 'string' || !config.syncFolder.trim()) delete config.syncFolder;
+  if (typeof config.projectsRoot !== 'string' || !config.projectsRoot.trim()) delete config.projectsRoot;
   delete (config as { terminal?: unknown }).terminal;
   delete config.problem;
   return config;
@@ -101,6 +102,7 @@ export const LOCAL_KEYS: (keyof Config)[] = [
   'publicUrl',
   'sync',
   'syncFolder',
+  'projectsRoot',
 ];
 
 /** The address the phone reaches shub at: SHUB_PUBLIC_URL, else the one the phone setup stored. No trailing slash. */

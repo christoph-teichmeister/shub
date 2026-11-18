@@ -10,6 +10,7 @@ import {
   type ButtonDef,
   type ChildWorktree,
   type Config,
+  type CloneRequest,
   type CreateProjectRequest,
   type MainCheckout,
   type Project,
@@ -24,6 +25,7 @@ import type { ShubModule } from '../module.ts';
 import { HttpError, requireRight, requireUser, type Request, type Router } from '../api/router.ts';
 import { gate } from '../permissions/gate.ts';
 import type { PermissionAction, Services } from '../services.ts';
+import { cloneOptions, cloneRepo } from './clone.ts';
 import { importCandidates } from './import.ts';
 import { updateMainCheckout } from './main-checkout.ts';
 import {
@@ -347,6 +349,16 @@ function projectRoutes(services: Services, router: Router): void {
     return { path, parent: path === '/' ? null : dirname(path), folders };
   });
 
+  router.add(ROUTES.cloneOptions, async (req) => {
+    requireUser(req.caller);
+    return cloneOptions(config.get().projectsRoot, req.query.get('source'));
+  });
+
+  router.add(ROUTES.projectClone, async (req) => {
+    requireUser(req.caller);
+    return { path: await cloneRepo(config.get().projectsRoot, await req.json<CloneRequest>()) };
+  });
+
   router.add(ROUTES.importCandidates, (req) => {
     requireUser(req.caller);
     const known = new Set(config.get().projects.map((p) => p.path));
@@ -397,6 +409,7 @@ function settingsRoutes(services: Services, router: Router): void {
             | 'activeGroup'
             | 'sync'
             | 'syncFolder'
+            | 'projectsRoot'
             | 'trustSessions'
           > & { terminal: Partial<TerminalSettings> }
         >
@@ -416,6 +429,12 @@ function settingsRoutes(services: Services, router: Router): void {
       const path = body.syncFolder.trim() && expandHome(body.syncFolder.trim(), homedir());
       if (path && (!isAbsolute(path) || !statSync(path, { throwIfNoEntry: false })?.isDirectory()))
         bad('syncFolder must be an existing folder (absolute path or ~/...)');
+    }
+    if (body.projectsRoot !== undefined) {
+      if (typeof body.projectsRoot !== 'string') bad('projectsRoot must be a string');
+      const path = body.projectsRoot.trim() && expandHome(body.projectsRoot.trim(), homedir());
+      if (path && (!isAbsolute(path) || !statSync(path, { throwIfNoEntry: false })?.isDirectory()))
+        bad('projectsRoot must be an existing folder (absolute path or ~/...)');
     }
     if (body.activeGroup !== undefined && typeof body.activeGroup !== 'boolean')
       bad('activeGroup must be true or false');
@@ -446,6 +465,7 @@ function settingsRoutes(services: Services, router: Router): void {
       if (body.trustSessions !== undefined) c.trustSessions = body.trustSessions;
       if (body.sync !== undefined) c.sync = { ...c.sync, ...body.sync };
       if (body.syncFolder !== undefined) c.syncFolder = body.syncFolder.trim() || undefined;
+      if (body.projectsRoot !== undefined) c.projectsRoot = body.projectsRoot.trim() || undefined;
       // Terminal settings belong to the active theme; null resets a field to its default.
       if (body.terminal !== undefined) setThemeTerminal(c, body.terminal);
     }, req.caller.id);

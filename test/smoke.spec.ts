@@ -1624,6 +1624,7 @@ test('the crab village draws every session as a crab, queues the ones that need 
     ...mocks,
     'POST /api/sessions': { status: 200, json: born },
     'POST /api/projects': arcade,
+    '/api/projects/clone': { root: '', folders: [], repos: [] },
     '/api/projects/import': [
       {
         path: '/home/chris/PycharmProjects/private/listo-api',

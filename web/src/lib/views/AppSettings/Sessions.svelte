@@ -7,6 +7,7 @@
   import ChoiceButton from '../../components/ChoiceButton/ChoiceButton.svelte';
   import Dialog from '../../components/Dialog/Dialog.svelte';
   import Section from '../../components/Section/Section.svelte';
+  import TextField from '../../components/TextField/TextField.svelte';
   import { api } from '../../stores/api.ts';
   import { PERMISSION_MODES } from '../../permissionModes.ts';
   import { pushEnabled, pushSupported, subscribePush } from '../../stores/push.ts';
@@ -17,6 +18,16 @@
   let { onpush }: { onpush: () => void } = $props();
 
   const MODES = PERMISSION_MODES;
+
+  let root = $state(app.config?.projectsRoot ?? '');
+  let savingRoot = $state(false);
+  async function saveRoot() {
+    savingRoot = true;
+    const config = await api<Config>('settings', { body: { projectsRoot: root.trim() } })
+      .catch(toastError)
+      .finally(() => (savingRoot = false));
+    if (config) app.config = config;
+  }
 
   let push = $state(false);
   onMount(() => void pushEnabled().then((on) => (push = on)));
@@ -97,6 +108,26 @@
           </span>
         </ChoiceButton>
       {/each}
+    </div>
+  </Section>
+</div>
+<div class="card">
+  <Section
+    title="Projects folder"
+    description="New projects cloned from GitHub or GitLab go into a subfolder of this folder (e.g. private or work). Stays on this machine."
+  >
+    <div class="root">
+      <div class="grow">
+        <TextField
+          label="Folder on this machine"
+          hint="An existing folder. Empty: ~/PycharmProjects when it exists."
+          mono
+          bind:value={root}
+          autocomplete="off"
+          placeholder="~/PycharmProjects"
+        />
+      </div>
+      <Button onclick={saveRoot} disabled={savingRoot || root.trim() === (app.config?.projectsRoot ?? '')}>Save</Button>
     </div>
   </Section>
 </div>
@@ -186,6 +217,12 @@
 {/snippet}
 
 <style>
+  .root {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-3);
+  }
+
   .card {
     padding: var(--space-4) var(--space-5);
     border: var(--hairline) solid var(--line);
