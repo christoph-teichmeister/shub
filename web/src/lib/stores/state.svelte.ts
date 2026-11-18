@@ -17,7 +17,7 @@ import type {
   Usage,
 } from '../../../../shared/api.ts';
 import { API_VERSION, TERMINAL_SETTINGS_DEFAULTS, terminalSettingsError } from '../../../../shared/api.ts';
-import { childStart, newlyMerged } from '../children.ts';
+import { childStart } from '../children.ts';
 import { placeSessions } from '../status.ts';
 import { store, storedJson } from '../stored.ts';
 import { applyTheme, findTheme } from '../tokens/tokens.ts';
@@ -69,8 +69,6 @@ export const app = $state({
   servicesVersion: {} as Record<string, number>,
   /** Bumped per session on session.messages so the chat view refetches. */
   messagesVersion: {} as Record<string, number>,
-  /** When this client saw a session's turn end (big: one of its worktrees got merged). */
-  cheers: {} as Record<string, { at: number; big: boolean }>,
   /** Sessions on their way out: tab and sidebar row fade and say "Closing" until they are dropped. */
   closing: {} as Record<string, boolean>,
   /** Bumped whenever the theme is re-applied (canvas consumers re-read tokens). */
@@ -288,7 +286,6 @@ export const loadSessions = async () => (app.sessions = (await guard(api<Session
 export async function loadChildren(fetch = false): Promise<void> {
   const list = await guard(api<ChildWorktree[]>('worktreeChildren', { query: fetch ? { fetch: '1' } : undefined }));
   if (!list) return;
-  for (const id of newlyMerged(app.children, list)) app.cheers[id] = { at: Date.now(), big: true };
   app.children = list;
 }
 export const loadApprovals = async () => (app.approvals = (await guard(api<Approval[]>('approvals'))) ?? app.approvals);
@@ -365,7 +362,6 @@ function setStatus(sessionId: string, status: SessionStatus, statusSince?: strin
   s.status = status;
   // Older servers send no statusSince: the change happened just now.
   s.statusSince = statusSince ?? new Date().toISOString();
-  if (status === 'your-turn') app.cheers[sessionId] = { at: Date.now(), big: false };
 }
 
 export function handleEvent(e: ServerEvent): void {
