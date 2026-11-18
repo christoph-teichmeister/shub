@@ -2,7 +2,13 @@
   // "+ New project": builds a house (POST /api/projects, the folder made with git init when missing), then its
   // first crab comes out (POST /api/sessions). The village stays open.
   import { untrack } from 'svelte';
-  import type { Approval, CreateProjectRequest, ImportCandidate, ProjectView } from '../../../../../shared/api.ts';
+  import type {
+    Approval,
+    CloneOptions,
+    CreateProjectRequest,
+    ImportCandidate,
+    ProjectView,
+  } from '../../../../../shared/api.ts';
   import Checkbox from '../../components/Checkbox/Checkbox.svelte';
   import Dialog from '../../components/Dialog/Dialog.svelte';
   import TextField from '../../components/TextField/TextField.svelte';
@@ -33,6 +39,12 @@
   let prompt = $state('');
   let busy = $state(false);
   let suggestions = $state<ImportCandidate[]>([]);
+  /** Where the project comes from: a fresh folder, or a clone of a GitHub / GitLab repository. */
+  let source = $state<'empty' | 'github' | 'gitlab'>('empty');
+  let repo = $state('');
+  let folder = $state('');
+  let clone = $state<CloneOptions>({ root: '', folders: [], repos: [] });
+  const cloning = $derived(source !== 'empty');
 
   const group = $derived(pick === NEW ? newGroup.trim() : pick);
   const outfit = $derived(outfitOf(group, pick === NEW ? groups.length : groups.indexOf(pick)));
@@ -53,15 +65,46 @@
     );
   });
 
+  $effect(() => {
+    const src = source;
+    clone = { ...clone, repos: [] };
+    void api<CloneOptions>('cloneOptions', { query: src === 'empty' ? {} : { source: src } }).then(
+      (o) => {
+        if (src !== source) return;
+        clone = o;
+        if (!o.folders.includes(folder)) folder = o.folders.includes(group) ? group : (o.folders[0] ?? '');
+      },
+      () => {},
+    );
+  });
+  // The name follows the repository until it is typed over.
+  $effect(() => {
+    const last = repo
+      .trim()
+      .replace(/\/+$/, '')
+      .replace(/\.git$/, '')
+      .split(/[/:]/)
+      .pop();
+    if (cloning && last && !nameEdited) name = last;
+  });
+  let nameEdited = $state(false);
+
   async function submit(e: SubmitEvent) {
     e.preventDefault();
     busy = true;
+    if (cloning) {
+      const done = await api<{ path: string }>('projectClone', {
+        body: { url: repo.trim(), folder, name: name.trim() },
+      }).catch(toastError);
+      if (!done) return void (busy = false);
+      path = done.path;
+    }
     const body: CreateProjectRequest = {
       name: name.trim(),
       path: path.trim(),
       group,
       icon: { kind: 'symbol', symbol: 'home', color },
-      create,
+      create: cloning ? false : create,
     };
     const res = await api<ProjectView | { approval: Approval }>('projectCreate', { body }).catch(toastError);
     busy = false;
@@ -85,23 +128,70 @@
         </span>
         <span class="hint">{HAT_NAMES[outfit]} for {group || 'the new district'}, in the project colour</span>
       </div>
-      <TextField label="Name" bind:value={name} required autocomplete="off" />
-      <TextField
-        label="Folder"
-        bind:value={path}
-        mono
-        required
-        pattern="/.*"
-        title="An absolute path"
-        list="village-folders"
-        autocomplete="off"
-        hint={suggestions.length ? 'Suggestions: folders from your Claude history that are no project yet' : undefined}
-        oninput={() => (pathEdited = true)}
-      />
-      <datalist id="village-folders">
-        {#each suggestions as s (s.path)}<option value={s.path}>{s.name}</option>{/each}
-      </datalist>
-      <Checkbox label="Create the folder and run git init if it does not exist" bind:checked={create} />
+      <div class="field" role="group" aria-label="Source">
+        <span class="label">Source</span>
+        <div class="row">
+          {#each [['empty', 'Empty folder'], ['github', 'GitHub'], ['gitlab', 'GitLab']] as [id, label] (id)}
+            <button
+              type="button"
+              class="chip"
+              aria-pressed={source === id}
+              onclick={() => (source = id as typeof source)}>{label}</button
+            >
+          {/each}
+        </div>
+      </div>
+      {#if cloning}
+        <TextField
+          label="Repository"
+          bind:value={repo}
+          mono
+          required
+          pattern="(https://|ssh://|git@)\S+"
+          title="A clone address: https://, ssh:// or git@"
+          list="village-repos"
+          autocomplete="off"
+          hint={clone.repos.length
+            ? 'Pick one of your repositories or paste any clone address'
+            : 'Paste a clone address'}
+        />
+        <datalist id="village-repos">
+          {#each clone.repos as r (r.url)}<option value={r.url}>{r.name}</option>{/each}
+        </datalist>
+        {#if clone.folders.length}
+          <div class="field" role="group" aria-label="Folder">
+            <span class="label">Into {clone.root}/</span>
+            <div class="row">
+              {#each clone.folders as f (f)}
+                <button type="button" class="chip" aria-pressed={folder === f} onclick={() => (folder = f)}>{f}</button>
+              {/each}
+            </div>
+          </div>
+        {:else}
+          <span class="hint">Set the projects folder in Settings, Sessions first.</span>
+        {/if}
+      {/if}
+      <TextField label="Name" bind:value={name} required autocomplete="off" oninput={() => (nameEdited = true)} />
+      {#if !cloning}
+        <TextField
+          label="Folder"
+          bind:value={path}
+          mono
+          required
+          pattern="/.*"
+          title="An absolute path"
+          list="village-folders"
+          autocomplete="off"
+          hint={suggestions.length
+            ? 'Suggestions: folders from your Claude history that are no project yet'
+            : undefined}
+          oninput={() => (pathEdited = true)}
+        />
+        <datalist id="village-folders">
+          {#each suggestions as s (s.path)}<option value={s.path}>{s.name}</option>{/each}
+        </datalist>
+        <Checkbox label="Create the folder and run git init if it does not exist" bind:checked={create} />
+      {/if}
       <div class="field" role="group" aria-label="District">
         <span class="label">District (group)</span>
         <div class="row">

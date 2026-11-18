@@ -117,6 +117,8 @@ export interface Config {
   trustSessions?: boolean;
   /** https address the phone reaches shub at (the `tailscale serve` name); local.json. SHUB_PUBLIC_URL wins. */
   publicUrl?: string;
+  /** Folder new projects are cloned into (its subfolders, e.g. private / work, are the choices); local.json. */
+  projectsRoot?: string;
   /** What this host syncs through the sync folder; local.json. A missing category is on, except pluginEnv. */
   sync?: SyncSettings;
   /** The folder this host reads and writes its shared items and transcripts in; whatever syncs that folder between
@@ -398,6 +400,20 @@ export interface StartSessionRequest {
   takeOver?: boolean;
   /** The terminal it was started from ("Start Claude here", `shub claude`): a tab showing it jumps to the new one. */
   from?: string;
+}
+
+/** GET /api/projects/clone: where a clone can go and, for ?source=github|gitlab, the repos that login can see. */
+export interface CloneOptions {
+  root: string;
+  folders: string[];
+  repos: { name: string; url: string }[];
+}
+
+/** POST /api/projects/clone: `git clone url <root>/<folder>/<name>`; the response is the new folder. */
+export interface CloneRequest {
+  url: string;
+  folder: string;
+  name?: string;
 }
 
 /** First-run suggestion from ~/.claude/projects (GET /api/projects/import adds resolvedIcon). */
@@ -734,6 +750,8 @@ export const ROUTES = {
   config: 'GET /api/config',
   projects: 'GET /api/projects',
   projectCreate: 'POST /api/projects',
+  cloneOptions: 'GET /api/projects/clone', // ?source=github|gitlab -> CloneOptions, user only
+  projectClone: 'POST /api/projects/clone', // CloneRequest -> { path }, user only; register it with projectCreate
   projectUpdate: 'PATCH /api/projects/:id',
   projectDelete: 'DELETE /api/projects/:id', // user only, never touches the folder
   projectsReorder: 'POST /api/projects/reorder',
