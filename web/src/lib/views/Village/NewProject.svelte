@@ -67,7 +67,7 @@
 
   $effect(() => {
     const src = source;
-    clone = { ...clone, repos: [] };
+    untrack(() => (clone = { ...clone, repos: [] }));
     void api<CloneOptions>('cloneOptions', { query: src === 'empty' ? {} : { source: src } }).then(
       (o) => {
         if (src !== source) return;
