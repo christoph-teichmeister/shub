@@ -310,7 +310,7 @@
           ui.search = !ui.search;
           break;
         case 'KeyV':
-          go('village');
+          go('game');
           break;
         case 'KeyO':
           go('overview');

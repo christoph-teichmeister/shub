@@ -16,11 +16,12 @@ import { HttpError, isUser, readBody, Router, sendJson, type Caller, type Reques
 import { installUpgrades, keepAlive, onUpgrade } from './upgrade.ts';
 import { bundleOffer } from './bundle.ts';
 
+// frame-src: the game window (web/src/lib/views/Game.svelte, GAME_URL) is the only thing shub frames.
 const SECURITY_HEADERS: Record<string, string> = {
   'content-security-policy':
     "default-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https: ws: wss:; " +
     "style-src 'self' 'unsafe-inline'; font-src 'self'; " +
-    "frame-ancestors 'none'",
+    "frame-src https://aidle-digital.web.app; frame-ancestors 'none'",
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'same-origin',
   'x-frame-options': 'DENY',

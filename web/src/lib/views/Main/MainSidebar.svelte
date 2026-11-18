@@ -124,10 +124,6 @@
   /** What a folded group still shows: who needs you, else what is working. */
   const groupBadge = (projects: ProjectView[]) => projectBadge(projects.flatMap((p) => sessionsOf(p.id).map(rolledUp)));
   const needsYouTotal = $derived(needsYouCount());
-  // Crabs in the village queue: everyone who needs you or whose turn it is.
-  const villageQueue = $derived(
-    app.sessions.filter((s) => s.kind !== 'shell' && (s.status === 'needs-you' || s.status === 'your-turn')).length,
-  );
   const dormantCount = $derived(app.projects.filter((p) => p.visibility === 'dormant').length);
 
   // ---------- Child worktrees: created by a session, nested under it ----------
@@ -311,15 +307,10 @@
   </a>
 {/snippet}
 
-{#snippet villageButton()}
-  <a
-    class="rail-item"
-    href={href('village')}
-    title={`Crab village: a map of your sessions, triage who needs you${villageQueue ? ` · ${villageQueue} in line` : ''} (Alt V)`}
-  >
-    <Icon name="crab" />
-    <span class="visually-hidden">Crab village{villageQueue ? `, ${villageQueue} in line` : ''}</span>
-    {#if villageQueue}<span class="rail-badge" aria-hidden="true">{villageQueue}</span>{/if}
+{#snippet gameButton()}
+  <a class="rail-item" href={href('game')} title="Game (Alt V)">
+    <Icon name="play" />
+    <span class="visually-hidden">Game</span>
   </a>
 {/snippet}
 
@@ -329,7 +320,7 @@
       <Wordmark accent={project?.accent} {needsYou} />
       <span class="grow"></span>
       {@render overviewButton()}
-      {@render villageButton()}
+      {@render gameButton()}
       <button
         type="button"
         class="rail-item global"
@@ -465,7 +456,7 @@
       {#if globalSession}<span class="rail-dot"><StatusDot status={globalSession.status} /></span>{/if}
     </button>
     {@render overviewButton()}
-    {@render villageButton()}
+    {@render gameButton()}
     {#if needsYouTotal}
       <button
         type="button"
@@ -670,20 +661,6 @@
     top: 0;
     right: 0;
     display: flex;
-  }
-
-  .rail-badge {
-    position: absolute;
-    top: calc(var(--space-0-5) * -1);
-    right: calc(var(--space-0-5) * -1);
-    min-width: var(--size-check);
-    padding: 0 var(--space-1);
-    border-radius: var(--radius-pill);
-    background: var(--status-needs-you);
-    color: var(--on-accent);
-    font-size: var(--text-2xs);
-    font-weight: var(--weight-semibold);
-    line-height: var(--leading-base);
   }
 
   .rail-next {

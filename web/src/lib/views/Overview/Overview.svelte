@@ -34,7 +34,7 @@
   } from '../../overview.ts';
   import { api } from '../../stores/api.ts';
   import { store, storedJson } from '../../stored.ts';
-  import { villageBack } from '../../stores/router.svelte.ts';
+  import { gameBack } from '../../stores/router.svelte.ts';
   import { toast, toastError } from '../../stores/toasts.svelte.ts';
   import {
     app,
@@ -213,7 +213,7 @@
     const i = live.findIndex((s) => s.id === focusId);
     const digit = /^Digit([1-9])$/.exec(e.code);
     let target: Session | undefined;
-    if (e.code === 'KeyO') location.hash = villageBack();
+    if (e.code === 'KeyO') location.hash = gameBack();
     else if (e.code === 'KeyK') ui.search = !ui.search;
     else if (e.code === 'KeyN') picking = !picking;
     else if (e.code === 'KeyW') closeFocused();
@@ -250,7 +250,7 @@
 
 <div class="overview">
   <header>
-    <a class="back" href={villageBack()} title="Back to shub (Alt O)">← shub</a>
+    <a class="back" href={gameBack()} title="Back to shub (Alt O)">← shub</a>
     <h1>Overview</h1>
     <span class="count">
       {shown.length}

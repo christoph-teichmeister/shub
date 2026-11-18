@@ -324,22 +324,6 @@
 {#each ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'] as c (c)}<span
                     style:background="var(--term-bright-{c})"></span>{/each}</span
               ></pre>
-            <div class="p-village">
-              <span class="v-sign">Crab village</span>
-              <span class="v-card">
-                <strong>Export CSV fix</strong>
-                <span class="v-muted">ai-portal · waiting</span>
-                <span class="v-bar"><span></span></span>
-              </span>
-              <span class="v-bubble">zZ</span>
-              <span class="v-sign on">Fit</span>
-              <span class="v-sky" aria-hidden="true">
-                <span style:background="var(--village-tint-morning)"></span>
-                <span style:background="var(--village-tint-evening)"></span>
-                <span class="v-night"><i></i></span>
-                <span style:background="var(--village-cloud)"></span>
-              </span>
-            </div>
             <div class="p-menu">
               <span>Rename</span>
               <span class="p-danger">Close session</span>
@@ -620,90 +604,6 @@
     background: var(--panel);
     box-shadow: 0 var(--space-2) var(--space-6) var(--shadow);
     color: var(--fg);
-  }
-
-  .p-village {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2-5) var(--space-3);
-    border-top: var(--space-1) solid var(--village-bg);
-    background: var(--village-grass);
-    font-family: var(--font-pixel);
-  }
-
-  .v-sign {
-    padding: var(--space-0-5) var(--space-2);
-    border: var(--ring) solid var(--village-wood-dark);
-    border-radius: var(--radius-xs);
-    background: var(--village-wood);
-    color: var(--village-ink);
-  }
-
-  .v-sign.on {
-    background: var(--village-gold);
-  }
-
-  .v-card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-0-5);
-    padding: var(--space-1-5) var(--space-2);
-    border: var(--ring) solid var(--village-parchment-line);
-    border-radius: var(--radius-xs);
-    background: var(--village-parchment);
-    color: var(--village-ink);
-  }
-
-  .v-muted {
-    color: var(--village-ink-muted);
-  }
-
-  .v-bar {
-    height: var(--space-1-5);
-    border: var(--hairline) solid var(--village-parchment-line);
-    background: var(--village-paper);
-  }
-
-  .v-bar span {
-    display: block;
-    width: 85%;
-    height: 100%;
-    background: var(--village-alarm);
-  }
-
-  /* Morning, evening and night (a lantern glow and a firefly) over the grass, and a cloud shadow. */
-  .v-sky {
-    display: flex;
-    gap: var(--space-1);
-  }
-
-  .v-sky > span {
-    width: var(--size-control-sm);
-    height: var(--size-control-sm);
-    border: var(--ring) solid var(--village-wood-dark);
-    border-radius: var(--radius-xs);
-  }
-
-  .v-night {
-    display: grid;
-    place-items: center;
-    background: radial-gradient(circle, var(--village-glow) 0, transparent 70%), var(--village-tint-night);
-  }
-
-  .v-night i {
-    width: var(--space-1);
-    height: var(--space-1);
-    background: var(--village-firefly);
-  }
-
-  .v-bubble {
-    padding: 0 var(--space-1-5);
-    border: var(--ring) solid var(--village-ink);
-    border-radius: var(--radius-xs);
-    background: var(--village-sky);
-    color: var(--village-ink);
   }
 
   .p-danger {

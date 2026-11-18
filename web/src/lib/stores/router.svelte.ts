@@ -1,4 +1,4 @@
-// Hash router: #/, #/g, #/p/<projectId>[/<sessionId>], #/village, #/overview, #/styleguide, #/login, #/settings/...
+// Hash router: #/, #/g, #/p/<projectId>[/<sessionId>], #/game, #/overview, #/styleguide, #/login, #/settings/...
 // Plus one path route: /pair/<code> (the phone opens the QR link; the server serves index.html for it).
 // Settings: #/settings[/<area>], #/settings/project/<id|new>, #/settings/theme/<id|new>, #/settings/import.
 export type Route =
@@ -7,7 +7,7 @@ export type Route =
   | { name: 'pair'; code: string }
   | { name: 'global' }
   | { name: 'project'; projectId: string; sessionId: string | null }
-  | { name: 'village' }
+  | { name: 'game' }
   | { name: 'overview' }
   | { name: 'styleguide' }
   | { name: 'settings'; rest: string[] };
@@ -19,8 +19,8 @@ export function parseHash(hash: string): Route {
       return { name: 'global' };
     case 'p':
       return parts[1] ? { name: 'project', projectId: parts[1], sessionId: parts[2] ?? null } : { name: 'home' };
-    case 'village':
-      return { name: 'village' };
+    case 'game':
+      return { name: 'game' };
     case 'overview':
       return { name: 'overview' };
     case 'styleguide':
@@ -41,14 +41,14 @@ function current(): Route {
 
 export const router = $state({ route: current() });
 
-/** The last place outside the village and the overview, where "← shub" and Alt V / Alt O go back to. */
-let beforeVillage = '#/';
+/** The last place outside the game and the overview, where "← shub" and Alt V / Alt O go back to. */
+let beforeGame = '#/';
 window.addEventListener('hashchange', (e) => {
   const old = new URL(e.oldURL).hash;
-  if (!['village', 'overview'].includes(parseHash(old).name)) beforeVillage = old || '#/';
+  if (!['game', 'overview'].includes(parseHash(old).name)) beforeGame = old || '#/';
   router.route = current();
 });
-export const villageBack = () => beforeVillage;
+export const gameBack = () => beforeGame;
 
 export function href(...parts: (string | null | undefined)[]): string {
   return (
