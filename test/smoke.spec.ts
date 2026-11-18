@@ -58,6 +58,7 @@ const API: Record<string, unknown> = {
   '/api/usage': { fiveHour: { used: 42, resetsAt: 1_900_000_000 }, sevenDay: { used: 95 } },
   '/api/config': config,
   '/api/projects': [project, dormant],
+  '/api/projects/clone': { root: '', folders: [], repos: [] },
   '/api/sessions': [session],
   '/api/sessions/restorable': [],
   '/api/approvals': [],
@@ -819,6 +820,31 @@ test('first run without Claude history explains the words and leads with Add a f
   await expect(page.getByText('No Claude history yet: point shub at any code folder.')).toBeVisible();
   await page.getByRole('button', { name: 'Add a folder' }).click();
   await expect(page).toHaveURL(/#\/settings\/project\/new$/);
+  expect(errors).toEqual([]);
+});
+
+test('add a project by cloning a GitHub repository into private or work', async ({ page }) => {
+  const { errors, calls } = await mockApi(page, {
+    '/api/projects/clone': {
+      root: '/home/me/code',
+      folders: ['private', 'work'],
+      repos: [{ name: 'me/shub', url: 'https://github.com/me/shub' }],
+    },
+    'POST /api/projects/clone': { path: '/home/me/code/work/shub' },
+    'POST /api/projects': { ...project, id: 'shub', name: 'shub' },
+  });
+  await page.goto('/#/settings/project/new');
+  await page.getByRole('button', { name: 'GitHub' }).click();
+  await page.getByLabel('Repository').fill('https://github.com/me/shub');
+  await page.getByRole('button', { name: 'work', exact: true }).click();
+  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('shub');
+  await page.locator('form').getByRole('button', { name: 'Add project' }).click();
+  await expect
+    .poll(() => calls.find((c) => c.method === 'POST' && c.path === '/api/projects/clone')?.body)
+    .toEqual({ url: 'https://github.com/me/shub', folder: 'work', name: 'shub' });
+  await expect
+    .poll(() => calls.find((c) => c.method === 'POST' && c.path === '/api/projects')?.body)
+    .toMatchObject({ name: 'shub', path: '/home/me/code/work/shub' });
   expect(errors).toEqual([]);
 });
 
