@@ -189,6 +189,7 @@ test('a hook nudges the chat view once per burst, and not for a subagent', async
       get: () => ({ id: 's1', status: 'working', claudeSessionId: null }),
       setPermissionMode: () => {},
       keepBackground: () => {},
+      noteTurn: () => {},
       setStatus: () => {},
       started: () => {},
     },

@@ -31,6 +31,7 @@ import { encodeCwd } from './old.ts';
 import { prunePastes, SessionsService, sessionPath, tmuxName } from './service.ts';
 import { attachTerminals } from './terminal.ts';
 import type { CheckResult } from './waitcheck.ts';
+import type { TurnVerdict } from './turncheck.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'shub-sessions-'));
 const projectDir = join(root, 'proj');
@@ -87,6 +88,8 @@ const notified: string[] = [];
 /** The next this many claude checks fail (the tests have no claude of their own). */
 let claudeMissing = 0;
 let checkAnswer: CheckResult | null = null;
+let turnVerdict: TurnVerdict | null = null;
+let shellsAlive = 0;
 const checks: string[] = [];
 const svc = new SessionsService(ctx, services, {
   restoreGapMs: 300,
@@ -102,6 +105,8 @@ const svc = new SessionsService(ctx, services, {
   mrLookup: async (ref) =>
     ref.number === 5 ? { title: 'Fix login', mine: false } : { title: '#12: Own work', mine: true },
   waitChecker: async (check) => (checks.push(check), checkAnswer),
+  turnChecker: async () => turnVerdict,
+  liveShells: () => shellsAlive,
 });
 
 async function waitFor(check: () => boolean, what: string, ms = 5000): Promise<void> {
@@ -388,6 +393,8 @@ test('a turn paused on background work falls back to your-turn after its fallbac
   svc.reconcile(Date.now() + 60_000);
   assert.equal(svc.get(s.id)?.status, 'working');
   svc.reconcile(Date.now() + 2 * 60_000);
+  assert.equal(svc.get(s.id)?.status, 'working', 'due, but Claude gets a moment to wake itself');
+  svc.reconcile(Date.now() + 2 * 60_000 + 20_000);
   assert.equal(svc.get(s.id)?.status, 'your-turn');
   assert.deepEqual(notified.splice(0), [`${s.id}: your turn`]);
   svc.setStatus(s.id, 'working', null, undefined, 90_000);
@@ -402,8 +409,43 @@ test('a turn paused on background work falls back to your-turn after its fallbac
   svc.reconcile(Date.now() + 5 * 60_000);
   assert.equal(svc.get(s.id)?.status, 'working', 'a busy agent pushes the fallback');
   svc.reconcile(Date.now() + 11 * 60_000);
+  svc.reconcile(Date.now() + 11 * 60_000 + 20_000);
   assert.equal(svc.get(s.id)?.status, 'your-turn');
   notified.splice(0);
+});
+
+test('a small model tells once who has the ball, the process tree tells when the work is over', async () => {
+  const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  const note = { message: 'Wait for the gate.', tasks: ['shell: claude -p review'] };
+  const stop = async (verdict: TurnVerdict | null, alive = 1) => {
+    turnVerdict = verdict;
+    shellsAlive = alive;
+    svc.setStatus(s.id, 'working', null, undefined, 90_000);
+    svc.noteTurn(s.id, note);
+    await new Promise((r) => setTimeout(r, 20));
+  };
+  notified.splice(0);
+  await stop('working');
+  assert.equal(svc.get(s.id)?.status, 'working', 'Claude waits on its agent: nobody is needed');
+  svc.reconcile(Date.now() + 60 * 60_000);
+  assert.equal(svc.get(s.id)?.status, 'working', 'still running: no timer hands it back, however late');
+  assert.deepEqual(notified, []);
+  shellsAlive = 0;
+  svc.reconcile(Date.now() + 60 * 60_000);
+  assert.equal(svc.get(s.id)?.status, 'working', 'the last task just ended: a grace for Claude to wake');
+  svc.reconcile(Date.now() + 60 * 60_000 + 20_000);
+  assert.equal(svc.get(s.id)?.status, 'your-turn');
+  await stop('needs-you');
+  assert.equal(svc.get(s.id)?.status, 'needs-you');
+  await stop('your-turn');
+  assert.equal(svc.get(s.id)?.status, 'your-turn');
+  await stop(null);
+  assert.equal(svc.get(s.id)?.status, 'working', 'no answer: the watcher decides');
+  await stop('needs-you', 0);
+  assert.equal(svc.get(s.id)?.status, 'working', 'nothing runs: no model call, the grace hands it back');
+  shellsAlive = 0;
+  notified.splice(0);
+  turnVerdict = null;
 });
 
 test('a finished turn remembers its running shells until the next status', async () => {

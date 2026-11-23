@@ -27,6 +27,8 @@ import { checkKeys, checkText, NAMED_KEYS, prunePastes, savePaste } from './past
 import { MIGRATIONS, toSession, type Row } from './rows.ts';
 import { defaultTitler, type Titler } from './title.ts';
 import { newWaitCheck, WaitChecks } from './wait.ts';
+import { livePaneShells } from './liveness.ts';
+import { defaultTurnChecker, type TurnChecker, type TurnNote } from './turncheck.ts';
 import { defaultWaitChecker, type WaitChecker } from './waitcheck.ts';
 import {
   autoName,
@@ -50,6 +52,8 @@ const COMPACT_PAUSE_CAP_MS = 5 * 60_000;
 const GLOBAL_ID = 'global';
 const LIVE: SessionStatus[] = ['new', 'working', 'needs-you', 'your-turn', 'waiting'];
 const RECONCILE_MS = 3000;
+/** After the last background task ended: how long Claude gets to wake itself before the session is handed back. */
+const DEAD_GRACE_MS = 15_000;
 /** Gap between sessions a restore brings back: all Claudes at once freeze the machine and the window. */
 const RESTORE_GAP_MS = 4000;
 /** After SessionStart, until Claude's input box takes keys. */
@@ -66,6 +70,9 @@ export interface SessionsOptions {
   titler?: Titler;
   mrLookup?: MrLookup;
   waitChecker?: WaitChecker;
+  turnChecker?: TurnChecker;
+  /** Background shells still running for a session; tests pass a stub. */
+  liveShells?: (id: string) => number;
   restoreGapMs?: number;
   startedGapMs?: number;
 }
@@ -97,6 +104,10 @@ export class SessionsService implements Sessions {
   #afterStart = new Map<string, () => void>();
   /** Sessions being compacted before they park -> whether they pause once the fill drops. */
   #compacting = new Map<string, boolean>();
+  #turnChecker: TurnChecker;
+  #liveShells: (id: string) => number;
+  /** Per session: since when a due background fallback sees nothing running. */
+  #dead = new Map<string, number>();
 
   constructor(ctx: Context, services: Services, options: SessionsOptions = {}) {
     this.#ctx = ctx;
@@ -119,6 +130,11 @@ export class SessionsService implements Sessions {
       },
       options.waitChecker ?? defaultWaitChecker,
     );
+    this.#turnChecker = options.turnChecker ?? defaultTurnChecker;
+    this.#liveShells =
+      options.liveShells ??
+      ((id) =>
+        livePaneShells(() => Number(this.#tmux.run(['list-panes', '-t', `=${tmuxName(id)}:`, '-F', '#{pane_pid}']))));
     this.#restoreGapMs = options.restoreGapMs ?? RESTORE_GAP_MS;
     this.#startedGapMs = options.startedGapMs ?? STARTED_GAP_MS;
     this.#binDir = join(ctx.paths.stateDir, 'bin');
@@ -466,6 +482,7 @@ export class SessionsService implements Sessions {
     const keep = status === 'needs-you';
     const pending = pendingPermission !== undefined ? pendingPermission : keep ? session.pendingPermission : null;
     const commands = pendingCommands !== undefined ? pendingCommands : keep ? session.pendingCommands : null;
+    this.#dead.delete(id);
     const at = now();
     const since = status === session.status ? session.statusSince : at;
     this.#db
@@ -499,6 +516,44 @@ export class SessionsService implements Sessions {
     this.#db
       .prepare('UPDATE sessions SET background_until = ? WHERE id = ? AND background_until IS NOT NULL')
       .run(Date.now() + ms, id);
+  }
+
+  /** The turn ended with background work: once, a small model reads the last message to tell whether the user is
+   *  needed (a question, a decision) or Claude just waits on work that wakes it. Whether that work still runs is
+   *  the process tree's job (reconcile), not the model's. */
+  noteTurn(id: string, note: TurnNote): void {
+    void this.#judge(id, note);
+  }
+
+  #until(id: string): number | null | undefined {
+    return this.#rows().find((r) => r.id === id)?.background_until;
+  }
+
+  /** A subagent or a background shell still runs. */
+  #alive(id: string): boolean {
+    return !!this.get(id)?.agents?.length || this.#liveShells(id) > 0;
+  }
+
+  async #judge(id: string, note: TurnNote): Promise<void> {
+    if (!this.#alive(id)) return; // nothing to wait for: reconcile hands it back after its grace
+    const until = this.#until(id);
+    const verdict = await this.#turnChecker(note).catch(() => null);
+    const session = this.get(id);
+    // A new event moved the deadline meanwhile: that turn is the news now.
+    if (!session || !verdict || verdict === 'working' || this.#until(id) !== until) return;
+    if (verdict === 'needs-you') {
+      this.setStatus(id, 'needs-you', null, null);
+      this.#services.notify.needsYou(this.get(id) ?? session, 'Claude needs you');
+    } else this.#handBack(id);
+  }
+
+  /** The turn's background work is over (or never will be): the ball is with the user again. */
+  #handBack(id: string): void {
+    const session = this.get(id);
+    if (!session) return;
+    const waiting = !!session.waitingFor;
+    this.setStatus(id, waiting ? 'waiting' : 'your-turn', null);
+    if (!waiting) this.#services.notify.yourTurn(this.get(id) ?? session);
   }
 
   setAgents(id: string, agents: SubagentRun[]): void {
@@ -801,10 +856,15 @@ export class SessionsService implements Sessions {
     for (const { id } of this.#rows().filter(
       (r) => r.background_until !== null && r.background_until <= at && !this.#restorable.has(r.id),
     )) {
-      const waiting = !!this.get(id)?.waitingFor;
-      this.setStatus(id, waiting ? 'waiting' : 'your-turn', null);
-      const session = this.get(id);
-      if (session && !waiting) this.#services.notify.yourTurn(session);
+      // Past the minimum wait, a running subagent or shell keeps the session working; once nothing runs, Claude gets
+      // a moment to wake itself before the session is handed back.
+      if (this.#alive(id)) {
+        this.#dead.delete(id);
+        continue;
+      }
+      const since = this.#dead.get(id) ?? at;
+      this.#dead.set(id, since);
+      if (at - since >= DEAD_GRACE_MS) this.#handBack(id);
     }
     const running = this.#tmux.sessions();
     for (const row of this.#rows()) {
