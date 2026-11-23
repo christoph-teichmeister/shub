@@ -28,6 +28,7 @@ import { checkKeys, checkText, NAMED_KEYS, prunePastes, savePaste } from './past
 import { MIGRATIONS, toSession, type Row } from './rows.ts';
 import { defaultTitler, type Titler } from './title.ts';
 import { newWaitCheck, WaitChecks } from './wait.ts';
+import { livePaneShells } from './liveness.ts';
 import { defaultTurnChecker, type TurnChecker, type TurnNote } from './turncheck.ts';
 import { defaultWaitChecker, type WaitChecker } from './waitcheck.ts';
 import {
@@ -71,6 +72,8 @@ export interface SessionsOptions {
   mrLookup?: MrLookup;
   waitChecker?: WaitChecker;
   turnChecker?: TurnChecker;
+  /** Background shells still running for a session; tests pass a stub. */
+  liveShells?: (id: string) => number;
   restoreGapMs?: number;
   startedGapMs?: number;
 }
@@ -103,6 +106,7 @@ export class SessionsService implements Sessions {
   /** Sessions being compacted before they park -> whether they pause once the fill drops. */
   #compacting = new Map<string, boolean>();
   #turnChecker: TurnChecker;
+  #liveShells: (id: string) => number;
   /** Per session: the turn that ended with background work, and how often its fallback was extended. */
   #turns = new Map<string, { note: TurnNote; extended: number }>();
   #settling = new Set<string>();
@@ -129,6 +133,10 @@ export class SessionsService implements Sessions {
       options.waitChecker ?? defaultWaitChecker,
     );
     this.#turnChecker = options.turnChecker ?? defaultTurnChecker;
+    this.#liveShells =
+      options.liveShells ??
+      ((id) =>
+        livePaneShells(() => Number(this.#tmux.run(['list-panes', '-t', `=${tmuxName(id)}:`, '-F', '#{pane_pid}']))));
     this.#restoreGapMs = options.restoreGapMs ?? RESTORE_GAP_MS;
     this.#startedGapMs = options.startedGapMs ?? STARTED_GAP_MS;
     this.#binDir = join(ctx.paths.stateDir, 'bin');
@@ -522,7 +530,9 @@ export class SessionsService implements Sessions {
     const turn = this.#turns.get(id);
     const until = this.#rows().find((r) => r.id === id)?.background_until;
     let verdict = null;
-    if (turn && turn.extended < SETTLE_EXTENDS) {
+    // Nothing runs any more (no subagent, no shell): no need to ask, the work is over.
+    const alive = !!this.get(id)?.agents?.length || this.#liveShells(id) > 0;
+    if (turn && alive && turn.extended < SETTLE_EXTENDS) {
       this.#settling.add(id);
       verdict = await this.#turnChecker(turn.note).catch(() => null);
       this.#settling.delete(id);

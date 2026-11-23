@@ -111,7 +111,7 @@ function summarizeQuestions(questions: unknown): string {
 }
 
 /** Shell commands that run until stopped (servers, watchers, log tails): Claude does not wait for them. */
-const ENDLESS_COMMANDS = [
+export const ENDLESS_COMMANDS = [
   /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(dev|start|serve|preview|watch)\b/,
   /\bvite\b(?!\s+build)/,
   /\b(nodemon|uvicorn|gunicorn|http-server|live-server)\b/,

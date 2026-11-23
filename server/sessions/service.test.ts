@@ -89,6 +89,7 @@ const notified: string[] = [];
 let claudeMissing = 0;
 let checkAnswer: CheckResult | null = null;
 let turnVerdict: TurnVerdict | null = null;
+let shellsAlive = 1;
 const checks: string[] = [];
 const svc = new SessionsService(ctx, services, {
   restoreGapMs: 300,
@@ -105,6 +106,7 @@ const svc = new SessionsService(ctx, services, {
     ref.number === 5 ? { title: 'Fix login', mine: false } : { title: '#12: Own work', mine: true },
   waitChecker: async (check) => (checks.push(check), checkAnswer),
   turnChecker: async () => turnVerdict,
+  liveShells: () => shellsAlive,
 });
 
 async function waitFor(check: () => boolean, what: string, ms = 5000): Promise<void> {
@@ -429,6 +431,10 @@ test('at the fallback a small model decides: still working, needs you, or your t
   assert.equal(svc.get(s.id)?.status, 'your-turn');
   await fallback(null);
   assert.equal(svc.get(s.id)?.status, 'your-turn', 'no answer: handed back as before');
+  shellsAlive = 0;
+  await fallback('working');
+  assert.equal(svc.get(s.id)?.status, 'your-turn', 'nothing runs any more: no model call, handed back');
+  shellsAlive = 1;
   notified.splice(0);
   turnVerdict = null;
 });
