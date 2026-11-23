@@ -31,6 +31,7 @@ import { encodeCwd } from './old.ts';
 import { prunePastes, SessionsService, sessionPath, tmuxName } from './service.ts';
 import { attachTerminals } from './terminal.ts';
 import type { CheckResult } from './waitcheck.ts';
+import type { TurnVerdict } from './turncheck.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'shub-sessions-'));
 const projectDir = join(root, 'proj');
@@ -87,6 +88,7 @@ const notified: string[] = [];
 /** The next this many claude checks fail (the tests have no claude of their own). */
 let claudeMissing = 0;
 let checkAnswer: CheckResult | null = null;
+let turnVerdict: TurnVerdict | null = null;
 const checks: string[] = [];
 const svc = new SessionsService(ctx, services, {
   restoreGapMs: 300,
@@ -102,6 +104,7 @@ const svc = new SessionsService(ctx, services, {
   mrLookup: async (ref) =>
     ref.number === 5 ? { title: 'Fix login', mine: false } : { title: '#12: Own work', mine: true },
   waitChecker: async (check) => (checks.push(check), checkAnswer),
+  turnChecker: async () => turnVerdict,
 });
 
 async function waitFor(check: () => boolean, what: string, ms = 5000): Promise<void> {
@@ -404,6 +407,30 @@ test('a turn paused on background work falls back to your-turn after its fallbac
   svc.reconcile(Date.now() + 11 * 60_000);
   assert.equal(svc.get(s.id)?.status, 'your-turn');
   notified.splice(0);
+});
+
+test('at the fallback a small model decides: still working, needs you, or your turn', async () => {
+  const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+  const note = { message: 'Wait for the gate.', tasks: ['shell: claude -p review'] };
+  const fallback = async (verdict: TurnVerdict | null) => {
+    turnVerdict = verdict;
+    svc.setStatus(s.id, 'working', null, undefined, 90_000);
+    svc.noteTurn(s.id, note);
+    svc.reconcile(Date.now() + 2 * 60_000);
+    await new Promise((r) => setTimeout(r, 20));
+  };
+  notified.splice(0);
+  await fallback('working');
+  assert.equal(svc.get(s.id)?.status, 'working', 'Claude waits on its agent: nobody is needed');
+  assert.deepEqual(notified, []);
+  await fallback('needs-you');
+  assert.equal(svc.get(s.id)?.status, 'needs-you');
+  await fallback('your-turn');
+  assert.equal(svc.get(s.id)?.status, 'your-turn');
+  await fallback(null);
+  assert.equal(svc.get(s.id)?.status, 'your-turn', 'no answer: handed back as before');
+  notified.splice(0);
+  turnVerdict = null;
 });
 
 test('a finished turn remembers its running shells until the next status', async () => {

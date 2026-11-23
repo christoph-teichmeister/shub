@@ -102,6 +102,8 @@ export interface Sessions {
   ): void;
   /** A background agent is still busy: push the turn's fallback (if one is pending) `ms` from now. */
   keepBackground(id: string, ms: number): void;
+  /** The turn ended with background work: what the fallback shows a small model before handing the session back. */
+  noteTurn(id: string, note: { message: string; tasks: string[] }): void;
   /** The subagents running inside the session changed (SubagentStart/Stop, their tool calls). */
   setAgents(id: string, agents: SubagentRun[]): void;
   setContext(id: string, context: ContextFill | null): void;

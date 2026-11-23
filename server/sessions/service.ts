@@ -20,6 +20,7 @@ import { commandTarget } from '../../shared/commands.ts';
 import { HttpError } from '../api/router.ts';
 import type { Context } from '../context.ts';
 import { hookSettings, userStatusLine } from '../hooks/index.ts';
+import { AGENT_FALLBACK_MS } from '../hooks/transition.ts';
 import type { Services, Sessions } from '../services.ts';
 import { defaultMrLookup, type MrLookup } from './mr.ts';
 import { AutoNamer } from './naming.ts';
@@ -27,6 +28,7 @@ import { checkKeys, checkText, NAMED_KEYS, prunePastes, savePaste } from './past
 import { MIGRATIONS, toSession, type Row } from './rows.ts';
 import { defaultTitler, type Titler } from './title.ts';
 import { newWaitCheck, WaitChecks } from './wait.ts';
+import { defaultTurnChecker, type TurnChecker, type TurnNote } from './turncheck.ts';
 import { defaultWaitChecker, type WaitChecker } from './waitcheck.ts';
 import {
   autoName,
@@ -50,6 +52,8 @@ const COMPACT_PAUSE_CAP_MS = 5 * 60_000;
 const GLOBAL_ID = 'global';
 const LIVE: SessionStatus[] = ['new', 'working', 'needs-you', 'your-turn', 'waiting'];
 const RECONCILE_MS = 3000;
+/** How often the small model may say "still working" for one turn before the session is handed back anyway. */
+const SETTLE_EXTENDS = 6;
 /** Gap between sessions a restore brings back: all Claudes at once freeze the machine and the window. */
 const RESTORE_GAP_MS = 4000;
 /** After SessionStart, until Claude's input box takes keys. */
@@ -66,6 +70,7 @@ export interface SessionsOptions {
   titler?: Titler;
   mrLookup?: MrLookup;
   waitChecker?: WaitChecker;
+  turnChecker?: TurnChecker;
   restoreGapMs?: number;
   startedGapMs?: number;
 }
@@ -97,6 +102,10 @@ export class SessionsService implements Sessions {
   #afterStart = new Map<string, () => void>();
   /** Sessions being compacted before they park -> whether they pause once the fill drops. */
   #compacting = new Map<string, boolean>();
+  #turnChecker: TurnChecker;
+  /** Per session: the turn that ended with background work, and how often its fallback was extended. */
+  #turns = new Map<string, { note: TurnNote; extended: number }>();
+  #settling = new Set<string>();
 
   constructor(ctx: Context, services: Services, options: SessionsOptions = {}) {
     this.#ctx = ctx;
@@ -119,6 +128,7 @@ export class SessionsService implements Sessions {
       },
       options.waitChecker ?? defaultWaitChecker,
     );
+    this.#turnChecker = options.turnChecker ?? defaultTurnChecker;
     this.#restoreGapMs = options.restoreGapMs ?? RESTORE_GAP_MS;
     this.#startedGapMs = options.startedGapMs ?? STARTED_GAP_MS;
     this.#binDir = join(ctx.paths.stateDir, 'bin');
@@ -501,6 +511,41 @@ export class SessionsService implements Sessions {
       .run(Date.now() + ms, id);
   }
 
+  // ponytail: in memory only; after a restart the fallback hands back blindly as before
+  noteTurn(id: string, note: TurnNote): void {
+    this.#turns.set(id, { note, extended: 0 });
+  }
+
+  /** The fallback ran out: a small model reads the last message to tell whether the user is needed, or Claude
+   *  still waits on work that wakes it. Without a note, or when the model has no answer, the session is handed back. */
+  async #settle(id: string): Promise<void> {
+    const turn = this.#turns.get(id);
+    const until = this.#rows().find((r) => r.id === id)?.background_until;
+    let verdict = null;
+    if (turn && turn.extended < SETTLE_EXTENDS) {
+      this.#settling.add(id);
+      verdict = await this.#turnChecker(turn.note).catch(() => null);
+      this.#settling.delete(id);
+    }
+    const session = this.get(id);
+    // A new event moved the deadline meanwhile: that turn is the news now.
+    if (!session || this.#rows().find((r) => r.id === id)?.background_until !== until) return;
+    if (verdict === 'working' && turn) {
+      turn.extended++;
+      this.setStatus(id, 'working', null, null, AGENT_FALLBACK_MS);
+      return;
+    }
+    this.#turns.delete(id);
+    if (verdict === 'needs-you') {
+      this.setStatus(id, 'needs-you', null, null);
+      this.#services.notify.needsYou(this.get(id) ?? session, 'Claude needs you');
+      return;
+    }
+    const waiting = !!session.waitingFor;
+    this.setStatus(id, waiting ? 'waiting' : 'your-turn', null);
+    if (!waiting) this.#services.notify.yourTurn(this.get(id) ?? session);
+  }
+
   setAgents(id: string, agents: SubagentRun[]): void {
     const session = this.get(id);
     if (!session || session.status === 'exited') return;
@@ -801,10 +846,7 @@ export class SessionsService implements Sessions {
     for (const { id } of this.#rows().filter(
       (r) => r.background_until !== null && r.background_until <= at && !this.#restorable.has(r.id),
     )) {
-      const waiting = !!this.get(id)?.waitingFor;
-      this.setStatus(id, waiting ? 'waiting' : 'your-turn', null);
-      const session = this.get(id);
-      if (session && !waiting) this.#services.notify.yourTurn(session);
+      if (!this.#settling.has(id)) void this.#settle(id);
     }
     const running = this.#tmux.sessions();
     for (const row of this.#rows()) {

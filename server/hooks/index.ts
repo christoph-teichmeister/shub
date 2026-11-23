@@ -227,6 +227,17 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
             change.background,
             change.shells,
           );
+          if (req.params.event === 'Stop' && change.background) {
+            const tasks = Array.isArray(payload.background_tasks) ? payload.background_tasks : [];
+            services.sessions.noteTurn(session.id, {
+              message: String(payload.last_assistant_message ?? ''),
+              tasks: tasks
+                .slice(0, 8)
+                .map((t: { type?: unknown; command?: unknown; description?: unknown }) =>
+                  `${String(t?.type)}: ${String(t?.command ?? t?.description ?? '')}`.slice(0, 150),
+                ),
+            });
+          }
           const updated = services.sessions.get(session.id) ?? session;
           if (change.notify?.kind === 'yourTurn') services.notify.yourTurn(updated);
           if (change.notify?.kind === 'needsYou') services.notify.needsYou(updated, change.notify.text);
