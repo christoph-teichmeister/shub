@@ -17,22 +17,26 @@ const ASK =
   'You check one thing for a developer. Only look things up, never change anything. ' +
   'Besides reading files, the web and MCP tools you may run read-only gh, glab and git commands ' +
   '(gh pr view, gh pr checks, glab mr view, glab ci status, git log and the like). ' +
-  'Reply with exactly one line, in the language of the check: "DONE: <what happened, one short sentence>" ' +
-  'or "NOT YET: <why not, one short sentence>".\n\nCheck:\n';
+  'Reply with exactly one line, in the language of the check: "HAPPENED: <what happened, one short sentence>" ' +
+  'or "NOT YET: <why not, one short sentence>". HAPPENED means the thing the check asks about has occurred; ' +
+  'it does not mean you finished looking. If it has not occurred, the answer is NOT YET. ' +
+  'This marker rule overrides any answer format the check itself asks for (yes/no, "the answer is …"): never answer yes/no.\n\nCheck:\n';
 
-/** The last DONE / NOT YET line of the answer. */
+// A positive marker followed by a negation ("DONE: No, neither … has a note") is a NOT YET in disguise.
+const NEGATED = /^(no|nein|not|nicht|noch nicht|nothing|has not|hasn'?t|have not|haven'?t|did not|didn'?t)\b/i;
+
+/** The last HAPPENED / NOT YET line of the answer (DONE is the old name for HAPPENED). */
 export function parseCheck(raw: string): CheckResult | null {
   const lines = raw.trim().split('\n').reverse();
   for (const line of lines) {
-    const m = /^\W*(DONE|NOT YET)\s*:\s*(.+)$/i.exec(line.trim());
-    if (m)
-      return {
-        done: m[1].toUpperCase() === 'DONE',
-        summary: m[2]
-          .replace(/[*`]+$/, '')
-          .trim()
-          .slice(0, 200),
-      };
+    const m = /^\W*(HAPPENED|DONE|NOT YET)\s*:\s*(.+)$/i.exec(line.trim());
+    if (m) {
+      const summary = m[2]
+        .replace(/[*`]+$/, '')
+        .trim()
+        .slice(0, 200);
+      return { done: m[1].toUpperCase() !== 'NOT YET' && !NEGATED.test(summary), summary };
+    }
   }
   return null;
 }
