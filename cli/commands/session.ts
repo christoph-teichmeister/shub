@@ -111,7 +111,13 @@ async function wait(
   if (reason === '') throw new CliError(`usage:\n${usage}`);
   if (!id) throw new CliError('which session? Pass --id (see "shub session list").');
   const body: Record<string, unknown> = { waitingFor: reason };
-  if (typeof flags.check === 'string') body.waitCheck = flags.check;
+  if (typeof flags.check === 'string') {
+    body.waitCheck = flags.check;
+    if (/yes\s*\/\s*no|ja\s*\/\s*nein|answer is|antwort ist/i.test(flags.check))
+      console.error(
+        'warning: --check names its own answer format; the checker replies HAPPENED / NOT YET, so describe what to look at instead.',
+      );
+  }
   if (typeof flags.then === 'string') body.waitOnDone = flags.then;
   if (typeof flags.every === 'string') {
     const every = Number(flags.every);

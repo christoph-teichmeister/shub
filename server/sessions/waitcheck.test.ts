@@ -14,6 +14,24 @@ test('parseCheck reads the last DONE / NOT YET line', () => {
   assert.equal(parseCheck('I could not reach GitLab.'), null);
 });
 
+test('parseCheck accepts HAPPENED, and DONE as its old name', () => {
+  assert.deepEqual(parseCheck('HAPPENED: Kai answered'), { done: true, summary: 'Kai answered' });
+  assert.equal(parseCheck('DONE: Kai answered')?.done, true);
+});
+
+test('parseCheck counts a positive marker with a negated summary as NOT YET', () => {
+  // The two real answers of 2026-11-23: Haiku used DONE for "I finished checking".
+  for (const raw of [
+    'DONE: No, neither !3683 nor !3684 has a new note since the last check',
+    'DONE: No new note on !3683 or !3684 so far',
+    'HAPPENED: Nein, noch keine Antwort',
+    'HAPPENED: Noch nicht, Kai hat nicht geantwortet',
+    "HAPPENED: Hasn't been merged yet",
+  ])
+    assert.equal(parseCheck(raw)?.done, false, raw);
+  assert.equal(parseCheck('HAPPENED: Notes were added on !3683')?.done, true);
+});
+
 test('allow rules name each MCP server: user-wide, per project and .mcp.json', () => {
   const home = mkdtempSync(join(tmpdir(), 'shub-wait-'));
   const cwd = join(home, 'proj');
