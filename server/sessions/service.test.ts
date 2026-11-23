@@ -89,7 +89,7 @@ const notified: string[] = [];
 let claudeMissing = 0;
 let checkAnswer: CheckResult | null = null;
 let turnVerdict: TurnVerdict | null = null;
-let shellsAlive = 1;
+let shellsAlive = 0;
 const checks: string[] = [];
 const svc = new SessionsService(ctx, services, {
   restoreGapMs: 300,
@@ -393,6 +393,8 @@ test('a turn paused on background work falls back to your-turn after its fallbac
   svc.reconcile(Date.now() + 60_000);
   assert.equal(svc.get(s.id)?.status, 'working');
   svc.reconcile(Date.now() + 2 * 60_000);
+  assert.equal(svc.get(s.id)?.status, 'working', 'due, but Claude gets a moment to wake itself');
+  svc.reconcile(Date.now() + 2 * 60_000 + 20_000);
   assert.equal(svc.get(s.id)?.status, 'your-turn');
   assert.deepEqual(notified.splice(0), [`${s.id}: your turn`]);
   svc.setStatus(s.id, 'working', null, undefined, 90_000);
@@ -407,34 +409,41 @@ test('a turn paused on background work falls back to your-turn after its fallbac
   svc.reconcile(Date.now() + 5 * 60_000);
   assert.equal(svc.get(s.id)?.status, 'working', 'a busy agent pushes the fallback');
   svc.reconcile(Date.now() + 11 * 60_000);
+  svc.reconcile(Date.now() + 11 * 60_000 + 20_000);
   assert.equal(svc.get(s.id)?.status, 'your-turn');
   notified.splice(0);
 });
 
-test('at the fallback a small model decides: still working, needs you, or your turn', async () => {
+test('a small model tells once who has the ball, the process tree tells when the work is over', async () => {
   const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
   const note = { message: 'Wait for the gate.', tasks: ['shell: claude -p review'] };
-  const fallback = async (verdict: TurnVerdict | null) => {
+  const stop = async (verdict: TurnVerdict | null, alive = 1) => {
     turnVerdict = verdict;
+    shellsAlive = alive;
     svc.setStatus(s.id, 'working', null, undefined, 90_000);
     svc.noteTurn(s.id, note);
-    svc.reconcile(Date.now() + 2 * 60_000);
     await new Promise((r) => setTimeout(r, 20));
   };
   notified.splice(0);
-  await fallback('working');
+  await stop('working');
   assert.equal(svc.get(s.id)?.status, 'working', 'Claude waits on its agent: nobody is needed');
+  svc.reconcile(Date.now() + 60 * 60_000);
+  assert.equal(svc.get(s.id)?.status, 'working', 'still running: no timer hands it back, however late');
   assert.deepEqual(notified, []);
-  await fallback('needs-you');
-  assert.equal(svc.get(s.id)?.status, 'needs-you');
-  await fallback('your-turn');
-  assert.equal(svc.get(s.id)?.status, 'your-turn');
-  await fallback(null);
-  assert.equal(svc.get(s.id)?.status, 'your-turn', 'no answer: handed back as before');
   shellsAlive = 0;
-  await fallback('working');
-  assert.equal(svc.get(s.id)?.status, 'your-turn', 'nothing runs any more: no model call, handed back');
-  shellsAlive = 1;
+  svc.reconcile(Date.now() + 60 * 60_000);
+  assert.equal(svc.get(s.id)?.status, 'working', 'the last task just ended: a grace for Claude to wake');
+  svc.reconcile(Date.now() + 60 * 60_000 + 20_000);
+  assert.equal(svc.get(s.id)?.status, 'your-turn');
+  await stop('needs-you');
+  assert.equal(svc.get(s.id)?.status, 'needs-you');
+  await stop('your-turn');
+  assert.equal(svc.get(s.id)?.status, 'your-turn');
+  await stop(null);
+  assert.equal(svc.get(s.id)?.status, 'working', 'no answer: the watcher decides');
+  await stop('needs-you', 0);
+  assert.equal(svc.get(s.id)?.status, 'working', 'nothing runs: no model call, the grace hands it back');
+  shellsAlive = 0;
   notified.splice(0);
   turnVerdict = null;
 });
