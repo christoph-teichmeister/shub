@@ -750,6 +750,7 @@ test('approval dialog and search', async ({ page }) => {
   const { errors, calls } = await mockApi(page, {
     '/api/approvals': [approval],
     'POST /api/approvals/a1': { ...approval, state: 'rejected' },
+    'POST /api/sessions': { status: 200, json: session },
   });
   await page.goto('/#/');
   const dialog = page.getByRole('dialog', { name: 'A session wants to start a new session' });
@@ -766,7 +767,10 @@ test('approval dialog and search', async ({ page }) => {
   await expect(search.getByRole('option', { name: /ai-portal/ })).toBeVisible();
   await page.keyboard.press('Enter');
   await expect(search).toBeHidden();
-  await expect(page.getByRole('heading', { name: 'ai-portal', level: 1 })).toBeVisible();
+  // Enter starts a session right away.
+  await expect
+    .poll(() => calls.find((c) => c.path === '/api/sessions' && c.body)?.body)
+    .toMatchObject({ projectId: 'ai-portal', kind: 'claude' });
 
   // Adding a project lives in the search now.
   await page.keyboard.press('Alt+KeyK');
