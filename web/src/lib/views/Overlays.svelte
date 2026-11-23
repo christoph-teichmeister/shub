@@ -112,17 +112,15 @@
 
   function open(h: Hit) {
     if (h.kind === 'old') return h.old.resumable === false ? undefined : void resume(h);
-    if (ui.showInGrid && h.kind !== 'add') return void newSession(h.project);
+    if (h.kind !== 'add') return void newSession(h.project);
     close();
-    if (h.kind === 'add') go('settings', 'project', 'new');
-    else go('p', h.project.id);
+    go('settings', 'project', 'new');
   }
 
   function onSearchKey(e: KeyboardEvent) {
     const h = hits[cursor];
     if (e.key === 'ArrowDown') cursor = Math.min(cursor + 1, hits.length - 1);
     else if (e.key === 'ArrowUp') cursor = Math.max(cursor - 1, 0);
-    else if (e.key === 'Enter' && e.altKey && h && h.kind !== 'add') void newSession(h.project);
     else if (e.key === 'Enter' && h) open(h);
     else if (e.altKey && e.code === 'KeyP' && h && h.kind !== 'add') void pin(h.project);
     else return;
