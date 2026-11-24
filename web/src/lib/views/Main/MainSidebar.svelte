@@ -308,6 +308,13 @@
   </a>
 {/snippet}
 
+{#snippet statsButton()}
+  <a class="rail-item" href={href('stats')} title="Stats: time, tokens, limits, tools">
+    <Icon name="chart" />
+    <span class="visually-hidden">Stats</span>
+  </a>
+{/snippet}
+
 {#snippet gameButton()}
   <a class="rail-item" href={href('game')} title="Game (Alt V)">
     <Icon name="play" />
@@ -321,6 +328,7 @@
       <Wordmark accent={project?.accent} {needsYou} />
       <span class="grow"></span>
       {@render overviewButton()}
+      {@render statsButton()}
       {@render gameButton()}
       <button
         type="button"
@@ -457,6 +465,7 @@
       {#if globalSession}<span class="rail-dot"><StatusDot status={globalSession.status} /></span>{/if}
     </button>
     {@render overviewButton()}
+    {@render statsButton()}
     {@render gameButton()}
     {#if needsYouTotal}
       <button

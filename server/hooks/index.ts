@@ -163,13 +163,18 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
             return { ok: true };
           }
           if (!isHookEvent(req.params.event)) {
-            if (LAUNCH_HOOK_EVENTS.includes(req.params.event)) return { ok: true };
+            if (LAUNCH_HOOK_EVENTS.includes(req.params.event)) {
+              if (req.params.event === 'PermissionDenied')
+                services.stats.hook(session, req.params.event, await req.json<Record<string, unknown>>());
+              return { ok: true };
+            }
             throw new HttpError(404, 'unknown hook event');
           }
           const payload = await req.json<Record<string, unknown>>();
           if (isPermissionMode(payload.permission_mode)) {
             services.sessions.setPermissionMode(session.id, payload.permission_mode);
           }
+          services.stats.hook(session, req.params.event, payload);
           const agents = nextAgents(session.agents ?? [], req.params.event, payload);
           if (agents) services.sessions.setAgents(session.id, agents);
           // A subagent's events prove it still works: the fallback only fires after 10 minutes of silence.

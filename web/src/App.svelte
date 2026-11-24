@@ -136,6 +136,8 @@
   {@render lazy(import('./lib/views/FirstRun.svelte'), { firstRun: true })}
 {:else if showGame}
   <!-- The game itself is mounted below, outside this chain, so leaving the route does not rebuild it. -->
+{:else if route.name === 'stats'}
+  {@render lazy(import('./lib/views/Stats.svelte'))}
 {:else if route.name === 'overview' && !ui.phone}
   {@render lazy(import('./lib/views/Overview/Overview.svelte'))}
 {:else if ui.phone}

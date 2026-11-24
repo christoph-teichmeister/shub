@@ -158,6 +158,12 @@ export interface Skills {
   forProject(projectPath: string): SkillInfo[];
 }
 
+/** server/stats: usage history for the Stats tab. */
+export interface Stats {
+  /** Called by the hook route with every Claude Code hook event of a shub session. */
+  hook(session: Session, event: string, payload: Record<string, unknown>): void;
+}
+
 export interface Services {
   state: StateDb;
   /** server/group: the device group's versioned items in shub.db; config settings live there. */
@@ -170,4 +176,5 @@ export interface Services {
   docker: Docker;
   skills: Skills;
   plugins: Plugins;
+  stats: Stats;
 }

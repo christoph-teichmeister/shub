@@ -1,4 +1,4 @@
-// Hash router: #/, #/g, #/p/<projectId>[/<sessionId>], #/game, #/overview, #/styleguide, #/login, #/settings/...
+// Hash router: #/, #/g, #/p/<projectId>[/<sessionId>], #/game, #/overview, #/stats, #/styleguide, #/login, #/settings/...
 // Plus one path route: /pair/<code> (the phone opens the QR link; the server serves index.html for it).
 // Settings: #/settings[/<area>], #/settings/project/<id|new>, #/settings/theme/<id|new>, #/settings/import.
 import { tick } from 'svelte';
@@ -10,6 +10,7 @@ export type Route =
   | { name: 'project'; projectId: string; sessionId: string | null }
   | { name: 'game' }
   | { name: 'overview' }
+  | { name: 'stats' }
   | { name: 'styleguide' }
   | { name: 'settings'; rest: string[] };
 
@@ -24,6 +25,8 @@ export function parseHash(hash: string): Route {
       return { name: 'game' };
     case 'overview':
       return { name: 'overview' };
+    case 'stats':
+      return { name: 'stats' };
     case 'styleguide':
       return { name: 'styleguide' };
     case 'login':
