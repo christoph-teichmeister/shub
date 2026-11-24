@@ -100,12 +100,13 @@
       <div class="bars">
         {#each report.daily as d (d.day)}
           <div class="bar" title="{d.day}: {hours(d.workingMs)} working, {hours(d.needsYouMs)} waiting on you">
-            <span class="turn" style:height="{(d.yourTurnMs / timeMax) * 100}%"></span>
-            <span class="needs" style:height="{(d.needsYouMs / timeMax) * 100}%"></span>
             <span class="working" style:height="{(d.workingMs / timeMax) * 100}%"></span>
+            <span class="needs" style:height="{(d.needsYouMs / timeMax) * 100}%"></span>
+            <span class="turn" style:height="{(d.yourTurnMs / timeMax) * 100}%"></span>
           </div>
         {/each}
       </div>
+      <div class="axis"><span>{report.daily[0].day}</span><span>{report.daily.at(-1)?.day}</span></div>
     </section>
 
     <section>
@@ -117,6 +118,7 @@
           </div>
         {/each}
       </div>
+      <div class="axis"><span>{report.daily[0].day}</span><span>{report.daily.at(-1)?.day}</span></div>
     </section>
 
     <section>
@@ -286,7 +288,22 @@
     height: 100%;
     display: flex;
     flex-direction: column-reverse;
+    align-items: center;
     justify-content: flex-start;
+    border-bottom: 2px solid var(--line-strong);
+  }
+
+  /* One day is at most this wide, so a single day of data does not fill a 30-day chart. */
+  .bar span {
+    width: min(100%, 28px);
+  }
+
+  .axis {
+    display: flex;
+    justify-content: space-between;
+    margin-top: var(--space-1);
+    color: var(--muted);
+    font-size: var(--text-xs);
   }
 
   .working {
