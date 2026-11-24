@@ -154,6 +154,48 @@
   }
 }
 
+/* Main <-> overview (router.svelte.ts sets data-vt): the old view shrinks away, the new one settles in. */
+@keyframes vt-out-in {
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+@keyframes vt-in-from-zoom {
+  from {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+}
+@keyframes vt-in-from-small {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+@keyframes vt-out-big {
+  to {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+}
+:root[data-vt]::view-transition-group(root) {
+  animation-duration: var(--duration-slow);
+  animation-timing-function: var(--ease-standard);
+}
+:root[data-vt='in']::view-transition-old(root) {
+  animation-name: vt-out-in;
+}
+:root[data-vt='in']::view-transition-new(root) {
+  animation-name: vt-in-from-zoom;
+}
+:root[data-vt='out']::view-transition-old(root) {
+  animation-name: vt-out-big;
+}
+:root[data-vt='out']::view-transition-new(root) {
+  animation-name: vt-in-from-small;
+}
+
 /* Base document styles (the only global CSS besides the tokens). */
 *,
 *::before,

@@ -1,6 +1,7 @@
 // Hash router: #/, #/g, #/p/<projectId>[/<sessionId>], #/game, #/overview, #/styleguide, #/login, #/settings/...
 // Plus one path route: /pair/<code> (the phone opens the QR link; the server serves index.html for it).
 // Settings: #/settings[/<area>], #/settings/project/<id|new>, #/settings/theme/<id|new>, #/settings/import.
+import { tick } from 'svelte';
 export type Route =
   | { name: 'home' }
   | { name: 'login' }
@@ -46,7 +47,25 @@ let beforeGame = '#/';
 window.addEventListener('hashchange', (e) => {
   const old = new URL(e.oldURL).hash;
   if (!['game', 'overview'].includes(parseHash(old).name)) beforeGame = old || '#/';
-  router.route = current();
+  const next = current();
+  // Main <-> overview zooms (View Transitions API; skipped without it or under reduced motion, see tokens.css).
+  const into = next.name === 'overview';
+  if (
+    into !== (parseHash(old).name === 'overview') &&
+    !matchMedia('(prefers-reduced-motion: reduce)').matches &&
+    document.startViewTransition
+  ) {
+    document.documentElement.dataset.vt = into ? 'in' : 'out';
+    const run = async () => {
+      if (into) await import('../views/Overview/Overview.svelte'); // chunk ready, so the new frame is the grid, not a gap
+      router.route = next;
+      await tick();
+      await new Promise((r) => requestAnimationFrame(r));
+    };
+    void document.startViewTransition(run).finished.finally(() => delete document.documentElement.dataset.vt);
+    return;
+  }
+  router.route = next;
 });
 export const gameBack = () => beforeGame;
 
