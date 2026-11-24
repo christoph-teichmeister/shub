@@ -44,27 +44,33 @@ export const router = $state({ route: current() });
 
 /** The last place outside the game and the overview, where "← shub" and Alt V / Alt O go back to. */
 let beforeGame = '#/';
+let fade = 0;
 window.addEventListener('hashchange', (e) => {
   const old = new URL(e.oldURL).hash;
   if (!['game', 'overview'].includes(parseHash(old).name)) beforeGame = old || '#/';
   const next = current();
-  // Main <-> overview zooms (View Transitions API; skipped without it or under reduced motion, see tokens.css).
-  const into = next.name === 'overview';
+  // Main <-> overview: the old view shrinks away at once, then the new one settles in (see tokens.css). The grid
+  // mounts heavy terminals, so the exit plays before the switch to give feedback while that blocks the thread.
+  const root = document.documentElement;
+  const seq = ++fade;
   if (
-    into !== (parseHash(old).name === 'overview') &&
-    !matchMedia('(prefers-reduced-motion: reduce)').matches &&
-    document.startViewTransition
+    (next.name === 'overview') !== (parseHash(old).name === 'overview') &&
+    !matchMedia('(prefers-reduced-motion: reduce)').matches
   ) {
-    document.documentElement.dataset.vt = into ? 'in' : 'out';
-    const run = async () => {
-      if (into) await import('../views/Overview/Overview.svelte'); // chunk ready, so the new frame is the grid, not a gap
-      router.route = next;
+    root.dataset.vt = 'leave';
+    setTimeout(async () => {
+      if (seq !== fade) return;
+      router.route = current();
       await tick();
-      await new Promise((r) => requestAnimationFrame(r));
-    };
-    void document.startViewTransition(run).finished.finally(() => delete document.documentElement.dataset.vt);
+      requestAnimationFrame(() => {
+        if (seq !== fade) return;
+        root.dataset.vt = 'enter';
+        setTimeout(() => seq === fade && delete root.dataset.vt, 300);
+      });
+    }, 130);
     return;
   }
+  delete root.dataset.vt;
   router.route = next;
 });
 export const gameBack = () => beforeGame;
