@@ -226,6 +226,7 @@ export function create(ctx: Context, services: Services): { module: ShubModule }
             change.pendingCommands,
             change.background,
             change.shells,
+            change.pendingChoices,
           );
           if (req.params.event === 'Stop' && change.background) {
             const tasks = Array.isArray(payload.background_tasks) ? payload.background_tasks : [];

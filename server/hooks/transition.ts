@@ -69,6 +69,8 @@ export interface Transition {
   pendingPermission?: Session['pendingPermission'];
   /** undefined = leave as is. */
   pendingCommands?: Session['pendingCommands'];
+  /** undefined = none. */
+  pendingChoices?: string[];
   notify?: { kind: 'yourTurn' } | { kind: 'needsYou'; text: string };
   /** The turn ended but background work still runs; shub falls back to your-turn after this many ms
    *  if nothing follows. */
@@ -158,6 +160,15 @@ export function endsWithQuestion(message: unknown): boolean {
   return /\?(\s*\([^)]*\))?[\s*_)\]"'`]*$/.test(last);
 }
 
+/** Buttons for a closing either/or question: `Keep it, or add a toggle? (Always on / Toggle)` gives both choices. */
+export function choicesOf(message: unknown): string[] {
+  if (typeof message !== 'string') return [];
+  const last = message.trimEnd().split('\n').pop() ?? '';
+  const m = /\?\s*\(([^()]+)\)[\s*_\]"'`]*$/.exec(last);
+  const choices = m ? m[1].split(' / ').map((c) => c.trim()) : [];
+  return choices.length >= 2 && choices.length <= 4 && choices.every((c) => c && c.length <= 40) ? choices : [];
+}
+
 const FENCE = /^```([^\n]*)\n([\s\S]*?)^```[ \t]*$/gm;
 const COMMANDS_MAX = 5;
 
@@ -227,6 +238,7 @@ export function transition(
         status: 'your-turn',
         pendingPermission: null,
         pendingCommands: null,
+        pendingChoices: choicesOf(payload.last_assistant_message),
         shells,
         notify: { kind: 'yourTurn' },
       };

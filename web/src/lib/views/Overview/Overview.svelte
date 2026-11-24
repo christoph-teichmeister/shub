@@ -6,6 +6,7 @@
   import { untrack } from 'svelte';
   import type { ProjectView, Session } from '../../../../../shared/api.ts';
   import Button from '../../components/Button/Button.svelte';
+  import ChoiceChip from '../../components/ChoiceChip/ChoiceChip.svelte';
   import CommandChip from '../../components/CommandChip/CommandChip.svelte';
   import EmptyState from '../../components/EmptyState/EmptyState.svelte';
   import IntroBanner from '../../components/IntroBanner/IntroBanner.svelte';
@@ -469,6 +470,7 @@
                 {/key}
               </div>
             {/if}
+            <ChoiceChip session={s} />
             <CommandChip session={s} onterminal={(cwd) => newShell(s, cwd)} />
           </div>
         {/snippet}

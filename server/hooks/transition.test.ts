@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   AGENT_FALLBACK_MS,
+  choicesOf,
   handedOverCommands,
   newClaudeSessionId,
   nextAgents,
@@ -192,6 +193,19 @@ test('only blocks marked shub-run count', () => {
   const mixed = '```python\nprint(1)\n```\ntext\n```bash\nls\n```\n```bash shub-run\nmake\n```\n';
   assert.deepEqual(handedOverCommands(mixed), [{ command: 'make' }]);
   assert.deepEqual(handedOverCommands(undefined), []);
+});
+
+test('a closing either/or question gives buttons', () => {
+  const ask = 'Result: done.\n\n**Your call:** Keep digest always on, or add a settings toggle? (Always on / Toggle)';
+  assert.deepEqual(choicesOf(ask), ['Always on', 'Toggle']);
+  assert.deepEqual(choicesOf('Merge now? (Ja / Nein / Später)'), ['Ja', 'Nein', 'Später']);
+  assert.deepEqual(choicesOf('Shall I go on?'), []);
+  assert.deepEqual(choicesOf('One option only? (Maybe)'), []);
+  assert.deepEqual(choicesOf('Fixed (see above / below).'), []);
+  assert.deepEqual(transition('working', 'Stop', { last_assistant_message: ask })?.pendingChoices, [
+    'Always on',
+    'Toggle',
+  ]);
 });
 
 test('a block can name the session or folder it belongs to', () => {

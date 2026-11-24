@@ -14,6 +14,7 @@
   import NotesPanel from '../components/NotesPanel/NotesPanel.svelte';
   import BottomPanel from '../components/BottomPanel/BottomPanel.svelte';
   import Button from '../components/Button/Button.svelte';
+  import ChoiceChip from '../components/ChoiceChip/ChoiceChip.svelte';
   import CommandChip from '../components/CommandChip/CommandChip.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
   import Drawer from '../components/Drawer/Drawer.svelte';
@@ -489,6 +490,7 @@
           {#key active.id}
             <TerminalView sessionId={active.id} accent={project.accent} label={active.name} focused={!ui.drawer} />
           {/key}
+          <ChoiceChip session={active} />
           <CommandChip session={active} onterminal={newShell} />
         {:else}
           <EmptyState

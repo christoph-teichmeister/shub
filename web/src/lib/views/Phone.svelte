@@ -2,6 +2,7 @@
   // Phone layout (viewport < 700 px), same routes as the desktop: #/ is the overview, #/p/<id>/<session> a terminal.
   import ChatView from '../components/ChatView/ChatView.svelte';
   import ConnectionBanner from '../components/ConnectionBanner/ConnectionBanner.svelte';
+  import ChoiceChip from '../components/ChoiceChip/ChoiceChip.svelte';
   import CommandChip from '../components/CommandChip/CommandChip.svelte';
   import MachineSwitcher from '../components/MachineSwitcher/MachineSwitcher.svelte';
   import { fleet } from '../stores/machines.svelte.ts';
@@ -284,6 +285,7 @@
     {/key}
 
     {#snippet prompts()}
+      <ChoiceChip session={open} phone />
       <CommandChip
         session={open}
         phone

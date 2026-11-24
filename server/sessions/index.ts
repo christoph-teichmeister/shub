@@ -207,6 +207,14 @@ function routes(sessions: SessionsService, services: Services, router: Router, c
     sessions.answerCommand(req.params.id, index, action, command);
     return { ok: true };
   });
+  router.add(ROUTES.sessionChoice, async (req) => {
+    requireUser(req.caller);
+    const { index, choice } = await req.json<{ index?: unknown; choice?: unknown }>();
+    if (typeof index !== 'number' || typeof choice !== 'string')
+      throw new HttpError(400, 'index: number, choice: string');
+    sessions.answerChoice(req.params.id, index, choice);
+    return { ok: true };
+  });
   router.add(ROUTES.sessionKeys, async (req) => {
     requireUser(req.caller);
     const { keys } = await req.json<{ keys?: unknown }>();

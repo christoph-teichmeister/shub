@@ -400,7 +400,7 @@ export class SessionsService implements Sessions {
     if (row.token) this.#services.auth.revokeClientToken(row.token);
     this.#db
       .prepare(
-        `UPDATE sessions SET status = 'exited', token = NULL, pending_permission = NULL, pending_commands = NULL WHERE id = ?`,
+        `UPDATE sessions SET status = 'exited', token = NULL, pending_permission = NULL, pending_commands = NULL, pending_choices = NULL WHERE id = ?`,
       )
       .run(row.id);
     this.#restorable.delete(row.id);
@@ -476,6 +476,7 @@ export class SessionsService implements Sessions {
     pendingCommands?: Session['pendingCommands'],
     background = 0,
     shells = 0,
+    choices: string[] = [],
   ): void {
     const session = this.get(id);
     if (!session || session.status === 'exited') return;
@@ -487,13 +488,14 @@ export class SessionsService implements Sessions {
     const since = status === session.status ? session.statusSince : at;
     this.#db
       .prepare(
-        'UPDATE sessions SET status = ?, status_since = ?, pending_permission = ?, pending_commands = ?, shells = ?, background_until = ?, last_activity_at = ? WHERE id = ?',
+        'UPDATE sessions SET status = ?, status_since = ?, pending_permission = ?, pending_commands = ?, pending_choices = ?, shells = ?, background_until = ?, last_activity_at = ? WHERE id = ?',
       )
       .run(
         status,
         since,
         pending ? JSON.stringify(pending) : null,
         commands?.length ? JSON.stringify(commands) : null,
+        choices.length ? JSON.stringify(choices) : null,
         shells,
         background ? Date.now() + background : null,
         at,
@@ -732,6 +734,18 @@ export class SessionsService implements Sessions {
       });
     }
     this.setStatus(id, 'your-turn', null, null);
+  }
+
+  /** An either/or answer Claude's last message offered: typed into the prompt like the user would. `choice` is the
+   *  text the client showed at `index`; another one there means the list changed since. */
+  answerChoice(id: string, index: number, choice: string): void {
+    const offered = this.get(id)?.pendingChoices?.[index];
+    if (offered === undefined) throw new HttpError(404, 'no such choice waiting');
+    if (offered !== choice) throw new HttpError(409, 'Claude asked something else meanwhile: look again');
+    this.#requireRunning(id);
+    this.pasteText(id, offered);
+    this.sendKeys(id, ['Enter']);
+    this.setStatus(id, 'working');
   }
 
   /** Types into the session now, or resumes it first and types once Claude is up. */
