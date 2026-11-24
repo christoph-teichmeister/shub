@@ -35,6 +35,7 @@ jobs:
       - id: version
         run: node --no-warnings scripts/release/release.ts version --branch "$GITHUB_REF_NAME" --sha "$GITHUB_SHA" | tee -a "$GITHUB_OUTPUT"
 
+  # The Linux builds gate the release: publish waits only for these two.
   build:
     needs: version
     if: needs.version.outputs.version != ''
@@ -45,43 +46,42 @@ jobs:
             os: ubuntu-24.04
           - target: linux-arm64
             os: ubuntu-24.04-arm
-          - target: darwin-arm64
-            os: macos-15
-          - target: darwin-x64
-            os: macos-15-intel
     runs-on: ${{ matrix.os }}
-    # The two macOS builds are OPTIONAL. GitHub's macOS runners are scarce: a job can wait for a runner until it is
-    # given up ("not acquired by Runner"), which used to fail the whole release even though every Linux archive was
-    # fine (2026-11-18, beta.69). With continue-on-error a failed or timed-out macOS build no longer blocks publish:
-    # the release ships without that archive, and the updater on that Mac reports "no build for this platform"
-    # (launcher/src/update.ts) until the next release has one. Linux builds stay required.
-    continue-on-error: ${{ startsWith(matrix.target, 'darwin') }}
     timeout-minutes: 20
     env:
       VERSION: ${{ needs.version.outputs.version }}
       ARCHIVE: release/shub-${{ needs.version.outputs.version }}-${{ matrix.target }}.tar.gz
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/build-archive
         with:
-          node-version: 24
-          cache: npm
-      - name: tmux for the dry run
-        run: if [ "$RUNNER_OS" = macOS ]; then brew install tmux; else sudo apt-get update && sudo apt-get install -y tmux; fi
-      # npm ci builds node-pty for this runner's platform; pack keeps it and drops the dev dependencies.
-      - run: npm ci
-      - run: npm run build
-      - run: node --no-warnings scripts/release/release.ts pack --version "$VERSION" --out release
-      - run: test -f "$ARCHIVE"
-      # Install the archive with the packed launcher and start it once, on this platform.
-      - run: node --no-warnings scripts/release/dry-run.ts --archive "$ARCHIVE"
-      - uses: actions/upload-artifact@v7
+          target: ${{ matrix.target }}
+
+  # The two macOS builds never delay the release: GitHub's macOS runners are scarce (a job can wait 15+ minutes for one,
+  # or be given up with "not acquired by Runner", 2026-11-18 beta.69). publish-mac adds whatever finished to the
+  # already published release; until then the updater on that Mac reports "no build for this platform"
+  # (launcher/src/update.ts), and a failed build means it gets the next release.
+  build-mac:
+    needs: version
+    if: needs.version.outputs.version != ''
+    strategy:
+      matrix:
+        include:
+          - target: darwin-arm64
+            os: macos-15
+          - target: darwin-x64
+            os: macos-15-intel
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      ARCHIVE: release/shub-${{ needs.version.outputs.version }}-${{ matrix.target }}.tar.gz
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/build-archive
         with:
-          name: archive-${{ matrix.target }}
-          path: |
-            ${{ env.ARCHIVE }}
-            release/*.bundle.json
-          if-no-files-found: error
+          target: ${{ matrix.target }}
 
   publish:
     needs: [version, build]
@@ -123,4 +123,42 @@ jobs:
             --title "shub $VERSION" --notes-file notes.md $prerelease
       # Running installs listen on this ntfy topic and check for updates at once (server/updates); best effort.
       - name: Notify installs
+        run: curl -fsS -m 10 -d "$VERSION" https://ntfy.sh/christoph-teichmeister-shub-releases || true
+
+  # Adds the Mac archives to the published release and signs SHA256SUMS again over all of them (one upload, so the
+  # sums and their signature change together). Nothing to do when no Mac build finished.
+  publish-mac:
+    needs: [version, publish, build-mac]
+    if: ${{ !cancelled() && needs.publish.result == 'success' }}
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: archive-*
+          path: release
+          merge-multiple: true
+      - name: Sign SHA256SUMS over everything
+        id: sign
+        env:
+          SHUB_RELEASE_SIGNING_KEY: ${{ secrets.SHUB_RELEASE_SIGNING_KEY }}
+        run: |
+          if ! ls release/*darwin*.tar.gz >/dev/null 2>&1; then echo "no Mac archive, nothing to add"; exit 0; fi
+          node --no-warnings scripts/release/release.ts sign release
+          echo "added=true" >> "$GITHUB_OUTPUT"
+      - name: Upload
+        if: steps.sign.outputs.added == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v$VERSION" release/*darwin* release/SHA256SUMS release/SHA256SUMS.sig --clobber --repo "$GITHUB_REPOSITORY"
+      - name: Notify installs
+        if: steps.sign.outputs.added == 'true'
         run: curl -fsS -m 10 -d "$VERSION" https://ntfy.sh/christoph-teichmeister-shub-releases || true
