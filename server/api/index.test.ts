@@ -648,6 +648,22 @@ test('only you decide approvals: the CLI token and session tokens get 403', asyn
   assert.equal((await res.json()).state, 'rejected');
 });
 
+test('answering a permission dialog with a digit hands the turn back at once', async () => {
+  const { sendKeys, get, setStatus } = sessionsService;
+  const set: unknown[][] = [];
+  sessionsService.sendKeys = () => {};
+  sessionsService.get = (() => ({ status: 'needs-you', pendingPermission: { tool: 'Bash', summary: 'ls' } })) as never;
+  sessionsService.setStatus = ((...args: unknown[]) => void set.push(args)) as never;
+  try {
+    assert.equal((await asUser('POST', '/api/sessions/s1/keys', { keys: ['Escape'] })).status, 200);
+    assert.deepEqual(set, [], 'a non-answer key changes nothing');
+    assert.equal((await asUser('POST', '/api/sessions/s1/keys', { keys: ['1'] })).status, 200);
+    assert.deepEqual(set, [['s1', 'working', null, null]]);
+  } finally {
+    Object.assign(sessionsService, { sendKeys, get, setStatus });
+  }
+});
+
 test('a Prompts phone sends named keys and single digits only; a session token drives no terminal', async () => {
   const sent: string[][] = [];
   const sendKeys = sessionsService.sendKeys;
