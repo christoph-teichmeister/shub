@@ -423,6 +423,7 @@
   }
 
   .head {
+    container-type: inline-size;
     flex: none;
     display: flex;
     align-items: center;
@@ -462,10 +463,29 @@
 
   .name {
     flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: var(--weight-medium);
   }
 
+  /* Narrow panes drop the project chip first, then the status word (the dot still shows it). */
+  @container (max-width: 30rem) {
+    .chip {
+      display: none;
+    }
+  }
+
+  @container (max-width: 20rem) {
+    .status {
+      display: none;
+    }
+  }
+
   .status {
+    flex: none;
+    white-space: nowrap;
     font-size: var(--text-sm);
     color: var(--muted);
   }
