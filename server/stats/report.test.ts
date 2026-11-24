@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildReport, type StatRow } from './report.ts';
+import { costUsd } from './prices.ts';
+import { buildReport, digest, type StatRow } from './report.ts';
 import { sumUsage } from './tokens.ts';
 
 const now = new Date(2026, 10, 24, 12, 0).getTime();
@@ -61,4 +62,23 @@ test('transcript usage counts a message once and sums per model', () => {
   const rows = sumUsage([line('a', 2), line('a', 2), line('b', 3), 'noise "usage"'].join('\n'));
   assert.equal(rows.length, 2);
   assert.deepEqual(rows[1].tokens, { input: 1, output: 3, cacheRead: 5, cacheCreate: 0 });
+});
+
+test('cost uses the model family price, dated ids included, unknown models cost nothing', () => {
+  const t = { input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheCreate: 1_000_000 };
+  assert.equal(costUsd('claude-opus-5-5', t), 4 + 20 + 0.2 + 5);
+  assert.equal(costUsd('claude-haiku-4-5-20251001', t), 1 + 5 + 0.1 + 1.25);
+  assert.equal(costUsd('claude-sonnet-5-5', t), 2 + 10 + 0.1 + 2.5);
+  assert.equal(costUsd('something-else', t), 0);
+});
+
+test('report carries the cost and the digest names the main numbers', () => {
+  const t = { input: 1_000_000, output: 0, cacheRead: 0, cacheCreate: 0 };
+  const rows = [row(now - min, 'tokens', 'claude-opus-5-5', { b: JSON.stringify(t) }), row(now - min, 'commit')];
+  const r = buildReport(rows, 7, now, () => 'x');
+  assert.equal(r.daily.at(-1)!.costUsd, 4);
+  assert.equal(r.models[0].costUsd, 4);
+  const d = digest(r);
+  assert.match(d.body, /\$4\.00 at API rates, most on claude-opus-5-5/);
+  assert.match(d.body, /1 commits/);
 });

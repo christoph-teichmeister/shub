@@ -33,6 +33,8 @@
   const projectName = (id: string | null) =>
     id ? (app.projects.find((p) => p.id === id)?.name ?? id) : 'Global / none';
 
+  const usd = (n: number) => `$${n.toFixed(n >= 10 ? 0 : 2)}`;
+  const costTotal = $derived(report?.daily.reduce((a, d) => a + d.costUsd, 0) ?? 0);
   const total = $derived(report?.daily.reduce((a, d) => a + d.workingMs, 0) ?? 0);
   const tokensTotal = $derived(report?.daily.reduce((a, d) => a + sumTokens(d.tokens), 0) ?? 0);
   const cacheHit = $derived.by(() => {
@@ -81,6 +83,11 @@
           >commits / PRs, streak {report.streak} d</span
         >
       </div>
+      <div>
+        <b>{usd(costTotal)}</b><span title="Tokens at pay-per-token API rates: a yardstick on a subscription"
+          >at API rates</span
+        >
+      </div>
       <div><b>{report.sessions.compactsPerSession}</b><span>compacts per session</span></div>
     </section>
 
@@ -102,7 +109,7 @@
     </section>
 
     <section>
-      <h2>Tokens per day</h2>
+      <h2>Tokens per day <small>{usd(costTotal)} at API rates</small></h2>
       <div class="bars">
         {#each report.daily as d (d.day)}
           <div class="bar" title="{d.day}: {short(sumTokens(d.tokens))} tokens">
@@ -132,7 +139,11 @@
         <table>
           <tbody>
             {#each report.projects as p (p.projectId)}
-              <tr><td>{projectName(p.projectId)}</td><td>{hours(p.workingMs)}</td><td>{short(p.tokens)}</td></tr>
+              <tr
+                ><td>{projectName(p.projectId)}</td><td>{hours(p.workingMs)}</td><td
+                  >{short(p.tokens)} · {usd(p.costUsd)}</td
+                ></tr
+              >
             {/each}
           </tbody>
         </table>
@@ -142,7 +153,7 @@
         <table>
           <tbody>
             {#each report.models as m (m.model)}
-              <tr><td>{m.model}</td><td>{short(sumTokens(m.tokens))}</td><td>out {short(m.tokens.output)}</td></tr>
+              <tr><td>{m.model}</td><td>{short(sumTokens(m.tokens))}</td><td>{usd(m.costUsd)}</td></tr>
             {/each}
           </tbody>
         </table>
@@ -168,11 +179,11 @@
         </table>
       </section>
       <section>
-        <h2>Most tokens</h2>
+        <h2>Most expensive sessions</h2>
         <table>
           <tbody>
             {#each report.topSessions as s (s.sessionId)}
-              <tr><td>{s.name}</td><td>{short(s.tokens)}</td></tr>
+              <tr><td>{s.name}</td><td>{short(s.tokens)} · {usd(s.costUsd)}</td></tr>
             {/each}
           </tbody>
         </table>

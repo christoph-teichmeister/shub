@@ -1,5 +1,6 @@
 // Pure aggregation: raw stats_events rows -> the StatsReport the Stats tab draws.
 import type { StatsReport, TokenSums } from '../../shared/api.ts';
+import { costUsd } from './prices.ts';
 
 /** One row of stats_events. `kind`: status | closed | tool | asked | denied | compact | commit | pr | tokens | limit. */
 export interface StatRow {
@@ -50,6 +51,7 @@ export function buildReport(rows: StatRow[], days: number, now: number, nameOf: 
         yourTurnMs: 0,
         sessions: 0,
         tokens: empty(),
+        costUsd: 0,
         commits: 0,
         prs: 0,
         compacts: 0,
@@ -61,20 +63,20 @@ export function buildReport(rows: StatRow[], days: number, now: number, nameOf: 
   const sessionsPerDay = new Map<string, Set<string>>();
   const projects = new Map<
     string | null,
-    { projectId: string | null; workingMs: number; needsYouMs: number; tokens: number }
+    { projectId: string | null; workingMs: number; needsYouMs: number; tokens: number; costUsd: number }
   >();
   const project = (id: string | null) => {
-    if (!projects.has(id)) projects.set(id, { projectId: id, workingMs: 0, needsYouMs: 0, tokens: 0 });
+    if (!projects.has(id)) projects.set(id, { projectId: id, workingMs: 0, needsYouMs: 0, tokens: 0, costUsd: 0 });
     return projects.get(id)!;
   };
-  const models = new Map<string, TokenSums>();
+  const models = new Map<string, { tokens: TokenSums; costUsd: number }>();
   const tools = new Map<string, { tool: string; count: number; asked: number; denied: number }>();
   const tool = (name: string) => {
     if (!tools.has(name)) tools.set(name, { tool: name, count: 0, asked: 0, denied: 0 });
     return tools.get(name)!;
   };
   const asked = new Map<string, number>();
-  const sessionTokens = new Map<string, number>();
+  const sessionTokens = new Map<string, { tokens: number; costUsd: number }>();
   const span = new Map<string, { first: number; last: number }>();
   const limits: StatsReport['limits'] = [];
   const commitDays = new Set<string>();
@@ -105,11 +107,16 @@ export function buildReport(rows: StatRow[], days: number, now: number, nameOf: 
     else if (r.kind === 'pr') day.prs++;
     else if (r.kind === 'tokens') {
       const t = JSON.parse(r.b) as TokenSums;
+      const cost = costUsd(r.a, t);
       add(day.tokens, t);
-      if (!models.has(r.a)) models.set(r.a, empty());
-      add(models.get(r.a)!, t);
+      day.costUsd += cost;
+      if (!models.has(r.a)) models.set(r.a, { tokens: empty(), costUsd: 0 });
+      add(models.get(r.a)!.tokens, t);
+      models.get(r.a)!.costUsd += cost;
       project(r.project).tokens += total(t);
-      sessionTokens.set(r.session, (sessionTokens.get(r.session) ?? 0) + total(t));
+      project(r.project).costUsd += cost;
+      const st = sessionTokens.get(r.session) ?? { tokens: 0, costUsd: 0 };
+      sessionTokens.set(r.session, { tokens: st.tokens + total(t), costUsd: st.costUsd + cost });
     } else if (r.kind === 'limit') {
       const prev = limits.at(-1);
       limits.push({ ts: r.ts, fiveHour: r.n, sevenDay: Number(r.a) });
@@ -158,7 +165,9 @@ export function buildReport(rows: StatRow[], days: number, now: number, nameOf: 
     days,
     daily: [...daily.values()],
     projects: [...projects.values()].sort((a, b) => b.workingMs + b.tokens - (a.workingMs + a.tokens)),
-    models: [...models].map(([model, tokens]) => ({ model, tokens })).sort((a, b) => total(b.tokens) - total(a.tokens)),
+    models: [...models]
+      .map(([model, m]) => ({ model, ...m }))
+      .sort((a, b) => b.costUsd - a.costUsd || total(b.tokens) - total(a.tokens)),
     tools: [...tools.values()].sort((a, b) => b.count - a.count).slice(0, 15),
     asked: [...asked]
       .map(([command, count]) => ({ command, count }))
@@ -173,9 +182,26 @@ export function buildReport(rows: StatRow[], days: number, now: number, nameOf: 
       compactsPerSession: span.size ? Math.round((compacts / span.size) * 10) / 10 : 0,
     },
     topSessions: [...sessionTokens]
-      .map(([sessionId, tokens]) => ({ sessionId, name: nameOf(sessionId), tokens }))
-      .sort((a, b) => b.tokens - a.tokens)
+      .map(([sessionId, st]) => ({ sessionId, name: nameOf(sessionId), ...st }))
+      .sort((a, b) => b.costUsd - a.costUsd || b.tokens - a.tokens)
       .slice(0, 5),
     streak,
   };
+}
+
+const usd = (n: number): string => `$${n.toFixed(n >= 10 ? 0 : 2)}`;
+const hm = (ms: number): string =>
+  ms >= 3600_000 ? `${(ms / 3600_000).toFixed(1)} h` : `${Math.round(ms / 60_000)} min`;
+
+/** The weekly digest as a notification: title and a few short lines. */
+export function digest(r: StatsReport): { title: string; body: string } {
+  const sum = (pick: (d: StatsReport['daily'][number]) => number) => r.daily.reduce((a, d) => a + pick(d), 0);
+  const waits = r.daily.map((d) => d.medianNeedsYouMs).filter(Boolean);
+  const lines = [
+    `Claude worked ${hm(sum((d) => d.workingMs))}, waited ${hm(sum((d) => d.needsYouMs))} on you${waits.length ? ` (median ${hm(median(waits))})` : ''}`,
+    `${r.sessions.started} sessions, ${sum((d) => d.commits)} commits, ${sum((d) => d.prs)} PRs`,
+    `${usd(sum((d) => d.costUsd))} at API rates${r.models[0] ? `, most on ${r.models[0].model}` : ''}`,
+  ];
+  if (r.limitHits) lines.push(`Limit hit ${r.limitHits}x`);
+  return { title: `shub: your last ${r.days} days`, body: lines.join('\n') };
 }

@@ -351,14 +351,16 @@ export interface StatsReport {
     yourTurnMs: number;
     sessions: number;
     tokens: TokenSums;
+    /** USD at standard API rates (a yardstick on a subscription). */
+    costUsd: number;
     commits: number;
     prs: number;
     compacts: number;
     /** Median ms a session waited in "needs you" (spans that ended that day). */
     medianNeedsYouMs: number;
   }[];
-  projects: { projectId: string | null; workingMs: number; needsYouMs: number; tokens: number }[];
-  models: { model: string; tokens: TokenSums }[];
+  projects: { projectId: string | null; workingMs: number; needsYouMs: number; tokens: number; costUsd: number }[];
+  models: { model: string; tokens: TokenSums; costUsd: number }[];
   /** Calls per tool; `asked` = permission prompts, `denied` = refused ones. */
   tools: { tool: string; count: number; asked: number; denied: number }[];
   /** "Bash: git status"-style commands you were asked about most often: allowlist candidates. */
@@ -367,7 +369,7 @@ export interface StatsReport {
   /** Samples at 100% used. */
   limitHits: number;
   sessions: { started: number; medianMs: number; peakParallel: number; compactsPerSession: number };
-  topSessions: { sessionId: string; name: string; tokens: number }[];
+  topSessions: { sessionId: string; name: string; tokens: number; costUsd: number }[];
   /** Consecutive days with a commit, ending today or yesterday. */
   streak: number;
 }

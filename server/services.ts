@@ -132,6 +132,8 @@ export interface Notify {
   needsYou(session: Session, text: string): void;
   yourTurn(session: Session): void;
   approval(approval: Approval): void;
+  /** A plain message (desktop + push to every device) that opens the app at `url`. */
+  info(title: string, body: string, url: string, tag: string): void;
   /** To the given device only, or to all devices. */
   test(deviceId?: string): Promise<void>;
   /** The device was signed out or removed: drop its push subscriptions. */

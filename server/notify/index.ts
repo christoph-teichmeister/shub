@@ -184,6 +184,11 @@ export class NotifyService implements Notify {
       });
   }
 
+  info(title: string, body: string, url: string, tag: string): void {
+    desktop(title, body);
+    if (!this.#phoneQuiet()) void this.push({ title, body, url, tag });
+  }
+
   /** Pushes to that device only; without one (cli) to all devices. */
   async test(deviceId?: string): Promise<void> {
     desktop('shub', 'Test notification');
