@@ -18,6 +18,7 @@ export const MIGRATIONS = [
   'ALTER TABLE sessions ADD COLUMN context TEXT',
   'ALTER TABLE sessions ADD COLUMN status_since TEXT',
   'UPDATE sessions SET status_since = last_activity_at',
+  'ALTER TABLE sessions ADD COLUMN pending_choices TEXT',
 ];
 
 export interface Row {
@@ -36,6 +37,7 @@ export interface Row {
   last_activity_at: string;
   pending_permission: string | null;
   pending_commands: string | null;
+  pending_choices: string | null;
   shells: number;
   /** Epoch ms: a turn that ended on background work is handed back then if no hook came first. */
   background_until: number | null;
@@ -75,6 +77,7 @@ export const toSession = (r: Row): Session => ({
         typeof c === 'string' ? { command: c } : c,
       )
     : null,
+  pendingChoices: r.pending_choices ? JSON.parse(r.pending_choices) : null,
   shells: r.shells,
   background: r.background_until !== null,
   agents: r.agents ? JSON.parse(r.agents) : [],

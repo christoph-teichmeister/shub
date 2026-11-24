@@ -312,6 +312,8 @@ export interface Session {
   tabPosition?: number | null;
   /** Shell commands Claude asked you to run at the end of its turn (status needs-you until run or dismissed). */
   pendingCommands?: HandedCommand[] | null;
+  /** Either/or answers Claude's last message ended on (`question? (A / B)`): buttons that type the pick into its prompt. */
+  pendingChoices?: string[] | null;
   /** Background shells (servers, tests) still running after Claude's turn ended. */
   shells?: number;
   /** Claude's turn ended but background work (agents, shells) still runs: status stays working until it reports back. */
@@ -587,6 +589,7 @@ export const ROUTE_LEVELS: Partial<Record<keyof typeof ROUTES, DeviceLevel>> = {
   presence: 'view',
   approvalDecide: 'prompts',
   sessionCommand: 'prompts', // by index: runs a command Claude handed over; the text sent along is only compared
+  sessionChoice: 'prompts', // by index into pendingChoices: types that answer into the prompt; no free text
   sessionKeys: 'prompts', // prompts: named keys and single digits only, see sessions
   // A browser just approved here joins at Prompts; the real gate is the join mark set by that approval (server/group).
   groupJoinOffer: 'prompts',
@@ -776,6 +779,7 @@ export const ROUTES = {
   sessionPause: 'POST /api/sessions/:id/pause',
   sessionResume: 'POST /api/sessions/:id/resume',
   sessionCommand: 'POST /api/sessions/:id/command', // { index, command?, action: 'run' | 'dismiss' } pendingCommands; 409 when command is no longer at index
+  sessionChoice: 'POST /api/sessions/:id/choice', // { index, choice } pendingChoices; 409 when choice is no longer at index
   sessionKeys: 'POST /api/sessions/:id/keys', // { keys: "1" | "Escape" | ... } phone quick keys
   sessionPaste: 'POST /api/sessions/:id/paste', // text or multipart image -> path inserted
   pasteSave: 'POST /api/pastes', // a file body (X-Filename) -> { path }: saved like a session paste, nothing typed (new-session dialog)

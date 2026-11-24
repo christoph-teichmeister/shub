@@ -99,6 +99,7 @@ export interface Sessions {
     pendingCommands?: Session['pendingCommands'],
     background?: number,
     shells?: number,
+    choices?: string[],
   ): void;
   /** A background agent is still busy: push the turn's fallback (if one is pending) `ms` from now. */
   keepBackground(id: string, ms: number): void;
