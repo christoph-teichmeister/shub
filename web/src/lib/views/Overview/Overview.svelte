@@ -434,8 +434,10 @@
               <Icon name={askOpen[s.id] ? 'chevron-down' : 'chevron-right'} size="sm" />
               <span>{s.pendingPermission.tool}: {s.pendingPermission.summary}</span>
             </button>
-            <Button size="sm" variant="primary" onclick={() => void sendKeys(s.id, ['1'])}>Allow</Button>
-            <Button size="sm" onclick={() => void sendKeys(s.id, ['3'])}>Deny</Button>
+            {#if s.pendingPermission.tool !== 'AskUserQuestion'}
+              <Button size="sm" variant="primary" onclick={() => void sendKeys(s.id, ['1'])}>Allow</Button>
+              <Button size="sm" onclick={() => void sendKeys(s.id, ['3'])}>Deny</Button>
+            {/if}
           {/if}
         {/snippet}
         {#snippet pane(s)}

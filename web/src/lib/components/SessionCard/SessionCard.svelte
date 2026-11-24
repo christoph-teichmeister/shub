@@ -38,6 +38,8 @@
     compact = false,
   }: Props = $props();
 
+  // A question (AskUserQuestion) is answered in the terminal, Allow/Deny would pick answer 1 or 3.
+  const showAllow = $derived(!!session.pendingPermission && session.pendingPermission.tool !== 'AskUserQuestion');
   const fill = $derived(contextFill(session));
   const agent = $derived(session.agents?.find((a) => a.activity)?.activity);
   // What the session is doing or waiting for, most urgent first.
@@ -62,9 +64,9 @@
     </span>
     <span class="line">{line}</span>
   </a>
-  {#if (session.pendingPermission && onallow && ondeny) || onrestore}
+  {#if (showAllow && onallow && ondeny) || onrestore}
     <div class="actions">
-      {#if session.pendingPermission && onallow && ondeny}
+      {#if showAllow && onallow && ondeny}
         <Button size="sm" variant="primary" onclick={onallow}>Allow</Button>
         <Button size="sm" onclick={ondeny}>Deny</Button>
       {/if}

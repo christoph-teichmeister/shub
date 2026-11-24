@@ -302,6 +302,7 @@
       />
 
       {#if open.pendingPermission}
+        {@const isQuestion = open.pendingPermission.tool === 'AskUserQuestion'}
         <div class="permission" role="group" aria-label="Answer the permission question">
           <button
             type="button"
@@ -311,14 +312,16 @@
             onclick={() => (askOpen = !askOpen)}
           >
             <Icon name={askOpen ? 'chevron-down' : 'chevron-right'} size="sm" />
-            <span class="ask-tool">Allow {open.pendingPermission.tool}?</span>
+            {#if !isQuestion}<span class="ask-tool">Allow {open.pendingPermission.tool}?</span>{/if}
             <span class="ask-summary">{open.pendingPermission.summary}</span>
           </button>
-          <div class="big">
-            <button type="button" class="key yes" onclick={() => sendKeys(open.id, ['1'])}>Yes</button>
-            <button type="button" class="key no" onclick={() => sendKeys(open.id, ['3'])}>No</button>
-            <button type="button" class="key always" onclick={() => sendKeys(open.id, ['2'])}>Always</button>
-          </div>
+          {#if !isQuestion}
+            <div class="big">
+              <button type="button" class="key yes" onclick={() => sendKeys(open.id, ['1'])}>Yes</button>
+              <button type="button" class="key no" onclick={() => sendKeys(open.id, ['3'])}>No</button>
+              <button type="button" class="key always" onclick={() => sendKeys(open.id, ['2'])}>Always</button>
+            </div>
+          {/if}
         </div>
       {/if}
 
@@ -443,10 +446,17 @@
                   <span class="sub age">{shortAge(s.lastActivityAt)}</span>
                 </div>
                 {#if s.pendingPermission}
-                  <p class="ask">Allow: {s.pendingPermission.tool} · {s.pendingPermission.summary}?</p>
+                  {@const isQuestion = s.pendingPermission.tool === 'AskUserQuestion'}
+                  <p class="ask">
+                    {isQuestion
+                      ? s.pendingPermission.summary
+                      : `Allow: ${s.pendingPermission.tool} · ${s.pendingPermission.summary}?`}
+                  </p>
                   <div class="card-actions">
-                    <Button variant="primary" onclick={() => sendKeys(s.id, ['1'])}>Yes</Button>
-                    <Button onclick={() => sendKeys(s.id, ['3'])}>No</Button>
+                    {#if !isQuestion}
+                      <Button variant="primary" onclick={() => sendKeys(s.id, ['1'])}>Yes</Button>
+                      <Button onclick={() => sendKeys(s.id, ['3'])}>No</Button>
+                    {/if}
                     <a class="open" href={sessionHref(s)}>Open</a>
                   </div>
                 {:else if s.pendingCommands?.length}
