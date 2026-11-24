@@ -432,7 +432,7 @@
               onclick={() => (askOpen[s.id] = !askOpen[s.id])}
             >
               <Icon name={askOpen[s.id] ? 'chevron-down' : 'chevron-right'} size="sm" />
-              {s.pendingPermission.tool}: {s.pendingPermission.summary}
+              <span>{s.pendingPermission.tool}: {s.pendingPermission.summary}</span>
             </button>
             <Button size="sm" variant="primary" onclick={() => void sendKeys(s.id, ['1'])}>Allow</Button>
             <Button size="sm" onclick={() => void sendKeys(s.id, ['3'])}>Deny</Button>
@@ -649,6 +649,9 @@
 
   /* One line until tapped; open it shows the whole question, above the Allow button. */
   .ask {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
     min-width: 0;
     max-width: 50%;
     padding: 0;
@@ -657,17 +660,31 @@
     color: inherit;
     overflow: hidden;
     text-align: left;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     font: inherit;
     font-size: var(--text-sm);
     cursor: pointer;
+  }
+
+  /* The icon stays put; only the text truncates (inline icon + ellipsis in one box misaligns them). */
+  .ask :global(svg) {
+    flex: none;
+  }
+
+  .ask span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .ask.open {
     order: -1;
     max-width: none;
     flex-basis: 100%;
+    align-items: flex-start;
+  }
+
+  .ask.open span {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }

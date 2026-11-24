@@ -1873,6 +1873,25 @@ test('the overview and shortcuts have buttons for what the keys do', async ({ pa
   await expect(dialog.getByText('On macOS, Alt is the Option key.')).toBeVisible();
   expect(errors).toEqual([]);
 });
+test('overview: a long question in a pane header stays on one line, icon and text aligned', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 700 });
+  const summary = 'AskUserQuestion: #30 Kennzahlen "Köpfe" und "Verfügbarkeit" mit einer sehr langen Frage dahinter';
+  const asking = { ...session, status: 'needs-you', pendingPermission: { tool: 'AskUserQuestion', summary } };
+  const { errors } = await mockApi(page, { '/api/sessions': [asking] });
+  await page.goto('/#/overview');
+  const ask = page.locator('button.ask').first();
+  await expect(ask).toBeVisible();
+  const [icon, text, box] = await Promise.all([
+    ask.locator('svg').boundingBox(),
+    ask.locator('span').boundingBox(),
+    ask.boundingBox(),
+  ]);
+  const mid = (b: { y: number; height: number } | null) => b!.y + b!.height / 2;
+  expect(Math.abs(mid(icon) - mid(text))).toBeLessThan(2);
+  expect(box!.height).toBeLessThan(30);
+  expect(errors).toEqual([]);
+});
+
 test('server down: the banner says so with the last good time, and Retry now brings the data back', async ({
   page,
 }) => {
