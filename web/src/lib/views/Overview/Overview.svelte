@@ -34,6 +34,7 @@
     type Layout,
   } from '../../overview.ts';
   import { api } from '../../stores/api.ts';
+  import { canCompact, contextFill } from '../../status.ts';
   import { store, storedJson } from '../../stored.ts';
   import { gameBack } from '../../stores/router.svelte.ts';
   import { toast, toastError } from '../../stores/toasts.svelte.ts';
@@ -41,6 +42,7 @@
     app,
     childrenOf,
     closeSession,
+    compact,
     needsYouCount,
     sendKeys,
     sessionHref,
@@ -308,6 +310,19 @@
             <Button size="sm" variant="primary" onclick={() => void sendKeys(s.id, ['1'])}>Allow</Button>
             <Button size="sm" onclick={() => void sendKeys(s.id, ['3'])}>Deny</Button>
           {/if}
+          {@const fill = contextFill(s)}
+          {#if fill?.compact}
+            <button
+              type="button"
+              class="badge compact"
+              disabled={!canCompact(s)}
+              title={canCompact(s) ? `${fill.title}\nSend /compact` : `${fill.title}\nCompact once it is your turn`}
+              onclick={() => compact(s)}><Icon name="restart" size="sm" />{fill.pct} %</button
+            >
+          {/if}
+          {#each s.links.slice(0, 1) as link (link.url)}
+            <a class="badge chip" href={link.url} target="_blank" rel="noreferrer">{link.label}</a>
+          {/each}
           <IconButton label="End session" icon="close" size="xs" onclick={() => closePane(s)} />
         {/snippet}
         {#snippet pane(s)}
@@ -436,6 +451,33 @@
     align-items: center;
     flex-wrap: wrap;
     gap: var(--space-3);
+  }
+
+  .badge {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    padding: 0 var(--space-1-5);
+    border-radius: var(--radius-xs);
+  }
+
+  .compact {
+    border: var(--hairline) solid var(--danger);
+    background: transparent;
+    color: var(--danger);
+    cursor: pointer;
+  }
+
+  .compact:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  .chip {
+    background: var(--raised);
+    color: var(--link);
+    text-decoration: none;
   }
 
   .usage-slot {
