@@ -19,8 +19,13 @@ export function overviewSessions(all: Session[], projectId: string | null = null
 /** Statuses that get a live terminal in the overview; the quiet rest (paused, not started) stay small cards. */
 export const LIVE = new Set<SessionStatus>(['needs-you', 'working', 'your-turn', 'waiting']);
 
-/** Columns for `n` panes in a `w` x `h` area: the count whose cells come closest to a terminal's 8:5 shape. */
+/** Default columns for 1 to 6 panes: side by side up to 3, then 2x2, 3+2, 3x2. Independent of the screen shape. */
+const PRESET_COLUMNS = [1, 1, 2, 3, 2, 3, 3];
+
+/** Columns for `n` panes in a `w` x `h` area: the preset up to 6, beyond that the count whose cells come closest to a
+ *  terminal's 8:5 shape. */
 export function gridColumns(n: number, w: number, h: number): number {
+  if (n <= 6) return PRESET_COLUMNS[Math.max(0, n)];
   let best = 1;
   let off = Infinity;
   for (let c = 1; c <= Math.max(1, n); c++) {

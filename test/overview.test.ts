@@ -62,11 +62,23 @@ test('overviewSessions: stable creation order, shells, the global session and ex
 
 import { gridColumns } from '../web/src/lib/overview.ts';
 
+test('gridColumns presets for 1 to 6 panes ignore the screen shape', () => {
+  for (const [w, h] of [
+    [3840, 2000],
+    [1000, 1600],
+  ]) {
+    assert.deepEqual(
+      [1, 2, 3, 4, 5, 6].map((n) => gridColumns(n, w, h)),
+      [1, 2, 3, 2, 3, 3],
+    );
+  }
+});
+
 test('gridColumns picks terminal-shaped cells on a wide and a tall screen', () => {
   assert.equal(gridColumns(1, 3840, 2000), 1);
   assert.equal(gridColumns(12, 3840, 2000), 4); // 4 x 3 -> 960 x 667
-  assert.equal(gridColumns(4, 1000, 1600), 1); // tall: stacked
   assert.equal(gridColumns(0, 100, 100), 1);
+  assert.equal(gridColumns(14, 1000, 1600), 2); // beyond 6 panes: by shape
 });
 
 test('neighbour: moves in a 3-column grid of 5, stays at edges, down from a missing cell goes to the last pane', () => {

@@ -19,6 +19,7 @@
   import WorktreeRow from '../../components/WorktreeRow/WorktreeRow.svelte';
   import { childStart, placeChildren, sessionsIn } from '../../children.ts';
   import { dropPositions, projectBadge } from '../../status.ts';
+  import UsageMeters from '../../components/UsageMeters/UsageMeters.svelte';
   import { api } from '../../stores/api.ts';
   import { go, href } from '../../stores/router.svelte.ts';
   import {
@@ -516,31 +517,7 @@
 
   {#snippet footer()}
     {#if app.usage.fiveHour || app.usage.sevenDay}
-      <div class="usage">
-        {#each [['5h', app.usage.fiveHour, 5 * 3600], ['7d', app.usage.sevenDay, 7 * 86400]] as const as [label, l, win] (label)}
-          {#if l}
-            {@const pace = l.resetsAt
-              ? Math.min(100, Math.max(0, 100 - ((l.resetsAt - Date.now() / 1000) / win) * 100))
-              : 0}
-            <span
-              class="meter"
-              class:warn={l.used >= 70}
-              class:danger={l.used >= 90}
-              title={`${label} limit: ${Math.round(l.used)}% used${l.resetsAt ? `, resets ${new Date(l.resetsAt * 1000).toLocaleString()}, even pace to 100% would be ${Math.round(pace)}%` : ''}`}
-            >
-              <span class="meter-label">{label}</span>
-              <span class="meter-bar"
-                ><span class="pace" style:width={`${pace}%`}></span><span
-                  class="used"
-                  style:width={`${Math.min(100, l.used)}%`}
-                ></span></span
-              >
-              <span class="meter-pct">{Math.round(l.used)}%</span>
-              {#if l.resetsAt}<span class="meter-pace">{Math.round(pace)}%</span>{/if}
-            </span>
-          {/if}
-        {/each}
-      </div>
+      <div class="usage-wrap"><UsageMeters /></div>
     {/if}
     <div class="footbar">
       <div class="user">
@@ -778,56 +755,9 @@
     color: var(--muted);
   }
 
-  .usage {
-    display: flex;
-    gap: var(--space-3);
+  .usage-wrap {
     padding: var(--space-2) var(--space-1-5) 0;
-    font-size: var(--text-xs);
-    color: var(--muted);
     border-top: var(--hairline) solid var(--line);
-  }
-
-  .meter {
-    flex: 1 1 0;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--space-1-5);
-  }
-
-  .meter-bar {
-    flex: 1 1 auto;
-    height: var(--space-1);
-    border-radius: var(--radius-pill);
-    background: var(--raised);
-    overflow: hidden;
-    position: relative;
-  }
-
-  .meter-bar > span {
-    position: absolute;
-    inset: 0 auto 0 0;
-  }
-
-  /* Where usage would stand if the limit were used evenly up to its reset: muted green behind the real bar. */
-  .meter-bar > .pace {
-    background: color-mix(in srgb, var(--status-your-turn) 30%, transparent);
-  }
-
-  .meter-pace {
-    color: color-mix(in srgb, var(--status-your-turn) 70%, var(--muted));
-  }
-
-  .meter-bar > .used {
-    background: var(--status-your-turn);
-  }
-
-  .meter.warn .meter-bar > .used {
-    background: var(--yellow);
-  }
-
-  .meter.danger .meter-bar > .used {
-    background: var(--pink);
   }
 
   .footbar {
