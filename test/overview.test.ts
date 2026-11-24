@@ -344,3 +344,19 @@ test('dropZone: outer quarter is the nearest edge, the middle swaps', () => {
   assert.equal(dropZone(0.6, 0.95), 'bottom');
   assert.equal(dropZone(0.1, 0.2), 'left');
 });
+
+import { equalizeAll } from '../web/src/lib/overview.ts';
+
+test('equalizeAll evens every split and keeps the arrangement', () => {
+  const t: Layout = {
+    dir: 'row',
+    sizes: [0.7, 0.3],
+    children: ['a', { dir: 'col', sizes: [0.2, 0.8], children: ['b', 'c'] }],
+  };
+  assert.deepEqual(equalizeAll(t), {
+    dir: 'row',
+    sizes: [0.5, 0.5],
+    children: ['a', { dir: 'col', sizes: [0.5, 0.5], children: ['b', 'c'] }],
+  });
+  assert.equal(equalizeAll('a'), 'a');
+});
