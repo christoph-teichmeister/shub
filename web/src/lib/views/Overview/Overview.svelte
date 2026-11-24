@@ -11,7 +11,7 @@
   import IntroBanner from '../../components/IntroBanner/IntroBanner.svelte';
   import IconButton from '../../components/IconButton/IconButton.svelte';
   import Icon from '../../components/Icon/Icon.svelte';
-  import { type MenuItem } from '../../components/Menu/Menu.svelte';
+  import Menu, { type MenuItem } from '../../components/Menu/Menu.svelte';
   import SelectField from '../../components/SelectField/SelectField.svelte';
   import SessionCard from '../../components/SessionCard/SessionCard.svelte';
   import SplitView from '../../components/SplitView/SplitView.svelte';
@@ -138,6 +138,7 @@
   const ARROWS = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' } as const;
 
   // Alt N: ask which project, then start the session as a new pane here and focus it (never leaves the grid).
+  let layoutMenu = $state<{ x: number; y: number } | null>(null);
   let picking = $state(false);
   async function newSession(p: ProjectView) {
     picking = false;
@@ -291,15 +292,28 @@
       {shown.length === 1 ? 'session' : 'sessions'}{#if needsYouCount(shown)}
         · {needsYouCount(shown)} need you{/if}
     </span>
+    {#if capped.over.length}
+      <button
+        type="button"
+        class="over"
+        title="Over the limit of {MAX_LIVE} live terminals: shown in the strip below"
+        onclick={() => ((stripHidden = false), store(HIDE_KEY, 'false'))}
+      >
+        {capped.over.length} over limit
+      </button>
+    {/if}
     <span class="grow"></span>
     <div class="usage-slot"><UsageMeters /></div>
     <Button size="sm" onclick={() => (picking = true)}>New session</Button>
     <Button size="sm" onclick={jumpToNeedingYou}>Next needing you</Button>
     <Button size="sm" onclick={() => (ui.shortcuts = true)}>Shortcuts (Alt ?)</Button>
-    {#if custom[projectId]}
-      <Button size="sm" onclick={() => layout && setLayout(equalizeAll(layout))}>Equalize</Button>
-      <Button size="sm" onclick={() => setLayout(null)}>Reset layout</Button>
-    {/if}
+    <Button
+      size="sm"
+      onclick={(e) => {
+        const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        layoutMenu = { x: r.left, y: r.bottom };
+      }}>Layout</Button
+    >
     <SelectField
       label="Project"
       hideLabel
@@ -308,6 +322,24 @@
       options={[{ value: '', label: 'All projects' }, ...app.projects.map((p) => ({ value: p.id, label: p.name }))]}
     />
   </header>
+  {#if layoutMenu}
+    <Menu
+      label="Layout"
+      x={layoutMenu.x}
+      y={layoutMenu.y}
+      items={[
+        {
+          id: 'equalize',
+          label: 'Equalize',
+          disabled: !custom[projectId],
+          description: custom[projectId] ? 'Gives every pane the same size' : 'Drag a bar or a pane title first',
+        },
+        { id: 'reset', label: 'Reset layout', disabled: !custom[projectId], description: 'Back to the automatic grid' },
+      ]}
+      onselect={(id) => (id === 'equalize' ? layout && setLayout(equalizeAll(layout)) : setLayout(null))}
+      onclose={() => (layoutMenu = null)}
+    />
+  {/if}
   <IntroBanner id="overview"
     >All running sessions as live terminals, normally up to {MAX_LIVE}; sessions that need you always get one.</IntroBanner
   >
@@ -470,6 +502,17 @@
     align-items: center;
     flex-wrap: wrap;
     gap: var(--space-3);
+  }
+
+  .over {
+    padding: 0 var(--space-2);
+    border: var(--hairline) solid var(--status-needs-you);
+    border-radius: var(--radius-pill);
+    background: none;
+    color: var(--status-needs-you);
+    font: inherit;
+    font-size: var(--text-xs);
+    cursor: pointer;
   }
 
   .usage-slot {

@@ -317,8 +317,9 @@
     border-radius: var(--radius-pill);
   }
 
-  .bar:hover {
-    background: var(--line);
+  .bar:hover,
+  .bar:active {
+    background: var(--primary);
   }
 
   .bar.row {
@@ -395,10 +396,9 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent);
   }
 
-  /* Needs you wins over selected: the orange frame stays, the glow just goes. */
+  /* Needs you wins the frame; the primary glow stays so the selected pane is still visible. */
   .pane.selected.needs-you {
     border-color: var(--status-needs-you);
-    box-shadow: none;
   }
 
   .head.accented {
