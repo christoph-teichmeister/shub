@@ -20,6 +20,7 @@
   import ConfirmDialog, { type Confirm } from '../Main/ConfirmDialog.svelte';
   import {
     capLive,
+    equalizeAll,
     gridColumns,
     gridLayout,
     LIVE,
@@ -266,6 +267,7 @@
     <Button size="sm" onclick={jumpToNeedingYou}>Next needing you</Button>
     <Button size="sm" onclick={() => (ui.shortcuts = true)}>Shortcuts (Alt ?)</Button>
     {#if custom[projectId]}
+      <Button size="sm" onclick={() => layout && setLayout(equalizeAll(layout))}>Equalize</Button>
       <Button size="sm" onclick={() => setLayout(null)}>Reset layout</Button>
     {/if}
     <SelectField

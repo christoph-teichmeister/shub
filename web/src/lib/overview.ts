@@ -208,6 +208,12 @@ export function equalize(t: Layout, path: number[]): Layout {
   return atSplit(t, path, (s) => ({ ...s, sizes: s.sizes.map(() => 1 / s.sizes.length) }));
 }
 
+/** Gives every split in the tree equal shares, keeping the arrangement. */
+export function equalizeAll(t: Layout): Layout {
+  if (typeof t === 'string') return t;
+  return { ...t, children: t.children.map(equalizeAll), sizes: t.children.map(() => 1 / t.children.length) };
+}
+
 /** Exchanges the places of two leaves. */
 export function swap(t: Layout, a: string, b: string): Layout {
   const ids = leaves(t);
