@@ -11,6 +11,7 @@
   import IntroBanner from '../../components/IntroBanner/IntroBanner.svelte';
   import IconButton from '../../components/IconButton/IconButton.svelte';
   import Icon from '../../components/Icon/Icon.svelte';
+  import { type MenuItem } from '../../components/Menu/Menu.svelte';
   import SelectField from '../../components/SelectField/SelectField.svelte';
   import SessionCard from '../../components/SessionCard/SessionCard.svelte';
   import SplitView from '../../components/SplitView/SplitView.svelte';
@@ -212,6 +213,35 @@
     if (s) focusId = s.id;
   }
 
+  // The pane header keeps title, status and Allow/Deny; everything else lives in its ⋯ menu.
+  function paneMenu(s: Session): MenuItem[] {
+    const fill = contextFill(s);
+    return [
+      { id: 'open', label: 'Open full size' },
+      { id: 'park', label: 'Park', description: 'Closes the pane, the session keeps running' },
+      ...(fill?.compact
+        ? [
+            {
+              id: 'compact',
+              label: 'Compact',
+              hint: `${fill.pct} %`,
+              disabled: !canCompact(s),
+              description: canCompact(s) ? 'Shortens the conversation to free up context' : 'Once it is your turn',
+            },
+          ]
+        : []),
+      ...s.links.map((l, i) => ({ id: `link:${l.url}`, label: l.label, separator: i === 0 })),
+      { id: 'end', label: 'End session', danger: true, separator: true },
+    ];
+  }
+  function onPaneMenu(s: Session, id: string) {
+    if (id === 'open') location.hash = sessionHref(s);
+    else if (id === 'park') closeIt(s.id);
+    else if (id === 'compact') compact(s);
+    else if (id === 'end') closePane(s);
+    else if (id.startsWith('link:')) window.open(id.slice(5), '_blank', 'noreferrer');
+  }
+
   function onKeydown(e: KeyboardEvent) {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
     const i = live.findIndex((s) => s.id === focusId);
@@ -294,7 +324,8 @@
         onselect={(id) => (focusId = id)}
         maximizable
         onmaximize={(id) => (location.hash = sessionHref(live.find((s) => s.id === id)!))}
-        onminimize={closeIt}
+        menuItems={paneMenu}
+        onmenu={onPaneMenu}
       >
         {#snippet actions(s)}
           {#if s.pendingPermission}
@@ -312,20 +343,6 @@
             <Button size="sm" variant="primary" onclick={() => void sendKeys(s.id, ['1'])}>Allow</Button>
             <Button size="sm" onclick={() => void sendKeys(s.id, ['3'])}>Deny</Button>
           {/if}
-          {@const fill = contextFill(s)}
-          {#if fill?.compact}
-            <button
-              type="button"
-              class="badge compact"
-              disabled={!canCompact(s)}
-              title={canCompact(s) ? `${fill.title}\nSend /compact` : `${fill.title}\nCompact once it is your turn`}
-              onclick={() => compact(s)}><Icon name="restart" size="sm" />{fill.pct} %</button
-            >
-          {/if}
-          {#each s.links.slice(0, 1) as link (link.url)}
-            <a class="badge chip" href={link.url} target="_blank" rel="noreferrer">{link.label}</a>
-          {/each}
-          <IconButton label="End session" icon="close" size="xs" onclick={() => closePane(s)} />
         {/snippet}
         {#snippet pane(s)}
           {@const shell = shellOf(s)}
@@ -453,33 +470,6 @@
     align-items: center;
     flex-wrap: wrap;
     gap: var(--space-3);
-  }
-
-  .badge {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    font-size: var(--text-xs);
-    padding: 0 var(--space-1-5);
-    border-radius: var(--radius-xs);
-  }
-
-  .compact {
-    border: var(--hairline) solid var(--danger);
-    background: transparent;
-    color: var(--danger);
-    cursor: pointer;
-  }
-
-  .compact:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-
-  .chip {
-    background: var(--raised);
-    color: var(--link);
-    text-decoration: none;
   }
 
   .usage-slot {

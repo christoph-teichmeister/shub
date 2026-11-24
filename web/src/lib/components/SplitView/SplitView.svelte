@@ -14,6 +14,7 @@
   } from '../../overview.ts';
   import { idleWithAgents, STATUS_LABEL } from '../../status.ts';
   import IconButton from '../IconButton/IconButton.svelte';
+  import Menu, { type MenuItem } from '../Menu/Menu.svelte';
   import StatusDot from '../StatusDot/StatusDot.svelte';
 
   interface Props {
@@ -44,6 +45,9 @@
     layout?: Layout | null;
     /** The layout after a bar was dragged (or double-clicked to equalize). */
     onlayout?: (layout: Layout) => void;
+    /** A `⋯` menu per header with these items; it replaces the Open, Maximize and Park icons (put them in the items). */
+    menuItems?: (s: Session) => MenuItem[];
+    onmenu?: (s: Session, id: string) => void;
     /** Pane body, usually a compact TerminalView. */
     pane: Snippet<[Session]>;
   }
@@ -56,6 +60,8 @@
     onminimize,
     projectOf,
     actions,
+    menuItems,
+    onmenu,
     hrefFor,
     maximizable = false,
     maximizedId = $bindable(null),
@@ -160,6 +166,7 @@
     addEventListener('pointerup', end, { signal: stop.signal });
     addEventListener('pointercancel', end, { signal: stop.signal });
   }
+  let menu = $state<{ s: Session; x: number; y: number } | null>(null);
   const toggleMax = (id: string) => (onmaximize ? onmaximize(id) : (maximizedId = maximizedId === id ? null : id));
   $effect(() => {
     if (maximizedId && !all.some((s) => s.id === maximizedId)) maximizedId = null;
@@ -201,10 +208,21 @@
         <span class="status">{STATUS_LABEL[session.status]}</span>
       </button>
       {@render actions?.(session)}
-      {#if hrefFor}
+      {#if menuItems}
+        <IconButton
+          label="More"
+          icon="more"
+          size="xs"
+          onclick={(e) => {
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            menu = { s: session, x: r.left, y: r.bottom };
+          }}
+        />
+      {/if}
+      {#if hrefFor && !menuItems}
         <IconButton label="Open full size" icon="open" size="xs" href={hrefFor(session)} />
       {/if}
-      {#if maximizable}
+      {#if maximizable && !menuItems}
         <IconButton
           label={maximizedId ? 'Restore' : onmaximize ? 'Open full size' : 'Maximize'}
           icon={maximizedId ? 'restore' : 'maximize'}
@@ -212,7 +230,7 @@
           onclick={() => toggleMax(session.id)}
         />
       {/if}
-      {#if onminimize && !maximizedId}
+      {#if onminimize && !maximizedId && !menuItems}
         <IconButton label="Park (keeps running)" icon="minus" size="xs" onclick={() => onminimize(session.id)} />
       {/if}
     </div>
@@ -220,6 +238,17 @@
     {#if dragging?.over?.id === session.id}<div class="drop {dragging.over.zone}"></div>{/if}
   </section>
 {/snippet}
+
+{#if menu && menuItems}
+  <Menu
+    label="{menu.s.name} menu"
+    items={menuItems(menu.s)}
+    x={menu.x}
+    y={menu.y}
+    onselect={(id) => menu && onmenu?.(menu.s, id)}
+    onclose={() => (menu = null)}
+  />
+{/if}
 
 <div
   class="grid {tree ? 'free' : maximizedId ? 'n1' : columns ? 'cols' : `n${shown.length}`}"
