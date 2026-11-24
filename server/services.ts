@@ -133,6 +133,8 @@ export interface Notify {
   needsYou(session: Session, text: string): void;
   yourTurn(session: Session): void;
   approval(approval: Approval): void;
+  /** A plain message (desktop + push to every device) that opens the app at `url`. */
+  info(title: string, body: string, url: string, tag: string): void;
   /** To the given device only, or to all devices. */
   test(deviceId?: string): Promise<void>;
   /** The device was signed out or removed: drop its push subscriptions. */
@@ -159,6 +161,12 @@ export interface Skills {
   forProject(projectPath: string): SkillInfo[];
 }
 
+/** server/stats: usage history for the Stats tab. */
+export interface Stats {
+  /** Called by the hook route with every Claude Code hook event of a shub session. */
+  hook(session: Session, event: string, payload: Record<string, unknown>): void;
+}
+
 export interface Services {
   state: StateDb;
   /** server/group: the device group's versioned items in shub.db; config settings live there. */
@@ -171,4 +179,5 @@ export interface Services {
   docker: Docker;
   skills: Skills;
   plugins: Plugins;
+  stats: Stats;
 }

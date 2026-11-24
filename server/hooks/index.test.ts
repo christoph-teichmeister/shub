@@ -48,6 +48,7 @@ test("the status line reports to shub and still draws the user's own one", () =>
 test('the status line sets the window Claude Code reports', async () => {
   const set: unknown[] = [];
   const services = {
+    stats: { hook() {} },
     sessions: {
       get: () => ({ id: 's1', status: 'working', context: { tokens: 170_000, window: 200_000 } }),
       setContext: (_id: string, context: unknown) => set.push(context),
@@ -69,7 +70,7 @@ test('the status line sets the window Claude Code reports', async () => {
 
 test('the status line reports the 5h/7d limits once per change, and GET /api/usage returns the last', async () => {
   const events: unknown[] = [];
-  const services = { sessions: { get: () => ({ id: 's1' }) } } as unknown as Services;
+  const services = { stats: { hook() {} }, sessions: { get: () => ({ id: 's1' }) } } as unknown as Services;
   const handlers: Array<(req: Request) => Promise<unknown>> = [];
   const router = {
     add: (_spec: string, h: (req: Request) => Promise<unknown>) => handlers.push(h),
@@ -104,6 +105,7 @@ test('hooks of an installed app go through current, so pruning an old version do
 test('a hook reports the permission mode Claude runs in (for "inherit")', async () => {
   const modes: string[] = [];
   const services = {
+    stats: { hook() {} },
     sessions: {
       get: () => ({ id: 's1', status: 'working', claudeSessionId: null }),
       setPermissionMode: (_id: string, mode: string) => modes.push(mode),
@@ -132,6 +134,7 @@ test('a hook reports the permission mode Claude runs in (for "inherit")', async 
 test('the guard denies changes to a protected main checkout and stays quiet otherwise', async () => {
   let mainCheckout: object | undefined = { branch: 'develop', updateMinutes: 15 };
   const services = {
+    stats: { hook() {} },
     sessions: { get: (id: string) => (id === 's1' ? { id: 's1', projectId: 'p' } : undefined) },
     config: { project: () => ({ id: 'p', path: '/no/such/repo', mainCheckout }) },
   } as unknown as Services;
@@ -160,6 +163,7 @@ test('the first prompt names a "Session N" session, later prompts and given name
   const renames: string[] = [];
   let name = 'Session 8';
   const services = {
+    stats: { hook() {} },
     sessions: {
       get: () => ({ id: 's1', status: 'your-turn', claudeSessionId: null, name }),
       nameFromPrompt: (_id: string, prompt: string) => renames.push((name = prompt)),
@@ -185,6 +189,7 @@ test('a hook nudges the chat view once per burst, and not for a subagent', async
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const events: unknown[] = [];
   const services = {
+    stats: { hook() {} },
     sessions: {
       get: () => ({ id: 's1', status: 'working', claudeSessionId: null }),
       setPermissionMode: () => {},

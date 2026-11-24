@@ -336,6 +336,46 @@ export interface Usage {
   sevenDay?: UsageLimit;
 }
 
+/** Token counts of one day, project or model. */
+export interface TokenSums {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreate: number;
+}
+/** GET /api/stats?days=N: everything the Stats tab draws. Times in ms, days as local YYYY-MM-DD. */
+export interface StatsReport {
+  days: number;
+  daily: {
+    day: string;
+    workingMs: number;
+    needsYouMs: number;
+    yourTurnMs: number;
+    sessions: number;
+    tokens: TokenSums;
+    /** USD at standard API rates (a yardstick on a subscription). */
+    costUsd: number;
+    commits: number;
+    prs: number;
+    compacts: number;
+    /** Median ms a session waited in "needs you" (spans that ended that day). */
+    medianNeedsYouMs: number;
+  }[];
+  projects: { projectId: string | null; workingMs: number; needsYouMs: number; tokens: number; costUsd: number }[];
+  models: { model: string; tokens: TokenSums; costUsd: number }[];
+  /** Calls per tool; `asked` = permission prompts, `denied` = refused ones. */
+  tools: { tool: string; count: number; asked: number; denied: number }[];
+  /** "Bash: git status"-style commands you were asked about most often: allowlist candidates. */
+  asked: { command: string; count: number }[];
+  limits: { ts: number; fiveHour?: number; sevenDay?: number }[];
+  /** Samples at 100% used. */
+  limitHits: number;
+  sessions: { started: number; medianMs: number; peakParallel: number; compactsPerSession: number };
+  topSessions: { sessionId: string; name: string; tokens: number; costUsd: number }[];
+  /** Consecutive days with a commit, ending today or yesterday. */
+  streak: number;
+}
+
 export interface ContextFill {
   /** Tokens the model saw on its last call. */
   tokens: number;
@@ -721,6 +761,7 @@ export const challengeMessage = (hostId: string, nonce: string): string => `shub
 
 export const ROUTES = {
   health: 'GET /api/health',
+  stats: 'GET /api/stats', // ?days=30 (1..365) -> StatsReport
   usage: 'GET /api/usage', // -> Usage | {}: the last 5h/7d limits any session's status line reported
   bundle: 'GET /api/bundle', // { name, manifest, sums?, signature? } for a phone app's loader; 404 in dev builds
   bootstrap: 'POST /api/auth/bootstrap', // { token, deviceName, publicKey } -> { device } (active); loopback only
