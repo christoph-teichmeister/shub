@@ -45,6 +45,8 @@
     layout?: Layout | null;
     /** The layout after a bar was dragged (or double-clicked to equalize). */
     onlayout?: (layout: Layout) => void;
+    /** Empty panes for sessions that are about to start: their ids are leaves of `layout`, so the grid already makes room. */
+    ghosts?: { id: string; label: string; accent?: string }[];
     /** A `⋯` menu per header with these items; it replaces the Open, Maximize and Park icons (put them in the items). */
     menuItems?: (s: Session) => MenuItem[];
     onmenu?: (s: Session, id: string) => void;
@@ -68,6 +70,7 @@
     onmaximize,
     layout = null,
     onlayout,
+    ghosts = [],
     pane,
   }: Props = $props();
   // The maximized pane fills the grid; the others unmount (their sessions keep running, the terminals reattach on restore).
@@ -252,11 +255,27 @@
 
 <div
   class="grid {tree ? 'free' : maximizedId ? 'n1' : columns ? 'cols' : `n${shown.length}`}"
+  class:reserving={ghosts.length > 0}
   style:--cols={columns}
   style:--rows={columns ? Math.ceil(shown.length / columns) : undefined}
 >
   {#each shown as session, i (session.id)}
     {@render cell(session, i)}
+  {/each}
+  {#each ghosts as g (g.id)}
+    {#if place?.has(g.id)}
+      <section
+        class="pane ghost"
+        aria-label="Starting {g.label}"
+        style:--accent={g.accent}
+        style:--x={place.get(g.id)?.x}
+        style:--y={place.get(g.id)?.y}
+        style:--w={place.get(g.id)?.w}
+        style:--h={place.get(g.id)?.h}
+      >
+        <span class="soon">Starting {g.label}…</span>
+      </section>
+    {/if}
   {/each}
   {#each bars as b (b.path.join() + ':' + b.index)}
     <div
@@ -347,6 +366,7 @@
     border: var(--hairline) solid var(--line);
     border-radius: var(--radius-lg);
     background: var(--term-bg);
+    animation: pane-in var(--duration-base) ease-out;
   }
 
   .free > .pane {
@@ -355,6 +375,42 @@
     top: calc(var(--space-2) + var(--area-h) * var(--y) + var(--g));
     width: calc(var(--area-w) * var(--w) - 2 * var(--g));
     height: calc(var(--area-h) * var(--h) - 2 * var(--g));
+  }
+
+  @keyframes pane-in {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
+
+  .ghost {
+    align-items: center;
+    justify-content: center;
+    border-style: dashed;
+    border-color: var(--accent, var(--primary));
+    background: color-mix(in srgb, var(--accent, var(--primary)) 8%, var(--term-bg));
+  }
+
+  .soon {
+    color: var(--muted);
+    font-size: var(--text-sm);
+    animation: soon var(--duration-blink) ease-in-out infinite alternate;
+  }
+
+  @keyframes soon {
+    to {
+      opacity: 0.4;
+    }
+  }
+
+  /* The grid makes room for a session that is starting: the panes glide to their new rectangles, the new one fades in. */
+  .reserving.free > .pane {
+    transition:
+      left var(--duration-slow) ease,
+      top var(--duration-slow) ease,
+      width var(--duration-slow) ease,
+      height var(--duration-slow) ease;
   }
 
   .n3 .pane:first-child {
