@@ -130,6 +130,47 @@
           gridColumns(live.length, w, h),
         ),
   );
+  // The strip, grouped by what it needs from you. Over-limit ones are their own group: they are not "parked" by choice.
+  const needsYou = (s: Session) => s.status === 'needs-you' || s.status === 'your-turn';
+  const groups = $derived(
+    [
+      { key: 'you', label: 'Needs you', items: quiet.filter((s) => !capped.over.includes(s) && needsYou(s)) },
+      {
+        key: 'run',
+        label: 'Running in the background',
+        items: quiet.filter((s) => !capped.over.includes(s) && !needsYou(s) && LIVE.has(s.status)),
+      },
+      { key: 'paused', label: 'Paused', items: quiet.filter((s) => !capped.over.includes(s) && !LIVE.has(s.status)) },
+      {
+        key: 'over',
+        label: `Over the limit of ${MAX_LIVE} live terminals`,
+        items: quiet.filter((s) => capped.over.includes(s)),
+      },
+    ].filter((g) => g.items.length),
+  );
+  const parkedCount = $derived(quiet.length - capped.over.length);
+  const restorable = (s: Session) => LIVE.has(s.status) || s.status === 'paused';
+  function restore(s: Session) {
+    if (s.status === 'paused') void api('sessionResume', { params: { id: s.id } }).catch(toastError);
+    openIt(s.id);
+    promoted = [...promoted, s.id];
+  }
+  // Drag a strip row onto the grid to bring it back.
+  let dragOver = $state(false);
+  const dropOnGrid = (e: DragEvent) => {
+    dragOver = false;
+    const s = quiet.find((x) => x.id === e.dataTransfer?.getData('text/shub-session'));
+    if (s && restorable(s)) restore(s);
+  };
+  const resumeAll = (list: Session[]) => list.forEach(restore);
+  const endAll = (list: Session[]) =>
+    (confirm = {
+      title: `End ${list.length} paused ${list.length === 1 ? 'session' : 'sessions'}?`,
+      body: 'Their conversations are kept only if you resume them first.',
+      action: 'End all',
+      danger: true,
+      run: () => list.forEach((s) => void closeSession(s.id)),
+    });
   const HIDE_KEY = 'shub.overview.stripHidden';
   let stripHidden = $state(storedJson(HIDE_KEY) === true);
   const toggleStrip = () => store(HIDE_KEY, JSON.stringify((stripHidden = !stripHidden)));
@@ -343,7 +384,18 @@
   <IntroBanner id="overview"
     >All running sessions as live terminals, normally up to {MAX_LIVE}; sessions that need you always get one.</IntroBanner
   >
-  <div class="live" bind:clientWidth={w} bind:clientHeight={h}>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="live"
+    class:drop={dragOver}
+    bind:clientWidth={w}
+    bind:clientHeight={h}
+    ondragover={(e) => {
+      if (e.dataTransfer?.types.includes('text/shub-session')) (e.preventDefault(), (dragOver = true));
+    }}
+    ondragleave={() => (dragOver = false)}
+    ondrop={(e) => (e.preventDefault(), dropOnGrid(e))}
+  >
     {#if live.length}
       <SplitView
         sessions={live}
@@ -422,39 +474,54 @@
     {/if}
   </div>
   {#if quiet.length}
-    <button type="button" class="strip-toggle" aria-expanded={!stripHidden} onclick={toggleStrip}>
+    <button
+      type="button"
+      class="strip-toggle"
+      class:hot={stripHidden && quiet.some(needsYou)}
+      aria-expanded={!stripHidden}
+      title="Parked sessions keep running; Show or a drag onto the grid brings one back. Normally up to {MAX_LIVE} live terminals so cells stay readable; sessions that need you always get one."
+      onclick={toggleStrip}
+    >
       <Icon name={stripHidden ? 'chevron-right' : 'chevron-down'} size="xs" />
-      {quiet.length} parked
+      {parkedCount} parked{#if capped.over.length}
+        · {capped.over.length} over limit{/if}{#if stripHidden && quiet.some(needsYou)}
+        · needs you{/if}
     </button>
-    {#if capped.over.length}
-      <p class="cap">
-        Normally up to {MAX_LIVE} live terminals so cells stay readable; sessions that need you always get one. Parked sessions
-        keep running; Show brings one back.
-      </p>
-    {/if}
   {/if}
   {#if quiet.length && !stripHidden}
     <div class="quiet">
-      {#each quiet as s (s.id)}
-        {@const p = project(s.projectId)}
-        <SessionCard
-          session={s}
-          href={sessionHref(s)}
-          project={p?.name}
-          accent={p?.accent}
-          panes={childrenOf(s.id).length}
-          flagged={s.status === 'your-turn' && !isOpen(s.id)}
-          note={capped.over.includes(s) ? `Over the limit of ${MAX_LIVE} live terminals` : undefined}
-          onallow={() => void sendKeys(s.id, ['1'])}
-          ondeny={() => void sendKeys(s.id, ['3'])}
-          onrestore={LIVE.has(s.status) || s.status === 'paused'
-            ? () => {
-                if (s.status === 'paused') void api('sessionResume', { params: { id: s.id } }).catch(toastError);
-                openIt(s.id);
-                promoted = [...promoted, s.id];
-              }
-            : undefined}
-        />
+      {#each groups as g (g.key)}
+        <section class="group">
+          <h2>
+            {g.label}
+            {#if g.key === 'paused'}
+              <Button size="sm" onclick={() => resumeAll(g.items)}>Resume all</Button>
+              <Button size="sm" onclick={() => endAll(g.items)}>End all</Button>
+            {/if}
+          </h2>
+          {#each g.items as s (s.id)}
+            {@const p = project(s.projectId)}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="row"
+              draggable={restorable(s)}
+              ondragstart={(e) => e.dataTransfer?.setData('text/shub-session', s.id)}
+            >
+              <SessionCard
+                compact
+                session={s}
+                href={sessionHref(s)}
+                project={p?.name}
+                accent={p?.accent}
+                panes={childrenOf(s.id).length}
+                flagged={s.status === 'your-turn' && !isOpen(s.id)}
+                onallow={() => void sendKeys(s.id, ['1'])}
+                ondeny={() => void sendKeys(s.id, ['3'])}
+                onrestore={restorable(s) ? () => restore(s) : undefined}
+              />
+            </div>
+          {/each}
+        </section>
       {/each}
     </div>
   {/if}
@@ -560,11 +627,13 @@
     cursor: pointer;
   }
 
-  .cap {
-    flex: none;
-    margin: 0;
-    color: var(--muted);
-    font-size: var(--text-sm);
+  .strip-toggle.hot {
+    color: var(--status-needs-you);
+  }
+
+  .live.drop {
+    outline: var(--ring) dashed var(--primary);
+    outline-offset: calc(-1 * var(--space-1));
   }
 
   /* One line until tapped; open it shows the whole question, above the Allow button. */
@@ -594,8 +663,28 @@
 
   .quiet {
     flex: none;
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: var(--space-3);
-    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  }
+
+  .group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1-5);
+  }
+
+  .group h2 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    color: var(--muted);
+  }
+
+  .row[draggable='true'] {
+    cursor: grab;
   }
 </style>

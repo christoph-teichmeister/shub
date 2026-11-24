@@ -21,6 +21,8 @@
     flagged?: boolean;
     /** A line for a session with nothing else to say, e.g. why it sits in the strip. */
     note?: string;
+    /** One row: status, name, project, line and buttons side by side (the overview's strip). */
+    compact?: boolean;
   }
   let {
     session,
@@ -33,6 +35,7 @@
     onrestore,
     flagged = false,
     note,
+    compact = false,
   }: Props = $props();
 
   const fill = $derived(contextFill(session));
@@ -45,7 +48,7 @@
   );
 </script>
 
-<article class="card {session.status}" class:flagged style:--accent={accent}>
+<article class="card {session.status}" class:flagged class:compact style:--accent={accent}>
   <a class="main" {href} title={waitTitle(session)}>
     <span class="head">
       <StatusDot status={session.status} idle={idleWithAgents(session)} />
@@ -192,5 +195,44 @@
 
   .fill.high {
     --c: var(--danger);
+  }
+
+  .compact {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .compact .main {
+    flex-direction: row;
+    align-items: center;
+    min-width: 0;
+    gap: var(--space-3);
+    padding: var(--space-1-5) var(--space-3);
+  }
+
+  .compact .name {
+    flex: 0 1 auto;
+    font-size: var(--text-sm);
+    overflow-wrap: normal;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .compact .line {
+    flex: 1 1 0;
+    min-width: 0;
+    display: block;
+    white-space: nowrap;
+    line-clamp: 1;
+  }
+
+  .compact .age {
+    margin-left: 0;
+  }
+
+  .compact .actions {
+    flex-wrap: nowrap;
+    padding: 0 var(--space-2) 0 0;
   }
 </style>
