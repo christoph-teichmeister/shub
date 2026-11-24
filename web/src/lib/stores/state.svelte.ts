@@ -85,6 +85,8 @@ export const ui = $state({
   legend: false,
   /** Set by the overview while open: search shows a session as a pane there instead of navigating away. */
   showInGrid: null as ((s: Session) => void) | null,
+  /** Set by the overview while open: reserves an empty pane for a session that is about to start; call the result to release it. */
+  reserveInGrid: null as ((label: string, accent?: string) => () => void) | null,
   phone: matchMedia('(max-width: 699px)').matches,
 });
 matchMedia('(max-width: 699px)').addEventListener('change', (e) => (ui.phone = e.matches));

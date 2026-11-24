@@ -91,23 +91,35 @@
 
   const show = (s: Session) => (ui.showInGrid ? ui.showInGrid(s) : (location.hash = sessionHref(s)));
 
-  async function newSession(p: ProjectView) {
+  // The grid makes room for the pane while the session starts, so it can slide in.
+  async function startShown(req: Parameters<typeof startSession>[0], p: ProjectView) {
+    const release = ui.reserveInGrid?.(p.name, p.accent);
+    try {
+      const s = await startSession(req);
+      if (s) show(s);
+    } finally {
+      release?.();
+    }
+  }
+
+  function newSession(p: ProjectView) {
     close();
-    const s = await startSession({ projectId: p.id, kind: 'claude' });
-    if (s) show(s);
+    return startShown({ projectId: p.id, kind: 'claude' }, p);
   }
 
   async function resume(h: Extract<Hit, { kind: 'old' }>, takeOver = false) {
     close();
-    const s = await startSession({
-      projectId: h.project.id,
-      kind: 'claude',
-      name: h.old.firstPrompt.slice(0, 40),
-      resumeClaudeSessionId: h.old.claudeSessionId,
-      fork: !!h.old.host && !takeOver,
-      takeOver,
-    });
-    if (s) show(s);
+    await startShown(
+      {
+        projectId: h.project.id,
+        kind: 'claude',
+        name: h.old.firstPrompt.slice(0, 40),
+        resumeClaudeSessionId: h.old.claudeSessionId,
+        fork: !!h.old.host && !takeOver,
+        takeOver,
+      },
+      h.project,
+    );
   }
 
   function open(h: Hit) {

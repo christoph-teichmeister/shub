@@ -119,16 +119,18 @@
     custom = next;
     store(LAYOUT_KEY, JSON.stringify(next));
   });
+  // A session that is about to start gets its slot in the layout right away (an empty "Starting" pane), so the grid
+  // makes room with an animation; the real pane takes over the same rectangle. Over-limit ones just do without.
+  let ghosts = $state<{ id: string; label: string; accent?: string }[]>([]);
+  let ghostSeq = 0;
+  function reserve(label: string, accent?: string) {
+    const id = `ghost:${++ghostSeq}`;
+    ghosts.push({ id, label, accent });
+    return () => void (ghosts = ghosts.filter((g) => g.id !== id));
+  }
+  const slots = $derived([...live.map((s) => s.id), ...ghosts.map((g) => g.id)]);
   const layout = $derived(
-    custom[projectId]
-      ? reconcile(
-          custom[projectId],
-          live.map((s) => s.id),
-        )
-      : gridLayout(
-          live.map((s) => s.id),
-          gridColumns(live.length, w, h),
-        ),
+    custom[projectId] ? reconcile(custom[projectId], slots) : gridLayout(slots, gridColumns(slots.length, w, h)),
   );
   // The strip, grouped by what it needs from you. Over-limit ones are their own group: they are not "parked" by choice.
   const needsYou = (s: Session) => s.status === 'needs-you' || s.status === 'your-turn';
@@ -183,8 +185,13 @@
   let picking = $state(false);
   async function newSession(p: ProjectView) {
     picking = false;
-    const s = await startSession({ projectId: p.id, kind: 'claude' });
-    if (s) showPane(s);
+    const release = reserve(p.name, p.accent);
+    try {
+      const s = await startSession({ projectId: p.id, kind: 'claude' });
+      if (s) showPane(s);
+    } finally {
+      release();
+    }
   }
   // CommandChip's "Open in terminal": a shell as a child of the session; its pane shows it under the Claude terminal.
   async function newShell(from: Session, cwd?: string) {
@@ -219,7 +226,8 @@
   });
   $effect(() => {
     ui.showInGrid = showPane;
-    return () => (ui.showInGrid = null);
+    ui.reserveInGrid = reserve;
+    return () => ((ui.showInGrid = null), (ui.reserveInGrid = null));
   });
 
   let askOpen = $state<Record<string, boolean>>({});
@@ -396,12 +404,13 @@
     ondragleave={() => (dragOver = false)}
     ondrop={(e) => (e.preventDefault(), dropOnGrid(e))}
   >
-    {#if live.length}
+    {#if live.length || ghosts.length}
       <SplitView
         sessions={live}
         limit={live.length}
         columns={gridColumns(live.length, w, h)}
         {layout}
+        {ghosts}
         onlayout={setLayout}
         projectOf={(s) => project(s.projectId)}
         selectedId={focusId}
