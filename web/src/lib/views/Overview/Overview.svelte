@@ -14,6 +14,7 @@
   import SelectField from '../../components/SelectField/SelectField.svelte';
   import SessionCard from '../../components/SessionCard/SessionCard.svelte';
   import SplitView from '../../components/SplitView/SplitView.svelte';
+  import UsageMeters from '../../components/UsageMeters/UsageMeters.svelte';
   import TerminalView from '../../components/TerminalView/TerminalView.svelte';
   import ProjectPicker from './ProjectPicker.svelte';
   import ConfirmDialog, { type Confirm } from '../Main/ConfirmDialog.svelte';
@@ -258,6 +259,7 @@
         · {needsYouCount(shown)} need you{/if}
     </span>
     <span class="grow"></span>
+    <div class="usage-slot"><UsageMeters /></div>
     <Button size="sm" onclick={() => (picking = true)}>New session</Button>
     <Button size="sm" onclick={jumpToNeedingYou}>Next needing you</Button>
     <Button size="sm" onclick={() => (ui.shortcuts = true)}>Shortcuts (Alt ?)</Button>
@@ -434,6 +436,10 @@
     align-items: center;
     flex-wrap: wrap;
     gap: var(--space-3);
+  }
+
+  .usage-slot {
+    width: 16rem;
   }
 
   h1 {
