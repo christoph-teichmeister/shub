@@ -1,0 +1,35 @@
+name: build-archive
+description: Build, pack, dry-run and upload the release archive for this runner's platform (needs VERSION and ARCHIVE in the job env).
+inputs:
+  target:
+    description: Platform name, e.g. linux-x64; names the uploaded artifact.
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+        cache: npm
+    - name: tmux for the dry run
+      shell: bash
+      run: if [ "$RUNNER_OS" = macOS ]; then brew install tmux; else sudo apt-get update && sudo apt-get install -y tmux; fi
+    # npm ci builds node-pty for this runner's platform; pack keeps it and drops the dev dependencies.
+    - shell: bash
+      run: npm ci
+    - shell: bash
+      run: npm run build
+    - shell: bash
+      run: node --no-warnings scripts/release/release.ts pack --version "$VERSION" --out release
+    - shell: bash
+      run: test -f "$ARCHIVE"
+    # Install the archive with the packed launcher and start it once, on this platform.
+    - shell: bash
+      run: node --no-warnings scripts/release/dry-run.ts --archive "$ARCHIVE"
+    - uses: actions/upload-artifact@v7
+      with:
+        name: archive-${{ inputs.target }}
+        path: |
+          ${{ env.ARCHIVE }}
+          release/*.bundle.json
+        if-no-files-found: error
