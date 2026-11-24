@@ -216,6 +216,12 @@ function routes(sessions: SessionsService, services: Services, router: Router, c
       throw new HttpError(403, 'this device may only send named keys and single digits');
     }
     sessions.sendKeys(req.params.id, list);
+    // Answering a permission dialog (1 allow, 2 always, 3 deny) hands the turn back to Claude now: PostToolUse
+    // only fires when the tool ends, and never after a deny.
+    const session = sessions.get(req.params.id);
+    if (session?.status === 'needs-you' && session.pendingPermission && list.some((k) => /^[1-3]$/.test(k))) {
+      sessions.setStatus(req.params.id, 'working', null, null);
+    }
     return { ok: true };
   });
   router.add(ROUTES.sessionPaste, async (req) => {
