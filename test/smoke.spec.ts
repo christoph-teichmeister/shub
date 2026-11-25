@@ -1669,7 +1669,10 @@ test('phone keeps the message when sending it failed', async ({ page }) => {
 
 test('phone toast sits at the top and the message field is 16 px, so iOS does not zoom', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  const { errors } = await mockApi(page, { '/api/sessions': [session] });
+  const { errors } = await mockApi(page, {
+    '/api/sessions': [session],
+    '/api/updates': { ...(API['/api/updates'] as object), staged: '2026.10.1' },
+  });
   await page.goto('/#/p/ai-portal/s1');
   const toastBox = page.locator('.toast').first();
   await expect(toastBox).toBeVisible();
