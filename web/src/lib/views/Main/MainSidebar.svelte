@@ -105,13 +105,14 @@
     }, 1000);
     return () => clearInterval(tick);
   });
-  const sunk = (p: ProjectView) => (isFolded(p.id) && sessionsOf(p.id).length ? 1 : 0);
+  // Open projects first, then folded ones, then those only counting down their grace.
+  const sunk = (p: ProjectView) => (!sessionsOf(p.id).length ? 2 : isFolded(p.id) ? 1 : 0);
   const glide = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 500;
   const activeProjects = $derived(
     app.config?.activeGroup
       ? app.projects
           .filter((p) => sessionsOf(p.id).length || p.id in leftAt)
-          // Folded projects sink below the open ones (the keyed list glides them down with `flip`).
+          // Folded and counting-down projects sink below the open ones (the keyed list glides them down with `flip`).
           .sort((a, b) => sunk(a) - sunk(b) || a.name.localeCompare(b.name))
       : [],
   );
