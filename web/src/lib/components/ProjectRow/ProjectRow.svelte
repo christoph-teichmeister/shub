@@ -50,6 +50,8 @@
   const foldable = $derived(!!children && sessions.length > 0);
   // Folded rows hide the sessions, so a count pill tells how many there are; unlike the badge it stays on hover.
   const folded = $derived(foldable && collapsed);
+  // Folded rows must not hide live work: sessions that are neither paused, waiting nor exited tint the pill.
+  const active = $derived(sessions.filter((s) => !['paused', 'waiting', 'exited'].includes(s.status)).length);
   function toggle() {
     collapsed = !collapsed;
     store(key, collapsed ? '1' : null);
@@ -89,8 +91,8 @@
       <ProjectIcon icon={project.resolvedIcon} name={project.name} />
       <span class="name">{project.name}</span>
     </a>
-    {#if folded}<span class="count" title="{sessions.length} sessions"
-        ><StatusBadge text={String(sessions.length)} /></span
+    {#if folded}<span class="count" title="{sessions.length} sessions{active ? `, ${active} active` : ''}"
+        ><StatusBadge text={String(sessions.length)} tone={active ? 'working' : 'neutral'} /></span
       >{/if}
     {#if countdown}
       <span class="badge" title="Leaves the Active group in {countdown}"
