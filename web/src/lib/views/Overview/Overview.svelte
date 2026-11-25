@@ -73,13 +73,11 @@
   $effect(() => {
     if (!app.ready) return;
     untrack(() => {
-      if (open === null)
-        return setOpen(
-          overviewSessions(app.sessions)
-            .filter((s) => LIVE.has(s.status))
-            .map((s) => s.id),
-        );
-      const kept = pruneMinimized(open, app.sessions);
+      const live = overviewSessions(app.sessions).filter((s) => LIVE.has(s.status));
+      // Nothing remembered, or none of it running any more (an empty or stale list): an empty grid next to live
+      // sessions is never what you want, so every live one opens.
+      const kept = open === null ? [] : pruneMinimized(open, app.sessions);
+      if (!live.some((s) => kept.includes(s.id))) return setOpen(live.map((s) => s.id));
       if (kept !== open) setOpen(kept);
     });
   });
