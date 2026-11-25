@@ -82,12 +82,23 @@
   const globalSession = $derived(app.sessions.find((s) => s.kind === 'global') ?? null);
 
   // ---------- local UI state ----------
-  let split = $state(false);
-  let panelOpen = $state(false);
-  let notesOpen = $state(false);
-  // A note the terminal linked opens the panel on that file.
+  // Split, Notes and Services belong to the session open in the control center: each session keeps its own.
+  type Views = { split: boolean; panel: boolean; notes: boolean; note: typeof noteFile.target };
+  let viewsOf = $state<Record<string, Views>>({});
+  const views = (id: string | undefined): Views =>
+    (id && viewsOf[id]) || { split: false, panel: false, notes: false, note: null };
+  const setViews = (patch: Partial<Views>) => {
+    if (root) viewsOf[root.id] = { ...views(root.id), ...patch };
+  };
+  const split = $derived(views(root?.id).split);
+  const panelOpen = $derived(views(root?.id).panel);
+  const notesOpen = $derived(views(root?.id).notes);
+  // A note the terminal linked opens this session's panel on that file.
   $effect(() => {
-    if (noteFile.target) notesOpen = true;
+    if (noteFile.target) {
+      setViews({ notes: true, note: noteFile.target });
+      noteFile.target = null;
+    }
   });
   let renamingId = $state<string | null>(null);
   let menu = $state<{ session: Session; x: number; y: number } | null>(null);
@@ -332,13 +343,13 @@
           mainSidebar?.stepSidebar(1);
           break;
         case 'KeyS':
-          split = !split;
+          setViews({ split: !split });
           break;
         case 'KeyD':
-          panelOpen = !panelOpen;
+          setViews({ panel: !panelOpen });
           break;
         case 'KeyM':
-          notesOpen = !notesOpen;
+          setViews({ notes: !notesOpen });
           break;
         case 'KeyT':
           void (e.shiftKey || !root ? newTerminal() : newShell());
@@ -441,7 +452,7 @@
             icon="split"
             pressed={split}
             title="Split view (Alt S)"
-            onclick={() => (split = !split)}><span class="label">Split</span></Button
+            onclick={() => setViews({ split: !split })}><span class="label">Split</span></Button
           >
           <Button
             size="sm"
@@ -449,7 +460,7 @@
             icon="book"
             pressed={notesOpen}
             title="Notes: a Markdown draft you and Claude write together (Alt M)"
-            onclick={() => (notesOpen = !notesOpen)}><span class="label">Notes</span></Button
+            onclick={() => setViews({ notes: !notesOpen })}><span class="label">Notes</span></Button
           >
           <Button
             size="sm"
@@ -457,7 +468,7 @@
             icon="services"
             pressed={panelOpen}
             title="Services (Alt D)"
-            onclick={() => (panelOpen = !panelOpen)}
+            onclick={() => setViews({ panel: !panelOpen })}
             ><span class="label">Services</span>{#if services.length}<span class="count">{services.length}</span
               >{/if}</Button
           >
@@ -505,13 +516,13 @@
         {/if}
       </div>
       {#if notesOpen && root}
-        {#key root.id + (noteFile.target?.file ?? '')}
+        {#key root.id + (views(root.id).note?.file ?? '')}
           <NotesPanel
             sessionId={root.id}
             claudeId={root.kind === 'claude' ? root.id : undefined}
-            note={noteFile.target}
-            onback={() => (noteFile.target = null)}
-            onhide={() => (notesOpen = false)}
+            note={views(root.id).note}
+            onback={() => setViews({ note: null })}
+            onhide={() => setViews({ notes: false })}
           />
         {/key}
       {/if}
@@ -522,7 +533,7 @@
         tabs={[{ id: 'services', label: 'Services' }]}
         active="services"
         onselect={() => {}}
-        onhide={() => (panelOpen = false)}
+        onhide={() => setViews({ panel: false })}
         context={services[0]?.project}
       >
         <ServicesTree
