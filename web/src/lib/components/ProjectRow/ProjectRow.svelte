@@ -47,6 +47,17 @@
   $effect(() => {
     collapsed = stored(key) === '1';
   });
+  // A new session (Alt K, buttons, resume) or a jump into this project unfolds it, so the session is never hidden.
+  let seen = { selected: false, count: 0 };
+  $effect(() => {
+    const grew = selected && sessions.length > seen.count;
+    const entered = selected && !seen.selected;
+    seen = { selected, count: sessions.length };
+    if ((grew || entered) && collapsed) {
+      collapsed = false;
+      store(key, null);
+    }
+  });
   const foldable = $derived(!!children && sessions.length > 0);
   // Folded rows hide the sessions, so a count pill tells how many there are; unlike the badge it stays on hover.
   const folded = $derived(foldable && collapsed);
