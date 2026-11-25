@@ -96,22 +96,25 @@
       <ProjectIcon icon={project.resolvedIcon} name={project.name} />
       <span class="name">{project.name}</span>
     </a>
-    {#if folded}<span class="count" title="{sessions.length} sessions{active ? `, ${active} active` : ''}"
-        ><StatusBadge text={String(sessions.length)} tone={active ? 'working' : 'neutral'} /></span
-      >{/if}
-    {#if countdown}
-      <span class="badge" title="Leaves the Active group in {countdown}"
-        ><StatusBadge text={countdown} tone="neutral" /></span
-      >
-    {:else if badge}<span class="badge"><StatusBadge text={badge.text} tone={badge.tone} /></span>{/if}
-    <span class="actions">
-      {#if project.remoteUrl}
-        <IconButton label="Open {project.name} remote" icon="link" href={project.remoteUrl} external />
-      {/if}
-      {#if !project.missing}
-        <IconButton label="New session in {project.name}" icon="plus" onclick={onnewsession} />
-      {/if}
-      <IconButton label="Project settings for {project.name}" icon="gear" href={settingsHref} variant="filled" />
+    <!-- The number stays rightmost; the actions fade in to its left, over the end of the name. -->
+    <span class="tail">
+      <span class="actions">
+        {#if project.remoteUrl}
+          <IconButton label="Open {project.name} remote" icon="link" href={project.remoteUrl} external />
+        {/if}
+        {#if !project.missing}
+          <IconButton label="New session in {project.name}" icon="plus" onclick={onnewsession} />
+        {/if}
+        <IconButton label="Project settings for {project.name}" icon="gear" href={settingsHref} variant="filled" />
+      </span>
+      {#if folded}<span class="count" title="{sessions.length} sessions{active ? `, ${active} active` : ''}"
+          ><StatusBadge text={String(sessions.length)} tone={active ? 'working' : 'neutral'} /></span
+        >{/if}
+      {#if countdown}
+        <span class="badge" title="Leaves the Active group in {countdown}"
+          ><StatusBadge text={countdown} tone="neutral" /></span
+        >
+      {:else if badge}<span class="badge"><StatusBadge text={badge.text} tone={badge.tone} /></span>{/if}
     </span>
   </div>
   {#if children && !(foldable && collapsed)}<div class="sessions">{@render children()}</div>{/if}
@@ -133,16 +136,23 @@
     padding: 0 var(--space-1) 0 var(--space-2-5);
     border-radius: var(--radius-md);
     color: var(--fg-2);
+
+    --row-bg: transparent;
   }
 
   .row:hover,
   .row:focus-within {
     outline: var(--hairline) solid var(--line);
+
+    --row-bg: var(--bg);
+
     background: var(--bg);
   }
 
   .selected,
   .selected:hover {
+    --row-bg: var(--raised);
+
     background: var(--raised);
     color: var(--fg);
     font-weight: var(--weight-medium);
@@ -202,19 +212,35 @@
     white-space: nowrap;
   }
 
-  .actions {
-    display: none;
+  .tail {
+    position: relative;
+    display: flex;
+    align-items: center;
     gap: var(--space-1);
+  }
+
+  .actions {
+    position: absolute;
+    right: 100%;
+    display: flex;
+    gap: var(--space-1);
+    padding-left: var(--space-4);
+    background: linear-gradient(to right, transparent, var(--row-bg) var(--space-4));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-base) var(--ease-standard);
   }
 
   .row:hover .actions,
   .row:focus-within .actions {
-    display: flex;
+    opacity: 1;
+    pointer-events: auto;
   }
 
-  .row:hover .badge,
-  .row:focus-within .badge {
-    display: none;
+  @media (prefers-reduced-motion: reduce) {
+    .actions {
+      transition: none;
+    }
   }
 
   .sessions {
