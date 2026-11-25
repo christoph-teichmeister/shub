@@ -743,6 +743,8 @@ export interface UpdateStatus {
   checkError?: string;
   /** The version "roll back" switches to. */
   previous?: string;
+  /** Downloaded and verified, not switched to yet: installing it is instant. */
+  staged?: string;
   /** The launcher's last install, update or rollback, e.g. an automatic rollback and its reason. */
   last?: { at: string; from: string | null; to: string; ok: boolean; message: string };
 }

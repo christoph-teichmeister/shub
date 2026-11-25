@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeFixture, type FixtureRelease } from '../test/fixture.ts';
 import { archiveName, source } from './releases.ts';
-import { channelFor, check, healthCheck, rollback, update, type Deps } from './update.ts';
+import { channelFor, check, healthCheck, rollback, stage, update, type Deps } from './update.ts';
 import { currentVersion, installedVersions, readState } from './versions.ts';
 
 const RELEASES: FixtureRelease[] = [
@@ -126,4 +126,20 @@ test('a tampered archive is never installed', async () => {
   const empty = setup();
   empty.deps.source = { ...empty.deps.source, releases: async () => [] };
   await assert.rejects(update(empty.deps, { channel: 'stable' }), /there is no stable release yet/);
+});
+
+test('stage downloads without switching or restarting; activating it is then instant and clears the mark', async () => {
+  const { home, calls, deps } = setup({ service: true });
+  await update(deps, { to: '2026.10.0', channel: 'stable' });
+  calls.length = 0;
+  assert.equal(await stage(deps, { channel: 'stable' }), '2026.10.1');
+  assert.equal(currentVersion(home), '2026.10.0', 'still on the running version');
+  assert.deepEqual(calls, [], 'no restart');
+  assert.equal(readState(home).staged, '2026.10.1');
+  assert.deepEqual(installedVersions(home), ['2026.10.1', '2026.10.0']);
+  assert.equal(await stage(deps, { to: '2026.10.0', channel: 'stable' }), null, 'nothing newer than current');
+  await update(deps, { to: '2026.10.1', channel: 'stable' });
+  assert.equal(currentVersion(home), '2026.10.1');
+  assert.equal(readState(home).staged, undefined);
+  assert.deepEqual(calls, ['restart 2026.10.1']);
 });

@@ -22,6 +22,8 @@ export function shubHome(env: NodeJS.ProcessEnv = process.env): string {
 /** Read by the app (server/updates); keep the field names stable. */
 export interface LauncherState {
   previous?: string;
+  /** A downloaded, verified version that is not switched to yet (`shub update --stage`). */
+  staged?: string;
   /** Port the app was last started on, for the health check after an update. */
   port?: number;
   last?: { at: string; from: string | null; to: string; ok: boolean; message: string };
@@ -71,9 +73,9 @@ export function switchTo(home: string, version: string): void {
   renameSync(tmp, join(home, 'current'));
 }
 
-/** Keeps only current and previous (the rollback target); returns the removed. */
+/** Keeps only current, previous (the rollback target) and a staged version; returns the removed. */
 export function prune(home: string): string[] {
-  const pinned = new Set([currentVersion(home), readState(home).previous].filter((v) => !!v));
+  const pinned = new Set([currentVersion(home), readState(home).previous, readState(home).staged].filter((v) => !!v));
   const removed = installedVersions(home).filter((v) => !pinned.has(v));
   for (const v of removed) rmSync(versionDir(home, v), { recursive: true, force: true });
   return removed;

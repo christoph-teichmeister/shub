@@ -98,7 +98,7 @@ async function activate(deps: Deps, to: string, verb: string): Promise<Result> {
   const before = readState(deps.home).previous;
   const at = new Date().toISOString();
   switchTo(deps.home, to);
-  writeState(deps.home, { previous: from ?? undefined });
+  writeState(deps.home, { previous: from ?? undefined, staged: undefined });
   if (!deps.service.active(deps.home)) {
     const message = from ? `${verb} ${to}. Restart shub to use it.` : `Installed ${to}.`;
     return record(deps, { at, from, to, ok: true, message });
@@ -144,6 +144,24 @@ export async function update(deps: Deps, opts: { to?: string; channel: Channel }
     );
     for (const v of prune(deps.home)) deps.log(`Removed old version ${v}`);
     return result;
+  } finally {
+    unlock();
+  }
+}
+
+/** Download, verify and unpack the newest release (or `to`) next to the running one, without switching or restarting:
+ * the app keeps running, and a later `update --to` activates it at once. Null when there is nothing newer. */
+export async function stage(deps: Deps, opts: { to?: string; channel: Channel }): Promise<string | null> {
+  if (opts.to !== undefined && !isVersion(opts.to)) throw new Error(`not a version: ${opts.to}`);
+  const unlock = lock(deps.home);
+  try {
+    const current = currentVersion(deps.home);
+    const target = opts.to ?? (await check(deps, opts.channel)).latest;
+    if (!target || target === current) return null;
+    if (!existsSync(versionDir(deps.home, target))) await fetchVerified(deps, target);
+    writeState(deps.home, { staged: target });
+    deps.log(`Downloaded ${target}; it is ready to switch to.`);
+    return target;
   } finally {
     unlock();
   }

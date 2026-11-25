@@ -193,7 +193,10 @@ test('install and rollback start the launcher, only for the browser user', async
   await assert.rejects(call('POST /api/updates/install', cli), /only you/);
   await assert.rejects(call('POST /api/updates/install', user, { version: '../../x' }), /release version/);
   assert.deepEqual(await call('POST /api/updates/install', user), { ok: true, version: '2026.10.1' });
-  assert.deepEqual(await calls(1), [['update', '--to', '2026.10.1']]);
+  assert.deepEqual(await calls(2), [
+    ['update', '--stage', '--to', '2026.10.1'],
+    ['update', '--to', '2026.10.1'],
+  ]);
 
   await assert.rejects(call('POST /api/updates/rollback', user), /no previous version/);
   const last = { at: '2026-10-19T20:00:00Z', from: '2026.10.0', to: '2026.10.1', ok: false, message: 'rolled back' };
@@ -202,7 +205,7 @@ test('install and rollback start the launcher, only for the browser user', async
   assert.equal(status.previous, '2026.9.0');
   assert.deepEqual(status.last, last);
   assert.deepEqual(await call('POST /api/updates/rollback', user), { ok: true, version: '2026.9.0' });
-  assert.deepEqual(await calls(2), [['update', '--to', '2026.10.1'], ['rollback']]);
+  assert.deepEqual((await calls(3)).slice(1), [['update', '--to', '2026.10.1'], ['rollback']]);
   assert.deepEqual(logged, ['updates.install 2026.10.1', 'updates.rollback 2026.9.0']);
 });
 
@@ -228,7 +231,8 @@ test('mode auto installs after the check, but not a version that was rolled back
   await assert.rejects(call('PATCH /api/updates/mode', cli, { mode: 'auto' }), /only you/);
   await assert.rejects(call('PATCH /api/updates/mode', user, { mode: 'yolo' }), /auto, ask or off/);
   assert.equal((await call('POST /api/updates/check', user)).mode, 'ask');
-  assert.deepEqual(logged, [], 'ask only shows the new version');
+  assert.deepEqual(logged, [], 'ask installs nothing');
+  assert.deepEqual(await calls(1), [['update', '--stage', '--to', '2026.10.1']], 'ask downloads in the background');
 
   mkdirSync(home, { recursive: true });
   const last = { at: '2026-10-19T20:00:00Z', from: '2026.10.0', to: '2026.10.1', ok: false, message: 'rolled back' };
@@ -240,6 +244,6 @@ test('mode auto installs after the check, but not a version that was rolled back
   writeFileSync(join(home, 'launcher.json'), '{}');
   assert.equal((await call('PATCH /api/updates/mode', user, { mode: 'auto' })).mode, 'auto');
   await call('POST /api/updates/check', user);
-  assert.deepEqual(await calls(1), [['update', '--to', '2026.10.1']]);
+  assert.deepEqual((await calls(2)).at(-1), ['update', '--to', '2026.10.1']);
   assert.equal(logged[0], 'updates.install 2026.10.1 (auto)');
 });

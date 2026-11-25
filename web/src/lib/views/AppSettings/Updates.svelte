@@ -24,7 +24,7 @@
     { value: 'beta', label: 'Beta (pre-releases)' },
   ];
   const UPDATE_MODES = [
-    { value: 'ask', label: 'Ask me first' },
+    { value: 'ask', label: 'Download, then ask to restart' },
     { value: 'auto', label: 'Install automatically' },
     { value: 'off', label: "Don't check automatically" },
   ];
@@ -78,7 +78,8 @@
                   <Button
                     variant="primary"
                     disabled={!!switching}
-                    onclick={() => update.latest && oninstall(update.latest)}>Install {update.latest}</Button
+                    onclick={() => update.latest && oninstall(update.latest)}
+                    >{update.staged === update.latest ? 'Restart into' : 'Install'} {update.latest}</Button
                   >
                   {#if !switching}<span class="muted small">shub restarts; sessions keep running.</span>{/if}
                 </span>
