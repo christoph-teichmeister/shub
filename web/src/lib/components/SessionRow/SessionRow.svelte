@@ -106,7 +106,15 @@
     >
       <StatusDot status={session.status} idle={idleWithAgents(session)} />
       <span class="name">{session.name}</span>
-      <span class="status">{closing ? 'Closing' : session.booting ? 'starting…' : statusLabel(session)}</span>
+      <span class="status"
+        >{closing
+          ? 'Closing'
+          : session.booting
+            ? 'starting…'
+            : session.bootSlow
+              ? 'no response'
+              : statusLabel(session)}</span
+      >
     </a>
     <span id="status-help-{session.id}" class="visually-hidden">{STATUS_HELP[session.status]}</span>
   {/if}

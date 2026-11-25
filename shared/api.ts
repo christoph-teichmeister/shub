@@ -324,6 +324,8 @@ export interface Session {
   context?: ContextFill | null;
   /** Started or resumed and Claude has not reported SessionStart yet: the terminal and the sidebar row show a boot-up animation. */
   booting?: boolean;
+  /** The boot animation ended on its time cap: Claude has not reported SessionStart (yet). */
+  bootSlow?: boolean;
 }
 
 /** Claude subscription limits from Claude Code's status line: percent used and when the window resets (epoch seconds). */
