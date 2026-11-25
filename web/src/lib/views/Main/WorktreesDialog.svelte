@@ -106,6 +106,24 @@
     });
   }
 
+  /** The sidebar's "Clean up all" on orphaned worktrees: closes the ones that lose no work, leaves the rest. */
+  export function askCloseAll(list: WorktreeInfo[]) {
+    const busy = (w: WorktreeInfo) => app.sessions.some((s) => s.cwd === w.path || s.cwd.startsWith(`${w.path}/`));
+    const todo = list.filter((w) => !KEEP.includes(w.state) && w.state !== 'folder-gone' && !busy(w));
+    if (!todo.length) return toast('Nothing to clean up: the rest is active, dirty or not pushed');
+    const kept = list.length - todo.length;
+    onconfirm({
+      title: `Close ${todo.length} orphaned worktree${todo.length === 1 ? '' : 's'}?`,
+      body: `${todo.map((w) => w.name).join(', ')}.${kept ? ` ${kept} more stay (active, dirty or not pushed).` : ''}`,
+      action: 'Close all',
+      danger: true,
+      run: async () => {
+        for (const w of todo) await closeWorktree(w, false).catch(toastError);
+        await Promise.all([loadWorktrees(), loadChildren(true)]);
+      },
+    });
+  }
+
   /** Also for a worktree row in the sidebar, with this dialog closed. */
   export function askClose(w: WorktreeInfo) {
     const p = app.projects.find((x) => x.id === w.projectId);

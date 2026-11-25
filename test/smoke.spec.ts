@@ -1116,6 +1116,10 @@ test('worktrees of closed sessions fold under their own row in the project', asy
   await page.getByRole('button', { name: /review-3600/ }).hover();
   await page.getByRole('button', { name: 'Menu for review-3600' }).click();
   await expect(page.getByRole('menuitem', { name: 'Close worktree' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await row.hover();
+  await page.getByRole('button', { name: 'Clean up all' }).click();
+  await expect(page.getByRole('dialog', { name: /Close 1 orphaned worktree\?/ })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

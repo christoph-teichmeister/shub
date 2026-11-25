@@ -372,6 +372,7 @@
       onsessionmenu={(m) => (menu = m)}
       onprojectmenu={(m) => (projectMenu = m)}
       onworktreemenu={(m) => (worktreeMenu = m)}
+      oncleanorphans={(list) => worktreesDialog?.askCloseAll(list)}
     />
   {/snippet}
 

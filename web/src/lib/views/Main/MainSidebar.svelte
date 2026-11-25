@@ -52,6 +52,7 @@
     onsessionmenu: (menu: { session: Session; x: number; y: number }) => void;
     onprojectmenu: (menu: { project: ProjectView; x: number; y: number }) => void;
     onworktreemenu: (menu: { worktree: ChildWorktree; x: number; y: number }) => void;
+    oncleanorphans: (list: ChildWorktree[]) => void;
   }
   let {
     project,
@@ -63,6 +64,7 @@
     onsessionmenu,
     onprojectmenu,
     onworktreemenu,
+    oncleanorphans,
   }: Props = $props();
 
   const globalSession = $derived(app.sessions.find((s) => s.kind === 'global') ?? null);
@@ -277,6 +279,7 @@
         <span class="grow">Orphaned worktrees</span>
         <span class="orphan-count">{worktreeCount(list)}</span>
       </button>
+      <button type="button" class="orphan-clean" onclick={() => oncleanorphans(list)}>Clean up all</button>
     </div>
     {#if open}{#each list as w (w.path)}{@render childRow(w)}{/each}{/if}
   {/if}
@@ -726,6 +729,33 @@
   .orphan-count {
     flex: none;
     font-size: var(--text-xs);
+  }
+
+  /* Takes the count's place on hover or focus. */
+  .orphan-clean {
+    display: none;
+    position: absolute;
+    top: 50%;
+    right: var(--space-2);
+    padding: 0 var(--space-2);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--raised);
+    color: var(--danger, var(--fg));
+    font: inherit;
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transform: translateY(-50%);
+  }
+
+  .orphans:hover .orphan-clean,
+  .orphans:focus-within .orphan-clean {
+    display: block;
+  }
+
+  .orphans:hover .orphan-count,
+  .orphans:focus-within .orphan-count {
+    opacity: 0;
   }
 
   .folder {
