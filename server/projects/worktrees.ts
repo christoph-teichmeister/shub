@@ -224,8 +224,8 @@ export const KEEP: WorktreeState[] = ['active', 'folder-gone', 'locked', 'dirty'
  * Plain git close: `git worktree remove` (never --force) and, only when merged, the branch.
  * Returns whether the branch was deleted.
  */
-export async function removeWorktree(dir: string, w: WorktreeInfo): Promise<boolean> {
-  if (KEEP.includes(w.state)) throw new Error(`${w.name} is ${w.state.replace('-', ' ')}; not closed`);
+export async function removeWorktree(dir: string, w: WorktreeInfo, keep = KEEP): Promise<boolean> {
+  if (keep.includes(w.state)) throw new Error(`${w.name} is ${w.state.replace('-', ' ')}; not closed`);
   await git(dir, 'worktree', 'remove', w.path);
   if (w.state !== 'merged' || !w.branch) return false;
   await git(dir, 'branch', '-D', w.branch);

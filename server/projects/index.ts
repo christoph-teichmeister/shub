@@ -18,6 +18,7 @@ import {
   type TerminalSettings,
   type ThemeDef,
   type Visibility,
+  type WorktreeState,
 } from '../../shared/api.ts';
 import { expandHome, remoteIcon, setThemeTerminal } from '../config/index.ts';
 import type { Context } from '../context.ts';
@@ -37,7 +38,7 @@ import {
   newestTranscript,
   type ChildRow,
 } from './children.ts';
-import { listWorktrees, pruneWorktrees, removeWorktree, worktreeOverview } from './worktrees.ts';
+import { KEEP, listWorktrees, pruneWorktrees, removeWorktree, worktreeOverview } from './worktrees.ts';
 import { isLaunchPermissionMode } from '../sessions/launch.ts';
 
 const VISIBILITIES: Visibility[] = ['pinned', 'dormant'];
@@ -500,26 +501,35 @@ function mainCheckoutUpdates(services: Services): { start(): void; stop(): void 
   };
 }
 
+/** What closing a session still keeps: uncommitted files and worktrees in use. Unpushed commits stay on their branch. */
+const KEEP_ON_CLOSE: WorktreeState[] = KEEP.filter((s) => s !== 'not-pushed');
+
 /**
- * Closing a session closes the worktrees it created: plain `git worktree remove`, never --force, so dirty,
- * unpushed or still-open ones stay (they remain under "Orphaned worktrees"). Projects with a /worktree-close
- * button are left to that skill (containers etc.).
+ * Closing a session closes the worktrees it created, like the Cleanup section: plain `git worktree remove`
+ * (never --force), or, with a /worktree-close button, that skill in a new session of the project.
  */
 export async function closeChildrenOf(services: Services, sessionId: string): Promise<void> {
-  const rows = childRows(services.state).filter((r) => r.origin_session_id === sessionId);
   const tracked = new Map(childRows(services.state).map((r) => [r.worktree_path, r]));
-  for (const r of rows) {
+  for (const r of tracked.values()) {
+    if (r.origin_session_id !== sessionId) continue;
     const p = services.config.project(r.project_id ?? '');
-    if (!p || !existsSync(p.path) || p.buttons.some((b) => b.skill === '/worktree-close')) continue;
+    if (!p || !existsSync(p.path)) continue;
     const cwds = services.sessions.list().map((s) => s.cwd);
     const w = (await worktreeOverview(p.id, p.path, cwds, { tracked, onlyTracked: true })).find(
       (x) => x.path === r.worktree_path,
     );
-    if (!w) continue;
-    await removeWorktree(p.path, w).then(
-      () => forgetChild(services.state, w.path),
-      () => undefined, // dirty / unpushed / active: kept on purpose
-    );
+    if (!w || KEEP_ON_CLOSE.includes(w.state)) continue;
+    const button = p.buttons.find((b) => b.skill === '/worktree-close');
+    if (button) {
+      await services.sessions
+        .start({ projectId: p.id, kind: 'claude', buttonId: button.id, input: w.path }, 'system', true)
+        .catch(() => undefined);
+    } else {
+      await removeWorktree(p.path, w, KEEP_ON_CLOSE).then(
+        () => forgetChild(services.state, w.path),
+        () => undefined,
+      );
+    }
   }
 }
 
