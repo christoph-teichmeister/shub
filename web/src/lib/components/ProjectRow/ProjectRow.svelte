@@ -227,14 +227,19 @@
     padding-left: var(--space-4);
     background: linear-gradient(to right, transparent, var(--row-bg) var(--space-4));
     opacity: 0;
-    pointer-events: none;
-    transition: opacity var(--duration-base) var(--ease-standard);
+
+    /* visibility keeps the hidden buttons out of the tab order and the a11y tree; it flips after the fade-out. */
+    visibility: hidden;
+    transition:
+      opacity var(--duration-base) var(--ease-standard),
+      visibility 0s linear var(--duration-base);
   }
 
   .row:hover .actions,
   .row:focus-within .actions {
     opacity: 1;
-    pointer-events: auto;
+    visibility: visible;
+    transition-delay: 0s;
   }
 
   @media (prefers-reduced-motion: reduce) {
