@@ -749,7 +749,7 @@
 
   .orphans:hover .orphan-count,
   .orphans:focus-within .orphan-count {
-    visibility: hidden;
+    opacity: 0;
   }
 
   .folder {
