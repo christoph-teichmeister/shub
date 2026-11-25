@@ -2024,10 +2024,16 @@ test('closing an idle Claude session is at once, with an undo toast that resumes
     '/api/sessions': [idle],
     'POST /api/sessions': { status: 200, json: { ...idle, id: 's9' } },
   });
+  let events: { send(m: string): void } | undefined;
+  await page.routeWebSocket('**/api/events', (ws) => {
+    events = ws;
+    ws.send(JSON.stringify({ type: 'hello', apiVersion: 1 }));
+  });
   await page.goto('/#/p/ai-portal/s1');
   await page.getByRole('button', { name: 'Close MR 2136 review' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect.poll(() => calls.filter((c) => c.method === 'DELETE').map((c) => c.path)).toEqual(['/api/sessions/s1']);
+  events!.send(JSON.stringify({ type: 'session.closed', sessionId: 's1' })); // the toast follows the server event, whoever closed it
 
   const undo = page.locator('.toast').filter({ hasText: 'Closed MR 2136 review' });
   await expect(undo).toContainText('resume the conversation');

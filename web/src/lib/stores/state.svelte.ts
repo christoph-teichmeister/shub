@@ -145,19 +145,9 @@ export async function openChild(w: ChildWorktree): Promise<void> {
   if (s) location.hash = sessionHref(s);
 }
 
-export async function closeSession(id: string): Promise<void> {
-  const s = app.sessions.find((x) => x.id === id);
-  app.closing[id] = true;
-  const failed = await api('sessionClose', { params: { id } }).then(
-    () => false,
-    (err: unknown) => {
-      delete app.closing[id];
-      toastError(err);
-      return true;
-    },
-  );
-  // A Claude conversation survives the close: the toast brings it back (the idle ones close without asking).
-  if (failed || s?.kind !== 'claude' || !s.claudeSessionId || !s.projectId) return;
+/** A Claude conversation survives the close: the toast brings it back. Shown for every close (this tab, the CLI, another device). */
+function toastResume(s: Session | undefined): void {
+  if (s?.kind !== 'claude' || !s.claudeSessionId || !s.projectId) return;
   const { projectId, name, cwd, parentId, claudeSessionId: resumeClaudeSessionId } = s;
   const resume = async () => {
     const back = await startSession({
@@ -174,6 +164,17 @@ export async function closeSession(id: string): Promise<void> {
     label: 'Resume',
     run: resume,
   });
+}
+
+export async function closeSession(id: string): Promise<void> {
+  app.closing[id] = true;
+  await api('sessionClose', { params: { id } }).then(
+    () => undefined,
+    (err: unknown) => {
+      delete app.closing[id];
+      toastError(err);
+    },
+  );
 }
 
 /** Sends tmux keys: named keys (Escape, C-c, Up, Down, Tab, Enter) or literal text; false (toasted) when they failed. */
@@ -380,7 +381,8 @@ export function handleEvent(e: ServerEvent): void {
       return setStatus(e.sessionId, e.status, e.statusSince);
     case 'session.closed':
       void loadChildren();
-      // Also for closes from another device: let the fade-out play before the session goes.
+      // Also for closes from the CLI or another device: let the fade-out play before the session goes.
+      toastResume(app.sessions.find((s) => s.id === e.sessionId));
       app.closing[e.sessionId] = true;
       setTimeout(() => {
         app.sessions = app.sessions.filter((s) => s.id !== e.sessionId);
