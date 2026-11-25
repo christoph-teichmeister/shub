@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { fade } from 'svelte/transition';
   import { Terminal, type ITheme } from '@xterm/xterm';
   import { FitAddon } from '@xterm/addon-fit';
   import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -440,9 +441,12 @@
     <div class="reconnecting" role="status">Reconnecting…</div>
   {/if}
   {#if booting}
-    <div class="boot" role="status">
-      <span class="prompt">claude<span class="cursor">_</span></span>
-      <span class="text">Starting session…</span>
+    <div class="boot" role="status" transition:fade={{ duration: 200 }}>
+      <div class="lines">
+        <span class="line one">$ claude</span>
+        <span class="line two">▸ Starting session…</span>
+        <span class="cursor">_</span>
+      </div>
     </div>
   {/if}
 </section>
@@ -477,48 +481,64 @@
     inset: 0;
     z-index: var(--z-raised);
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: var(--space-2);
     background: var(--term-bg);
     font-family: var(--font-mono);
+    font-size: var(--text-sm);
   }
 
-  .prompt {
-    font-size: var(--text-xl);
+  .lines {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+
+  .line {
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .one {
+    width: 8ch;
     font-weight: 700;
     color: var(--fg);
+  }
+
+  .two {
+    width: 20ch;
+    color: var(--muted);
   }
 
   .cursor {
     color: var(--primary);
   }
 
-  .text {
-    font-size: var(--text-sm);
-    color: var(--muted);
-  }
-
+  /* Each line types itself in; the cursor blinks once both are out. */
   @media (prefers-reduced-motion: no-preference) {
-    .cursor {
-      animation: boot-blink 1s steps(1) infinite;
+    .one {
+      animation: boot-type 0.5s steps(8) both;
     }
 
-    .text {
-      animation: boot-pulse 1.6s var(--ease-standard) infinite;
+    .two {
+      animation: boot-type 0.8s 0.5s steps(20) both;
+    }
+
+    .cursor {
+      animation: boot-blink 1s 1.3s steps(1) infinite backwards;
+    }
+  }
+
+  @keyframes boot-type {
+    from {
+      width: 0;
     }
   }
 
   @keyframes boot-blink {
     50% {
       opacity: 0;
-    }
-  }
-
-  @keyframes boot-pulse {
-    50% {
-      opacity: 0.4;
     }
   }
 

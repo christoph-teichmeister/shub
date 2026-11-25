@@ -59,6 +59,7 @@
   class="row {session.status}"
   class:selected
   class:closing
+  class:booting={session.booting && !closing}
   inert={closing}
   role="presentation"
   draggable={ondragstart && !renaming ? 'true' : undefined}
@@ -105,7 +106,7 @@
     >
       <StatusDot status={session.status} idle={idleWithAgents(session)} />
       <span class="name">{session.name}</span>
-      <span class="status">{closing ? 'Closing' : statusLabel(session)}</span>
+      <span class="status">{closing ? 'Closing' : session.booting ? 'starting…' : statusLabel(session)}</span>
     </a>
     <span id="status-help-{session.id}" class="visually-hidden">{STATUS_HELP[session.status]}</span>
   {/if}
@@ -164,6 +165,29 @@
 
   .high {
     --c: var(--danger);
+  }
+
+  /* Booting: a light band sweeps across the row until Claude is up. */
+  .booting::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(100deg, transparent 30%, var(--raised) 50%, transparent 70%);
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .booting::after {
+      transform: translateX(-100%);
+      animation: boot-sweep 1s var(--ease-standard) infinite;
+    }
+  }
+
+  @keyframes boot-sweep {
+    to {
+      transform: translateX(100%);
+    }
   }
 
   .link {

@@ -213,6 +213,7 @@ test('pause and resume', async () => {
   const s = await svc.start({ kind: 'claude', projectId: 'p1', prompt: 'do the thing' }, 'session:x');
   assert.equal(s.id, 'p1-2');
   assert.equal(s.permissionMode, 'default');
+  assert.equal(s.booting, true, 'a new session boots until SessionStart too');
   assert.equal(s.name, 'do the thing', 'first words until the title arrives');
   await new Promise((r) => setImmediate(r));
   assert.equal(svc.get(s.id)?.name, 'Thing Doing');

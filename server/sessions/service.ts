@@ -314,6 +314,7 @@ export class SessionsService implements Sessions {
       throw err;
     }
     if (resumeId && remote && !fork) claimSession(this.#services.group, resumeId, hostname());
+    if (request.kind !== 'shell') this.#boot(id);
     const session = this.get(id)!;
     this.#ctx.bus.emit({ type: 'session.started', session, from: request.from });
     this.#services.permissions.log({ actor: startedBy, action: 'session.start', detail: `${id}: ${session.name}` });
@@ -645,11 +646,7 @@ export class SessionsService implements Sessions {
     }
     this.#launch(this.#row(id)!, { resume: hasTranscript });
     this.#restorable.delete(id);
-    if (session.kind !== 'shell') {
-      this.#booting.add(id);
-      // ponytail: fixed cap so a hook that never arrives cannot leave the overlay up
-      setTimeout(() => this.#unboot(id), BOOT_CAP_MS).unref();
-    }
+    if (session.kind !== 'shell') this.#boot(id);
     this.setStatus(
       id,
       session.waitingFor ? 'waiting' : hasTranscript || session.kind === 'shell' ? 'your-turn' : 'new',
@@ -756,6 +753,13 @@ export class SessionsService implements Sessions {
       this.resume(id, actor);
       this.#afterStart.set(id, type);
     }
+  }
+
+  /** Until Claude's SessionStart hook: the terminal and the sidebar row show a boot-up animation. */
+  #boot(id: string): void {
+    this.#booting.add(id);
+    // ponytail: fixed cap so a hook that never arrives cannot leave the overlay up
+    setTimeout(() => this.#unboot(id), BOOT_CAP_MS).unref();
   }
 
   #unboot(id: string): void {

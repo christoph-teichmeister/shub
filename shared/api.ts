@@ -322,7 +322,7 @@ export interface Session {
   agents?: SubagentRun[];
   /** How full Claude's context is, from the transcript after each turn and tool call; null before the first reply. */
   context?: ContextFill | null;
-  /** Resumed and Claude has not reported SessionStart yet: the terminal shows a boot-up animation. */
+  /** Started or resumed and Claude has not reported SessionStart yet: the terminal and the sidebar row show a boot-up animation. */
   booting?: boolean;
 }
 
