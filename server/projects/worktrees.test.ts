@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  deadClaudeLock,
   insideWorktree,
   listWorktrees,
   parseWorktrees,
@@ -111,4 +112,11 @@ test('worktreeOverview: one state per worktree; removeWorktree keeps work, prune
   await pruneWorktrees(repo);
   assert.deepEqual(Object.keys(await states()).sort(), ['busy', 'dirty', 'fresh', 'local', 'pushed']);
   rmSync(root, { recursive: true, force: true });
+});
+
+test('parseWorktrees: a lock from a dead Claude pid is not locked, a live one is', () => {
+  const entry = (reason: string) => `locked ${reason}`;
+  assert.equal(deadClaudeLock(entry(`claude session s (pid ${process.pid} start 1)`)), false);
+  assert.equal(deadClaudeLock(entry('claude session s (pid 2147483646 start 1)')), true);
+  assert.equal(deadClaudeLock(entry('by hand')), false);
 });

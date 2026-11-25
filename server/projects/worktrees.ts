@@ -19,6 +19,18 @@ interface Entry {
   prunable: boolean;
 }
 
+/** Claude Code locks its agent worktrees with "claude session <name> (pid N ...)"; once N is gone nobody holds it. */
+export function deadClaudeLock(line: string): boolean {
+  const pid = /^locked claude session .*\(pid (\d+)/.exec(line)?.[1];
+  if (!pid) return false;
+  try {
+    process.kill(Number(pid), 0);
+    return false;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'ESRCH';
+  }
+}
+
 function parseEntries(porcelain: string): Entry[] {
   return porcelain
     .split(/\n\n+/)
@@ -31,7 +43,7 @@ function parseEntries(porcelain: string): Entry[] {
         head: value('HEAD') ?? '',
         branch: (value('branch') ?? '').replace(/^refs\/heads\//, ''),
         bare: has('bare'),
-        locked: has('locked'),
+        locked: has('locked') && !deadClaudeLock(lines.find((l) => l.startsWith('locked')) ?? ''),
         prunable: has('prunable'),
       };
     })
@@ -226,6 +238,7 @@ export const KEEP: WorktreeState[] = ['active', 'folder-gone', 'locked', 'dirty'
  */
 export async function removeWorktree(dir: string, w: WorktreeInfo, keep = KEEP): Promise<boolean> {
   if (keep.includes(w.state)) throw new Error(`${w.name} is ${w.state.replace('-', ' ')}; not closed`);
+  await git(dir, 'worktree', 'unlock', w.path).catch(() => {}); // a dead Claude session's lock; not locked is fine
   await git(dir, 'worktree', 'remove', w.path);
   if (w.state !== 'merged' || !w.branch) return false;
   await git(dir, 'branch', '-D', w.branch);
