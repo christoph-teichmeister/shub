@@ -28,6 +28,18 @@
   let { label, items, onselect, onclose, x, y }: Props = $props();
   let menu = $state<HTMLDivElement>();
 
+  // Keep a floating menu inside the viewport: flip it left/up of the click point when it would overflow.
+  let pos = $state<{ left: number; top: number }>();
+  $effect(() => {
+    if (!menu || x === undefined || y === undefined) return;
+    const { width, height } = menu.getBoundingClientRect();
+    const edge = 8;
+    pos = {
+      left: Math.max(edge, Math.min(x, innerWidth - width - edge)),
+      top: Math.max(edge, Math.min(y, innerHeight - height - edge)),
+    };
+  });
+
   const buttons = () => [...(menu?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])];
 
   onMount(() => {
@@ -57,8 +69,8 @@
   role="menu"
   tabindex="-1"
   aria-label={label}
-  style:left={x !== undefined ? `${x}px` : undefined}
-  style:top={y !== undefined ? `${y}px` : undefined}
+  style:left={x !== undefined ? `${pos?.left ?? x}px` : undefined}
+  style:top={y !== undefined ? `${pos?.top ?? y}px` : undefined}
   {onkeydown}
 >
   {#each items as item (item.id)}
