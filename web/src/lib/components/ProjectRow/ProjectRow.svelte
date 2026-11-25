@@ -6,7 +6,7 @@
   import IconButton from '../IconButton/IconButton.svelte';
   import ProjectIcon from '../ProjectIcon/ProjectIcon.svelte';
   import StatusBadge from '../StatusBadge/StatusBadge.svelte';
-  import { store, stored } from '../../stored.ts';
+  import { isFolded, setFolded } from '../../stores/folded.svelte.ts';
 
   interface Props {
     project: ProjectView;
@@ -41,12 +41,8 @@
   const badge = $derived(projectBadge(sessions));
   let over = $state(false);
 
-  // Folding hides the session rows; remembered per browser like SidebarSection, storage may throw (private window).
-  const key = $derived(`shub.collapsed.project.${project.id}`);
-  let collapsed = $state(false);
-  $effect(() => {
-    collapsed = stored(key) === '1';
-  });
+  // Folding hides the session rows; kept in the shared folded store so the Active group can sink folded projects.
+  const collapsed = $derived(isFolded(project.id));
   // A new session (Alt K, buttons, resume) or a jump into this project unfolds it, so the session is never hidden.
   let seen = { selected: false, count: 0 };
   $effect(() => {
@@ -54,16 +50,14 @@
     const entered = selected && !seen.selected;
     seen = { selected, count: sessions.length };
     if ((grew || entered) && collapsed) {
-      collapsed = false;
-      store(key, null);
+      setFolded(project.id, false);
     }
   });
   const foldable = $derived(!!children && sessions.length > 0);
   // Folded rows hide the sessions, so a count pill tells how many there are; unlike the badge it stays on hover.
   const folded = $derived(foldable && collapsed);
   function toggle() {
-    collapsed = !collapsed;
-    store(key, collapsed ? '1' : null);
+    setFolded(project.id, !collapsed);
   }
 </script>
 

@@ -21,6 +21,9 @@
   import { dropPositions, projectBadge } from '../../status.ts';
   import UsageMeters from '../../components/UsageMeters/UsageMeters.svelte';
   import { api } from '../../stores/api.ts';
+  import { flip } from 'svelte/animate';
+  import { cubicOut } from 'svelte/easing';
+  import { isFolded } from '../../stores/folded.svelte.ts';
   import { go, href } from '../../stores/router.svelte.ts';
   import {
     app,
@@ -100,11 +103,14 @@
     }, 1000);
     return () => clearInterval(tick);
   });
+  const sunk = (p: ProjectView) => (isFolded(p.id) && sessionsOf(p.id).length ? 1 : 0);
+  const glide = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 500;
   const activeProjects = $derived(
     app.config?.activeGroup
       ? app.projects
           .filter((p) => sessionsOf(p.id).length || p.id in leftAt)
-          .sort((a, b) => a.name.localeCompare(b.name))
+          // Folded projects sink below the open ones (the keyed list glides them down with `flip`).
+          .sort((a, b) => sunk(a) - sunk(b) || a.name.localeCompare(b.name))
       : [],
   );
   async function toggleActiveGroup() {
@@ -393,7 +399,7 @@
       {#each activeProjects as p (p.id)}
         {@const list = placeRolled(sessionsOf(p.id))}
         {@const g = grace(p.id)}
-        <div style:opacity={g?.opacity}>
+        <div style:opacity={g?.opacity} animate:flip={{ duration: glide, easing: cubicOut }}>
           <ProjectRow
             project={p}
             sessions={list}
