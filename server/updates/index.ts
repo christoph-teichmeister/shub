@@ -67,10 +67,10 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
       CheckRow | undefined;
 
   /** <SHUB_HOME>/launcher.json, written by the launcher. */
-  const launcherState = (): Pick<UpdateStatus, 'previous' | 'last'> => {
+  const launcherState = (): Pick<UpdateStatus, 'previous' | 'last' | 'staged'> => {
     try {
-      const { previous, last } = JSON.parse(readFileSync(join(home, 'launcher.json'), 'utf8'));
-      return { previous, last };
+      const { previous, last, staged } = JSON.parse(readFileSync(join(home, 'launcher.json'), 'utf8'));
+      return { previous, last, ...(staged && staged !== current && { staged }) };
     } catch {
       return {};
     }
@@ -118,23 +118,36 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
       .prepare('INSERT OR REPLACE INTO update_check VALUES (1, ?, ?, ?, ?, ?, ?)')
       .run(new Date().toISOString(), current, ch, result.latest ?? null, result.changelog ?? null, error);
     ctx.bus.emit({ type: 'updates.changed' });
-    const { latest, last } = status();
+    const { latest, last, staged } = status();
     // A version the launcher already rolled back is not tried again by itself; the user can still click.
-    if (mode() === 'auto' && latest && !(last && !last.ok && last.to === latest)) {
-      launch(['update', '--to', latest]);
-      services.permissions.log({ actor: 'shub', action: 'updates.install', detail: `${latest} (auto)` });
+    if (latest && !(last && !last.ok && last.to === latest)) {
+      if (mode() === 'auto') {
+        launch(['update', '--to', latest]);
+        services.permissions.log({ actor: 'shub', action: 'updates.install', detail: `${latest} (auto)` });
+      } else if (mode() === 'ask' && staged !== latest && staging !== latest) {
+        // Download now while the user works; the restart waits for their click.
+        staging = latest;
+        launch(['update', '--stage', '--to', latest], () => (staging = null));
+      }
     }
     return status();
   }
   const check = (): Promise<UpdateStatus> => (checking ??= runCheck(managed()).finally(() => (checking = null)));
 
+  let staging: string | null = null; // a stage download is running: later checks must not start a second one
+
   /** Runs the launcher on its own: it outlives this process when it restarts the service. */
-  function launch(args: string[]): void {
+  function launch(args: string[], done?: () => void): void {
     const script = managed();
     mkdirSync(home, { recursive: true });
     const log = openSync(join(home, 'update.log'), 'a');
     const child = spawn(process.execPath, [script, ...args], { detached: true, stdio: ['ignore', log, log], env });
     child.on('error', (err) => console.error('shub: could not start the launcher', err));
+    const before = JSON.stringify(launcherState());
+    child.on('exit', () => {
+      done?.();
+      if (JSON.stringify(launcherState()) !== before) ctx.bus.emit({ type: 'updates.changed' }); // staged or last changed
+    });
     child.unref();
     closeSync(log);
   }

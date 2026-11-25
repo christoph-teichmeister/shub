@@ -10,7 +10,7 @@ import { doctor, realDoctorDeps } from './doctor.ts';
 import { source } from './releases.ts';
 import { copyToClipboard, openUrl, readToken, setup, writeChannelTo } from './setup.ts';
 import { service } from './service.ts';
-import { channelFor, check, healthCheck, rollback, update, type Deps } from './update.ts';
+import { channelFor, check, healthCheck, rollback, stage, update, type Deps } from './update.ts';
 import { currentVersion, readState, shubHome, writeState } from './versions.ts';
 
 const env = process.env;
@@ -32,7 +32,7 @@ Usage: shub [command]
                                 for update channel, port and phone address);
                                 --yes (or no terminal) only downloads and installs the latest release
   token                         print the access token to log in with
-  update [--to <version>] [--channel stable|beta] [--check] [--json]
+  update [--to <version>] [--channel stable|beta] [--check] [--stage] [--json]
                                 install a newer release and restart shub
   rollback                      switch back to the previous version
   service install|uninstall     run shub as a systemd user unit (Linux) or launchd agent (macOS)
@@ -188,6 +188,10 @@ async function main(argv: string[]): Promise<void> {
             ? `shub ${result.latest} is available:\n\n${result.changelog}`
             : `shub ${result.current} is up to date (${channel}).`,
         );
+      }
+      if (f.stage) {
+        await stage(deps(home), { to: str(f.to), channel });
+        return;
       }
       // An nvm upgrade leaves the unit starting a node that is gone: point it at this one before the restart below.
       if (service().refresh({ node: process.execPath, launcher: self, home, env })) {

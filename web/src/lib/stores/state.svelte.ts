@@ -325,10 +325,14 @@ export async function loadUpdate(): Promise<void> {
     // The app may run from the loader's cached bundle: let it fetch the new one before reloading.
     void checkAppUpdate([]).then(() => reloadForUpdate(current));
   }
-  const latest = app.update?.mode === 'ask' ? app.update.latest : undefined;
-  if (latest && latest !== announced)
-    toast(`shub ${latest} is available.\nInstall it in Settings > Updates.`, 'needs-you', 15_000);
-  announced = latest ?? announced;
+  // "Ask me first": the launcher downloads in the background; only the restart waits for the user.
+  const staged = app.update?.mode === 'ask' ? app.update.staged : undefined;
+  if (staged && staged !== announced)
+    toast(`shub ${staged} is downloaded.\nRestart into it when it suits you.`, 'needs-you', 0, undefined, {
+      label: 'Restart now',
+      run: () => void api('updateInstall', { body: { version: staged } }).catch(toastError),
+    });
+  announced = staged ?? announced;
 }
 
 export async function loadAll(): Promise<void> {
