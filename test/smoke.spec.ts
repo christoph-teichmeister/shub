@@ -1323,6 +1323,8 @@ test("a quick switch never shows the previous session's containers", async ({ pa
   await page.keyboard.press('Alt+KeyD');
   await s1Asked;
   await page.goto('/#/p/ai-portal/s2');
+  await expect(page.getByText('Docs pass').first()).toBeVisible();
+  await page.keyboard.press('Alt+KeyD');
   await expect(page.getByText('docs-web').first()).toBeVisible();
   release();
   await page.waitForTimeout(500);
@@ -1584,6 +1586,7 @@ test('notes: a save that lost against Claude shows the bar; Take theirs loads th
     'PUT /api/sessions/s1/notes': { status: 409, json: { error: 'the notes changed meanwhile' } },
   });
   await page.goto('/#/p/ai-portal/s1');
+  await expect(page.getByText('MR 2136 review').first()).toBeVisible();
   await page.keyboard.press('Alt+m');
   const editor = page.getByRole('textbox', { name: 'Markdown draft' });
   await editor.fill('mine');
@@ -1618,6 +1621,7 @@ test('notes: a poll answered after a save does not bring the older text back', a
     return r.fulfill({ json: before });
   });
   await page.goto('/#/p/ai-portal/s1');
+  await expect(page.getByText('MR 2136 review').first()).toBeVisible();
   await page.keyboard.press('Alt+m');
   const editor = page.getByRole('textbox', { name: 'Markdown draft' });
   await expect(editor).toHaveValue('# Draft\n');
