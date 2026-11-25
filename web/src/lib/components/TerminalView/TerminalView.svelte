@@ -206,7 +206,7 @@
       const query = new URLSearchParams({ ...(follow && { follow: '1' }), ...(opened && { seed: '1' }) });
       let target: Awaited<ReturnType<typeof wsTarget>>;
       try {
-        target = await wsTarget(`/api/terminals/${encodeURIComponent(sessionId)}?${query}`);
+        target = await wsTarget(`/api/terminals/${encodeURIComponent(sessionId)}?${query}`, reconnecting);
       } catch {
         // sign-in failed (network): retry, or the terminal stays dead
         if (!closed && mine === gen) {

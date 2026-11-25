@@ -108,11 +108,12 @@ async function send(origin: string, url: string, init: RequestInit): Promise<Res
 
 /**
  * Where a WebSocket for `path` goes: the shown machine, with the phone's token as a subprotocol
- * (browsers cannot set headers on a WebSocket).
+ * (browsers cannot set headers on a WebSocket). `fresh` signs in again first: tokens live in the server's memory, so a
+ * restart voids the cached one, and a refused upgrade shows no status to tell us (HTTP calls renew on their 401).
  */
-export async function wsTarget(path: string): Promise<{ url: string; protocols?: string[] }> {
+export async function wsTarget(path: string, fresh = false): Promise<{ url: string; protocols?: string[] }> {
   const origin = await selectedOrigin();
-  const token = await bearer(origin);
+  const token = await bearer(origin, fresh);
   return {
     url: origin.replace(/^http/, 'ws') + path,
     protocols: token ? ['shub', `bearer.${token}`] : undefined,
