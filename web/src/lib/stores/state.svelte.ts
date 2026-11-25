@@ -447,11 +447,13 @@ export function connectEvents(): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let watchdog: ReturnType<typeof setTimeout> | undefined;
   let everOpen = false;
+  let retried = false; // the last socket did not stay up: its token may be void (server restart)
   let gen = 0; // a resume while a connect is in flight must not leave two sockets
 
   const retry = () => {
     app.connected = false;
     if (stopped || app.authRequired) return;
+    retried = true;
     app.reconnecting = true;
     clearTimeout(timer);
     timer = setTimeout(() => void open(), delay);
@@ -467,7 +469,7 @@ export function connectEvents(): () => void {
     const mine = ++gen;
     let target: Awaited<ReturnType<typeof wsTarget>>;
     try {
-      target = await wsTarget('/api/events');
+      target = await wsTarget('/api/events', retried);
     } catch {
       if (!stopped && mine === gen) retry(); // sign-in failed (network): without this the badge stays Offline for good
       return;
@@ -478,6 +480,7 @@ export function connectEvents(): () => void {
     sock.onopen = () => {
       app.connected = true;
       app.reconnecting = false;
+      retried = false;
       delay = 1000;
       if (everOpen) void loadAll();
       everOpen = true;
