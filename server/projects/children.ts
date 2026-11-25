@@ -1,6 +1,6 @@
 // Worktrees a Claude session created (git worktree add, EnterWorktree, an Agent with isolation "worktree").
 // The sidebar shows them under that session; a click starts or resumes Claude there.
-// `origin_session_id` is no parent: closing the creator leaves these rows alone.
+// Closing the creating session closes its worktrees that lose no work (closeChildrenOf); the rest become orphans.
 import { execFile } from 'node:child_process';
 import { readdirSync, readFileSync, readlinkSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';

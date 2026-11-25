@@ -500,8 +500,34 @@ function mainCheckoutUpdates(services: Services): { start(): void; stop(): void 
   };
 }
 
-export function create(_ctx: Context, services: Services): { module: ShubModule } {
+/**
+ * Closing a session closes the worktrees it created: plain `git worktree remove`, never --force, so dirty,
+ * unpushed or still-open ones stay (they remain under "Orphaned worktrees"). Projects with a /worktree-close
+ * button are left to that skill (containers etc.).
+ */
+export async function closeChildrenOf(services: Services, sessionId: string): Promise<void> {
+  const rows = childRows(services.state).filter((r) => r.origin_session_id === sessionId);
+  const tracked = new Map(childRows(services.state).map((r) => [r.worktree_path, r]));
+  for (const r of rows) {
+    const p = services.config.project(r.project_id ?? '');
+    if (!p || !existsSync(p.path) || p.buttons.some((b) => b.skill === '/worktree-close')) continue;
+    const cwds = services.sessions.list().map((s) => s.cwd);
+    const w = (await worktreeOverview(p.id, p.path, cwds, { tracked, onlyTracked: true })).find(
+      (x) => x.path === r.worktree_path,
+    );
+    if (!w) continue;
+    await removeWorktree(p.path, w).then(
+      () => forgetChild(services.state, w.path),
+      () => undefined, // dirty / unpushed / active: kept on purpose
+    );
+  }
+}
+
+export function create(ctx: Context, services: Services): { module: ShubModule } {
   services.state.migrate('worktrees', CHILD_MIGRATIONS);
+  ctx.bus.on((e) => {
+    if (e.type === 'session.closed') void closeChildrenOf(services, e.sessionId).catch(() => undefined);
+  });
   const updates = mainCheckoutUpdates(services);
   return {
     module: {
