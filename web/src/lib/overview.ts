@@ -208,10 +208,20 @@ export function equalize(t: Layout, path: number[]): Layout {
   return atSplit(t, path, (s) => ({ ...s, sizes: s.sizes.map(() => 1 / s.sizes.length) }));
 }
 
-/** Gives every split in the tree equal shares, keeping the arrangement. */
+/** How many equal panes the tree lays side by side along `dir` (a same-direction child counts all of its own). */
+const span = (t: Layout, dir: 'row' | 'col'): number =>
+  typeof t === 'string'
+    ? 1
+    : t.dir === dir
+      ? sum(t.children.map((c) => span(c, dir)))
+      : Math.max(...t.children.map((c) => span(c, dir)));
+
+/** Makes every pane the same size along each axis, keeping the arrangement: a child that itself holds several panes
+ *  in the same direction gets a share per pane, so [a, [b, c]] is thirds, not halves and quarters. */
 export function equalizeAll(t: Layout): Layout {
   if (typeof t === 'string') return t;
-  return { ...t, children: t.children.map(equalizeAll), sizes: t.children.map(() => 1 / t.children.length) };
+  const spans = t.children.map((c) => span(c, t.dir));
+  return { ...t, children: t.children.map(equalizeAll), sizes: spans.map((n) => n / sum(spans)) };
 }
 
 /** Exchanges the places of two leaves. */

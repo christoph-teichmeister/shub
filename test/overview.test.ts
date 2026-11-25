@@ -360,3 +360,14 @@ test('equalizeAll evens every split and keeps the arrangement', () => {
   });
   assert.equal(equalizeAll('a'), 'a');
 });
+
+test('equalizeAll gives every pane the same width when same-direction splits are nested', () => {
+  const t: Layout = {
+    dir: 'row',
+    sizes: [0.6, 0.4],
+    children: ['a', { dir: 'row', sizes: [0.9, 0.1], children: ['b', 'c'] }],
+  };
+  const e = equalizeAll(t) as Extract<Layout, object>;
+  assert.deepEqual(e.sizes, [1 / 3, 2 / 3]);
+  assert.deepEqual((e.children[1] as Extract<Layout, object>).sizes, [0.5, 0.5]);
+});
