@@ -91,7 +91,8 @@
   $effect(() => store('shub.active.leftAt', JSON.stringify(leftAt)));
   let now = $state(Date.now());
   let wasActive = new Set<string>();
-  $effect(() => {
+  // `.pre`: runs before the DOM update, so the project never leaves the list for a frame (which would drop it without a glide).
+  $effect.pre(() => {
     const live = new Set(app.sessions.filter((s) => s.kind !== 'shell' && s.projectId).map((s) => s.projectId!));
     for (const id of wasActive) if (!live.has(id)) leftAt[id] = Date.now();
     for (const id of live) delete leftAt[id];
