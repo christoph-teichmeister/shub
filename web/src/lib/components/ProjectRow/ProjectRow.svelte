@@ -126,7 +126,7 @@
     align-items: center;
     gap: var(--space-1);
     min-height: var(--size-control-lg);
-    padding: 0 var(--space-2) 0 var(--space-2-5);
+    padding: 0 var(--space-2-5);
     border-radius: var(--radius-md);
     color: var(--fg-2);
 
@@ -190,7 +190,7 @@
   .actions {
     position: absolute;
     right: 100%;
-    padding-right: var(--space-1);
+    padding-right: var(--space-2);
     display: flex;
     gap: var(--space-1);
     padding-left: var(--space-4);
