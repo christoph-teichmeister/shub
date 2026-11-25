@@ -372,6 +372,9 @@ export function handleEvent(e: ServerEvent): void {
       if (e.from) app.jump = { from: e.from, to: e.session };
       return upsert(app.sessions, e.session);
     case 'session.updated':
+      if (e.session.bootSlow && !app.sessions.find((s) => s.id === e.session.id)?.bootSlow) {
+        toast(`${e.session.name}: Claude did not report back`, 'needs-you');
+      }
       return upsert(app.sessions, e.session);
     case 'session.status':
       return setStatus(e.sessionId, e.status, e.statusSince);

@@ -213,6 +213,7 @@ test('pause and resume', async () => {
   const s = await svc.start({ kind: 'claude', projectId: 'p1', prompt: 'do the thing' }, 'session:x');
   assert.equal(s.id, 'p1-2');
   assert.equal(s.permissionMode, 'default');
+  assert.equal(s.booting, true, 'a new session boots until SessionStart too');
   assert.equal(s.name, 'do the thing', 'first words until the title arrives');
   await new Promise((r) => setImmediate(r));
   assert.equal(svc.get(s.id)?.name, 'Thing Doing');
@@ -226,6 +227,7 @@ test('pause and resume', async () => {
     assert.equal(svc.get(s.id)?.booting, true, 'booting until SessionStart');
     svc.started(s.id);
     assert.equal(svc.get(s.id)?.booting, false);
+    assert.equal(svc.get(s.id)?.bootSlow, false);
     assert.equal(launches.at(-1)?.resume, false, 'no transcript yet: starts fresh with the same id');
     assert.equal(launches.at(-1)?.claudeSessionId, s.claudeSessionId);
     const dir = join(root, 'claude-resume', 'projects', encodeCwd(s.cwd));
@@ -251,6 +253,22 @@ test('pause and resume', async () => {
   } finally {
     if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = before;
+  }
+});
+
+test('a Claude that never reports SessionStart: boot ends on the cap, marked slow, a late start clears it', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const s = await svc.start({ kind: 'claude', projectId: 'p1' }, 'chris');
+    assert.equal(svc.get(s.id)?.booting, true);
+    mock.timers.tick(8_000);
+    assert.equal(svc.get(s.id)?.booting, false);
+    assert.equal(svc.get(s.id)?.bootSlow, true);
+    svc.started(s.id);
+    assert.equal(svc.get(s.id)?.bootSlow, false);
+    svc.close(s.id, 'chris');
+  } finally {
+    mock.timers.reset();
   }
 });
 
