@@ -197,11 +197,18 @@
     background: linear-gradient(to right, transparent, var(--row-bg) var(--space-4));
     opacity: 0;
 
+    /* The fade-out padding must not swallow clicks meant for the name underneath; only the buttons catch them. */
+    pointer-events: none;
+
     /* visibility keeps the hidden buttons out of the tab order and the a11y tree; it flips after the fade-out. */
     visibility: hidden;
     transition:
       opacity var(--duration-base) var(--ease-standard),
       visibility 0s linear var(--duration-base);
+  }
+
+  .actions > :global(*) {
+    pointer-events: auto;
   }
 
   .row:hover .actions,

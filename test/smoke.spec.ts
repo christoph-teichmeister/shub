@@ -189,7 +189,7 @@ test('app shell, wordmark and projects render', async ({ page }) => {
   await expect(page.getByTitle(/^5h limit: 42% used/)).toBeVisible();
   await expect(page.getByTitle(/^7d limit: 95% used/)).toBeVisible();
 
-  await nav.getByRole('link', { name: 'ai-portal' }).click();
+  await nav.getByRole('link', { name: 'ai-portal' }).click({ position: { x: 20, y: 10 } }); // the hover actions cover the rest of the row
   await expect(page.getByRole('heading', { name: 'ai-portal', level: 1 })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'MR 2136 review' })).toBeVisible();
   await expect(page.locator('.xterm')).toBeVisible();
