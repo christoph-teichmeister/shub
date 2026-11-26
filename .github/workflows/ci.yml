@@ -24,3 +24,22 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:smoke
+
+  # The release workflow's dry-run (install the packed archive, update to a newer one, roll back) used to fail only
+  # after the merge, so a broken updater meant no release (2026-11-26, #387). Pull requests run it for linux-x64 here.
+  dry-run:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: 2026.11.0-beta.0
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: npm ci
+      - run: npm run build
+      - run: node --no-warnings scripts/release/release.ts pack --version "$VERSION" --out release
+      - run: node --no-warnings scripts/release/dry-run.ts --archive "release/shub-$VERSION-linux-x64.tar.gz"
