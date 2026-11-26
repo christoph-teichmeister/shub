@@ -13,12 +13,8 @@
           : 0}
         <span
           class="meter"
-          class:warn={l.used >= 70}
-          class:high={l.used >= 90}
-          class:danger={l.used >= 100}
-          class:p-warn={pace >= 70}
-          class:p-high={pace >= 90}
-          class:p-danger={pace >= 100}
+          class:warn={l.resetsAt && l.used >= pace * 0.9}
+          class:danger={l.resetsAt && l.used >= pace}
           title={`${label} limit: ${Math.round(l.used)}% used${l.resetsAt ? `, resets ${new Date(l.resetsAt * 1000).toLocaleString()}, even pace to 100% would be ${Math.round(pace)}%` : ''}`}
         >
           <span class="meter-label">{label}</span>
@@ -79,50 +75,17 @@
     background: var(--status-your-turn);
   }
 
-  /* Bar and used % share the tier colour: yellow from 70 %, orange from 90 %, red at the limit. */
+  /* Bar and used % share the tier colour: yellow once used reaches 90 % of the pace, red once it reaches the pace, otherwise green. */
   .meter.warn .meter-bar > .used {
     background: var(--yellow);
-  }
-
-  .meter.high .meter-bar > .used {
-    background: var(--status-needs-you);
   }
 
   .meter.danger .meter-bar > .used {
     background: var(--pink);
   }
 
-  /* Pace bar and pace % use the same tiers, judged by the pace value. */
-  .meter.p-warn .meter-bar > .pace {
-    background: color-mix(in srgb, var(--yellow) 30%, transparent);
-  }
-
-  .meter.p-high .meter-bar > .pace {
-    background: color-mix(in srgb, var(--status-needs-you) 30%, transparent);
-  }
-
-  .meter.p-danger .meter-bar > .pace {
-    background: color-mix(in srgb, var(--pink) 30%, transparent);
-  }
-
-  .meter.p-warn .meter-pace {
-    color: var(--yellow);
-  }
-
-  .meter.p-high .meter-pace {
-    color: var(--status-needs-you);
-  }
-
-  .meter.p-danger .meter-pace {
-    color: var(--pink);
-  }
-
   .meter.warn .meter-pct {
     color: var(--yellow);
-  }
-
-  .meter.high .meter-pct {
-    color: var(--status-needs-you);
   }
 
   .meter.danger .meter-pct {
