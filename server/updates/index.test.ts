@@ -193,11 +193,11 @@ test('install and rollback start the launcher, only for the browser user', async
   await assert.rejects(call('POST /api/updates/install', cli), /only you/);
   await assert.rejects(call('POST /api/updates/install', user, { version: '../../x' }), /release version/);
   assert.deepEqual(await call('POST /api/updates/install', user), { ok: true, version: '2026.10.1' });
-  // two launcher processes run side by side (the check's stage and the click's install): their order is not fixed
-  assert.deepEqual((await calls(2)).map((c) => c.join(' ')).sort(), [
-    'update --stage --to 2026.10.1',
-    'update --to 2026.10.1',
-  ]);
+  // the click's install waits for the check's stage (it holds the launcher lock), so the order is fixed
+  assert.deepEqual(
+    (await calls(2)).map((c) => c.join(' ')),
+    ['update --stage --to 2026.10.1', 'update --to 2026.10.1'],
+  );
 
   await assert.rejects(call('POST /api/updates/rollback', user), /no previous version/);
   const last = { at: '2026-10-19T20:00:00Z', from: '2026.10.0', to: '2026.10.1', ok: false, message: 'rolled back' };
