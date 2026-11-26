@@ -183,6 +183,7 @@ export class SessionsService implements Sessions {
       ...toSession(r),
       booting: this.#booting.has(r.id),
       bootSlow: this.#bootSlow.has(r.id),
+      pausing: this.#compacting.get(r.id) === true,
     }));
   }
 
@@ -196,7 +197,14 @@ export class SessionsService implements Sessions {
 
   get(id: string): Session | undefined {
     const row = this.#row(id);
-    return row && { ...toSession(row), booting: this.#booting.has(id), bootSlow: this.#bootSlow.has(id) };
+    return (
+      row && {
+        ...toSession(row),
+        booting: this.#booting.has(id),
+        bootSlow: this.#bootSlow.has(id),
+        pausing: this.#compacting.get(id) === true,
+      }
+    );
   }
 
   /** Must exist and not be exited. */
@@ -591,6 +599,7 @@ export class SessionsService implements Sessions {
       this.#compacting.delete(id);
       // The user may have taken the session over meanwhile.
       if (wasPaused && ['waiting', 'your-turn'].includes(session.status)) this.pause(id, 'shub:auto-compact');
+      else if (wasPaused) this.#emitUpdated(id);
     }
     // A wait set mid-turn parks on the Stop hook; its fill arrives here a moment later.
     else if (session.status === 'waiting' && session.kind === 'claude') this.#compactParking(id, false);
@@ -603,6 +612,7 @@ export class SessionsService implements Sessions {
     if (!idle || !this.#tmux.has(tmuxName(id)) || (session.context?.tokens ?? 0) < COMPACT_AT) return false;
     if (this.#compacting.has(id)) return true;
     this.#compacting.set(id, thenPause);
+    this.#emitUpdated(id);
     this.sendKeys(id, ['/compact', 'Enter']);
     // ponytail: fixed 5 min cap; a /compact that never reports back pauses anyway
     if (thenPause) {
