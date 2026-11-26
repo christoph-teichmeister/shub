@@ -16,6 +16,9 @@
           class:warn={l.used >= 70}
           class:high={l.used >= 90}
           class:danger={l.used >= 100}
+          class:p-warn={pace >= 70}
+          class:p-high={pace >= 90}
+          class:p-danger={pace >= 100}
           title={`${label} limit: ${Math.round(l.used)}% used${l.resetsAt ? `, resets ${new Date(l.resetsAt * 1000).toLocaleString()}, even pace to 100% would be ${Math.round(pace)}%` : ''}`}
         >
           <span class="meter-label">{label}</span>
@@ -87,6 +90,31 @@
 
   .meter.danger .meter-bar > .used {
     background: var(--pink);
+  }
+
+  /* Pace bar and pace % use the same tiers, judged by the pace value. */
+  .meter.p-warn .meter-bar > .pace {
+    background: color-mix(in srgb, var(--yellow) 30%, transparent);
+  }
+
+  .meter.p-high .meter-bar > .pace {
+    background: color-mix(in srgb, var(--status-needs-you) 30%, transparent);
+  }
+
+  .meter.p-danger .meter-bar > .pace {
+    background: color-mix(in srgb, var(--pink) 30%, transparent);
+  }
+
+  .meter.p-warn .meter-pace {
+    color: var(--yellow);
+  }
+
+  .meter.p-high .meter-pace {
+    color: var(--status-needs-you);
+  }
+
+  .meter.p-danger .meter-pace {
+    color: var(--pink);
   }
 
   .meter.warn .meter-pct {
