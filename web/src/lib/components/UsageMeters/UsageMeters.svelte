@@ -14,7 +14,8 @@
         <span
           class="meter"
           class:warn={l.used >= 70}
-          class:danger={l.used >= 90}
+          class:high={l.used >= 90}
+          class:danger={l.used >= 100}
           title={`${label} limit: ${Math.round(l.used)}% used${l.resetsAt ? `, resets ${new Date(l.resetsAt * 1000).toLocaleString()}, even pace to 100% would be ${Math.round(pace)}%` : ''}`}
         >
           <span class="meter-label">{label}</span>
@@ -75,11 +76,28 @@
     background: var(--status-your-turn);
   }
 
+  /* Bar and used % share the tier colour: yellow from 70 %, orange from 90 %, red at the limit. */
   .meter.warn .meter-bar > .used {
     background: var(--yellow);
   }
 
+  .meter.high .meter-bar > .used {
+    background: var(--status-needs-you);
+  }
+
   .meter.danger .meter-bar > .used {
     background: var(--pink);
+  }
+
+  .meter.warn .meter-pct {
+    color: var(--yellow);
+  }
+
+  .meter.high .meter-pct {
+    color: var(--status-needs-you);
+  }
+
+  .meter.danger .meter-pct {
+    color: var(--pink);
   }
 </style>
