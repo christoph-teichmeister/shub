@@ -136,20 +136,33 @@ export function create(ctx: Context, services: Services, env: NodeJS.ProcessEnv 
 
   let staging: string | null = null; // a stage download is running: later checks must not start a second one
 
-  /** Runs the launcher on its own: it outlives this process when it restarts the service. */
+  let stageRun: Promise<void> | null = null; // the running `update --stage`: it holds the launcher's update lock
+
+  /** Runs the launcher on its own: it outlives this process when it restarts the service. A launcher call that is not
+   * the stage itself waits for a running stage first, else it fails on the lock ("another update is running"). */
   function launch(args: string[], done?: () => void): void {
     const script = managed();
-    mkdirSync(home, { recursive: true });
-    const log = openSync(join(home, 'update.log'), 'a');
-    const child = spawn(process.execPath, [script, ...args], { detached: true, stdio: ['ignore', log, log], env });
-    child.on('error', (err) => console.error('shub: could not start the launcher', err));
-    const before = JSON.stringify(launcherState());
-    child.on('exit', () => {
-      done?.();
-      if (JSON.stringify(launcherState()) !== before) ctx.bus.emit({ type: 'updates.changed' }); // staged or last changed
-    });
-    child.unref();
-    closeSync(log);
+    const isStage = args.includes('--stage');
+    const run = (): Promise<void> => {
+      mkdirSync(home, { recursive: true });
+      const log = openSync(join(home, 'update.log'), 'a');
+      const child = spawn(process.execPath, [script, ...args], { detached: true, stdio: ['ignore', log, log], env });
+      child.on('error', (err) => console.error('shub: could not start the launcher', err));
+      const before = JSON.stringify(launcherState());
+      const exited = new Promise<void>((resolve) =>
+        child.on('exit', () => {
+          done?.();
+          if (JSON.stringify(launcherState()) !== before) ctx.bus.emit({ type: 'updates.changed' }); // staged or last changed
+          resolve();
+        }),
+      );
+      child.unref();
+      closeSync(log);
+      return exited;
+    };
+    if (isStage) stageRun = run().finally(() => (stageRun = null));
+    else if (stageRun) void stageRun.then(run);
+    else run();
   }
 
   const gap = Number(env.SHUB_UPDATE_GAP_MS) || MIN_GAP;
