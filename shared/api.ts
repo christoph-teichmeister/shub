@@ -322,6 +322,8 @@ export interface Session {
   agents?: SubagentRun[];
   /** How full Claude's context is, from the transcript after each turn and tool call; null before the first reply. */
   context?: ContextFill | null;
+  /** Compacting before the pause: the pause follows once /compact is done (status still reads working or your turn). */
+  pausing?: boolean;
   /** Started or resumed and Claude has not reported SessionStart yet: the terminal and the sidebar row show a boot-up animation. */
   booting?: boolean;
   /** The boot animation ended on its time cap: Claude has not reported SessionStart (yet). */

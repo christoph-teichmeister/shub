@@ -54,3 +54,8 @@ test('a finished turn with agents still running reads idle, not working', () => 
   assert.equal(label({ background: true, agents: [agent, agent] }), 'idle · 2 agents');
   assert.equal(label({ agents: [agent] }), 'working');
 });
+
+test('a session compacting before its pause reads pausing, whatever its status', () => {
+  assert.equal(statusLabel({ status: 'your-turn', pausing: true } as Session), 'pausing…');
+  assert.equal(statusLabel({ status: 'working', pausing: true } as Session), 'pausing…');
+});

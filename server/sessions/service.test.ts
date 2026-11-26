@@ -657,8 +657,10 @@ test('a pause still follows when the fill drops before the compact turn ends', a
   svc.setStatus(s.id, 'working'); // /compact runs
   svc.setContext(s.id, { tokens: 20_000, window: 200_000 });
   assert.notEqual(svc.get(s.id)?.status, 'paused', 'compact turn not over yet');
+  assert.equal(svc.get(s.id)?.pausing, true, 'the row shows the pending pause');
   svc.setStatus(s.id, 'your-turn'); // its Stop hook
   assert.equal(svc.get(s.id)?.status, 'paused', 'paused once the turn ended');
+  assert.equal(svc.get(s.id)?.pausing, false, 'nothing pending any more');
   svc.close(s.id, 'chris');
 });
 
