@@ -114,7 +114,7 @@
       ? app.projects
           .filter((p) => sessionsOf(p.id).length || p.id in leftAt)
           // Folded and counting-down projects sink below the open ones (the keyed list glides them down with `flip`).
-          .sort((a, b) => sunk(a) - sunk(b) || a.name.localeCompare(b.name))
+          .sort((a, b) => sunk(a) - sunk(b) || a.order - b.order || a.name.localeCompare(b.name))
       : [],
   );
   async function toggleActiveGroup() {
@@ -182,6 +182,26 @@
       await api('projectsReorder', { body: { ids } }).catch(toastError);
       void loadProjects();
     })();
+  }
+
+  // Active view: put the dragged project before `beforeId` (end when null) in the global order; groups stay untouched.
+  function dropActive(beforeId: string | null) {
+    const moving = app.projects.find((p) => p.id === dragId);
+    dragId = null;
+    if (!moving || moving.id === beforeId) return;
+    const list = activeProjects.filter((p) => p.id !== moving.id);
+    const at = beforeId ? list.findIndex((p) => p.id === beforeId) : -1;
+    list.splice(at < 0 ? list.length : at, 0, moving);
+    const ids = [...list, ...app.projects.filter((p) => !list.includes(p)).sort((a, b) => a.order - b.order)].map(
+      (p) => p.id,
+    );
+    ids.forEach((id, i) => {
+      const p = app.projects.find((q) => q.id === id);
+      if (p) p.order = i;
+    });
+    void api('projectsReorder', { body: { ids } })
+      .catch(toastError)
+      .then(() => loadProjects());
   }
 
   let dragSession: string | null = null;
@@ -400,6 +420,7 @@
       title="Active"
       collapsedBadge={groupBadge(activeProjects)}
       entries={activeProjects.length ? undefined : []}
+      ondrop={() => dropActive(null)}
     >
       {#each activeProjects as p (p.id)}
         {@const list = placeRolled(sessionsOf(p.id))}
@@ -412,6 +433,11 @@
             settingsHref={href('settings', 'project', p.id)}
             selected={p.id === project?.id}
             countdown={g?.text}
+            ondragstart={(e) => {
+              dragId = p.id;
+              e.dataTransfer?.setData('text/plain', p.name);
+            }}
+            ondrop={() => dropActive(p.id)}
             onnewsession={() => onnewsession(p)}
             onmenu={(e) => onprojectmenu({ project: p, x: e.clientX, y: e.clientY })}
           >
