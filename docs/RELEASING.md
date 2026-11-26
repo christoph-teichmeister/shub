@@ -7,6 +7,7 @@
 `.github/workflows/release.yml` runs on every push to `develop` and `main`:
 
 1. **checks**: the `ci` workflow (typecheck, lint, tests, build, smoke test). Nothing is released if it fails.
+   Pull requests also run the job `dry-run` (pack + install + update + rollback on linux-x64), so a broken updater fails before the merge, not after.
 2. **version**: `scripts/release/release.ts version` computes the version from the existing `v*` tags:
    - stable (`main`): `YYYY.M.MICRO`, MICRO the next free number for the current year and month (UTC) among the
      stable tags. First release in October 2026: `2026.10.0`, then `2026.10.1`, in November `2026.11.0`.
