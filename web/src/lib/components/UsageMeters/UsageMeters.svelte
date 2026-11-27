@@ -86,7 +86,7 @@
   }
 
   .clickable:hover .meter-label {
-    color: var(--text);
+    color: var(--fg);
   }
 
   .meter-bar {
