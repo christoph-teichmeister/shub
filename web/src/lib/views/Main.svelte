@@ -14,6 +14,7 @@
   import NotesPanel from '../components/NotesPanel/NotesPanel.svelte';
   import BottomPanel from '../components/BottomPanel/BottomPanel.svelte';
   import Button from '../components/Button/Button.svelte';
+  import UsageMeters from '../components/UsageMeters/UsageMeters.svelte';
   import ChoiceChip from '../components/ChoiceChip/ChoiceChip.svelte';
   import CommandChip from '../components/CommandChip/CommandChip.svelte';
   import Dialog from '../components/Dialog/Dialog.svelte';
@@ -428,6 +429,9 @@
         {/each}
       {/if}
       {#snippet trailing()}
+        {#if ui.sidebarCollapsed && (app.usage.fiveHour || app.usage.sevenDay)}
+          <div class="usage-slot"><UsageMeters /></div>
+        {/if}
         <button
           type="button"
           class="new"
@@ -670,6 +674,11 @@
 <WorktreesDialog bind:this={worktreesDialog} onconfirm={(c) => (confirm = c)} onnewsession={newSession} />
 
 <style>
+  .usage-slot {
+    width: 16rem;
+    flex: 0 1 auto;
+  }
+
   .guide {
     display: flex;
     flex-direction: column;

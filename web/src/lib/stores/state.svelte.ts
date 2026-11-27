@@ -19,7 +19,7 @@ import type {
 import { API_VERSION, TERMINAL_SETTINGS_DEFAULTS, terminalSettingsError } from '../../../../shared/api.ts';
 import { childStart } from '../children.ts';
 import { placeSessions } from '../status.ts';
-import { store, storedJson } from '../stored.ts';
+import { store, stored, storedJson } from '../stored.ts';
 import { applyTheme, findTheme } from '../tokens/tokens.ts';
 import { api, ApiError, wsTarget } from './api.ts';
 import { href } from './router.svelte.ts';
@@ -83,6 +83,8 @@ export const ui = $state({
   drawer: false,
   shortcuts: false,
   legend: false,
+  /** Sidebar folded to its rail (Alt B); the usage meters then move into the tab bar. */
+  sidebarCollapsed: stored('shub.sidebar.collapsed') === '1',
   /** Set by the overview while open: search shows a session as a pane there instead of navigating away. */
   showInGrid: null as ((s: Session) => void) | null,
   /** Set by the overview while open: reserves an empty pane for a session that is about to start; call the result to release it. */

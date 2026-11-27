@@ -235,10 +235,9 @@
   }
 
   // Remembered per browser; storage can be missing or throw (private window).
-  let sidebarCollapsed = $state(stored('shub.sidebar.collapsed') === '1');
   export function toggleSidebar() {
-    sidebarCollapsed = !sidebarCollapsed;
-    store('shub.sidebar.collapsed', sidebarCollapsed ? '1' : null);
+    ui.sidebarCollapsed = !ui.sidebarCollapsed;
+    store('shub.sidebar.collapsed', ui.sidebarCollapsed ? '1' : null);
   }
 </script>
 
@@ -353,7 +352,7 @@
   </a>
 {/snippet}
 
-<Sidebar collapsed={sidebarCollapsed} ontoggle={toggleSidebar}>
+<Sidebar collapsed={ui.sidebarCollapsed} ontoggle={toggleSidebar}>
   {#snippet header()}
     <div class="brand">
       <Wordmark accent={project?.accent} {needsYou} />
