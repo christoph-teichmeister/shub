@@ -80,6 +80,15 @@
     cursor: pointer;
   }
 
+  .clickable .meter-label {
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+  }
+
+  .clickable:hover .meter-label {
+    color: var(--text);
+  }
+
   .meter-bar {
     flex: 1 1 auto;
     min-width: var(--space-8);
