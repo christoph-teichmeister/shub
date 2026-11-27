@@ -43,7 +43,7 @@
           >
           <span class="meter-pct">{Math.round(l.used)}%</span>
           {#if l.resetsAt}<span class="meter-pace"
-              >{m === 'both' ? `${Math.round(full)}/${Math.round(work)}` : Math.round(pace)}%</span
+              >{m === 'both' ? `${Math.round(work)}/${Math.round(full)}` : Math.round(pace)}%</span
             >{/if}
         </svelte:element>
       {/if}
@@ -78,6 +78,10 @@
 
   .clickable {
     cursor: pointer;
+  }
+
+  .meter-label {
+    white-space: nowrap;
   }
 
   .clickable .meter-label {
