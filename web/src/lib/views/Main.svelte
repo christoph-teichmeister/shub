@@ -677,6 +677,8 @@
   .usage-slot {
     width: 16rem;
     flex: 0 1 auto;
+    box-sizing: content-box;
+    padding-inline: var(--space-3);
   }
 
   .guide {
